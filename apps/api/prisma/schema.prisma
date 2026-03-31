@@ -1,0 +1,441 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  WORKER
+  ACCOUNTANT
+  INSPECTOR
+}
+
+enum Form {
+  FORM_1
+  FORM_2
+}
+
+enum OrderStatus {
+  PENDING
+  IN_PROGRESS
+  DONE
+  CANCELLED
+  DRAFT
+}
+
+enum WarehouseType {
+  RAW_MATERIAL
+  IN_PRODUCTION
+  FINISHED_GOODS
+  FRIDGE
+  SUPPLIES
+}
+
+enum MovementType {
+  IN
+  OUT
+  TRANSFER
+  PRODUCTION
+  ADJUSTMENT
+}
+
+enum DocumentType {
+  TTN
+  QUALITY_CERT
+  OTHER
+}
+
+enum PermissionResource {
+  ORDERS
+  ARCHIVE
+  WAREHOUSE
+  STATISTICS
+  CLIENTS
+  PRODUCTS
+  USERS
+  AUDIT
+  DOCUMENTS
+  DASHBOARD
+}
+
+enum PermissionAction {
+  VIEW
+  CREATE
+  EDIT
+  DELETE
+  PRINT
+}
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      UserRole @default(WORKER)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  createdOrders  Order[]    @relation("CreatedBy")
+  assignedOrders Order[]    @relation("AssignedTo")
+  auditLogs      AuditLog[]
+
+  @@index([role, isActive])
+  @@index([email])
+}
+
+model RolePermission {
+  id       String             @id @default(uuid())
+  role     UserRole
+  resource PermissionResource
+  action   PermissionAction
+  form     Form?
+  allowed  Boolean            @default(false)
+
+  @@unique([role, resource, action])
+}
+
+model Client {
+  id        String   @id @default(uuid())
+  name      String
+  edrpou    String?
+  address   String?
+  contact   String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  contractNumber String?
+
+  deliveryPoints DeliveryPoint[]
+  prices         ClientPrice[]
+  orders         Order[]
+  returns        ClientReturn[]   // ← зворотній зв'язок
+
+  @@index([isActive])
+  @@index([name])
+}
+
+model Product {
+  id        String   @id @default(uuid())
+  name      String
+  unit      String   @default("кг")
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  category  String   @default("FISH") // FISH | SUPPLY
+  storageTemp     String?  // наприклад "-4 до -8"
+  storageDays     Int?     // термін зберігання в добах
+  storageHumidity String?  // вологість, наприклад "75-80"
+  storageStandard String?  // ГОСТ, ДСТУ, ТУ
+
+  prices         ClientPrice[]
+  orderItems     OrderItem[]
+  stockItems     StockItem[]
+  stockMovements StockMovement[]
+  returnItems    ClientReturnItem[] // ← зворотній зв'язок
+
+  @@index([isActive])
+  @@index([name])
+}
+
+model ClientPrice {
+  id        String   @id @default(uuid())
+  clientId  String
+  productId String
+  price     Decimal  @db.Decimal(10, 2)
+  form      Form
+  updatedAt DateTime @updatedAt
+
+  client  Client  @relation(fields: [clientId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+
+  @@unique([clientId, productId, form])
+  @@index([clientId, form])
+}
+
+model Warehouse {
+  id          String        @id @default(uuid())
+  name        String
+  type        WarehouseType
+  description String?
+  isActive    Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+
+  stockItems  StockItem[]
+  movements   StockMovement[]
+  returnItems ClientReturnItem[] // ← зворотній зв'язок
+
+  @@index([type, isActive])
+}
+
+model Supplier {
+  id        String   @id @default(uuid())
+  name      String
+  edrpou    String?
+  contact   String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  stockItems     StockItem[]
+  stockMovements StockMovement[]
+
+  @@index([isActive])
+}
+
+model StockItem {
+  id          String   @id @default(uuid())
+  warehouseId String
+  productId   String
+  form        Form     @default(FORM_1)
+  quantity    Decimal  @db.Decimal(10, 3)
+  pricePerKg  Decimal? @db.Decimal(10, 2)
+  supplierId  String?
+  arrivedAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+  product   Product   @relation(fields: [productId], references: [id])
+  supplier  Supplier? @relation(fields: [supplierId], references: [id])
+
+  @@index([warehouseId, productId])
+  @@index([warehouseId, form])
+  @@index([productId, form])
+  @@index([arrivedAt])
+}
+
+model StockMovement {
+  id          String       @id @default(uuid())
+  warehouseId String
+  productId   String
+  type        MovementType
+  quantity    Decimal      @db.Decimal(10, 3)
+  form        Form
+  note        String?
+  orderId     String?
+  supplierId  String?
+  createdAt   DateTime     @default(now())
+
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+  product   Product   @relation(fields: [productId], references: [id])
+  order     Order?    @relation(fields: [orderId], references: [id])
+  supplier  Supplier? @relation(fields: [supplierId], references: [id])
+
+  @@index([warehouseId, createdAt])
+  @@index([productId, createdAt])
+  @@index([type, createdAt])
+  @@index([orderId])
+  @@index([createdAt])
+}
+
+model DeliveryPoint {
+  id        String   @id @default(uuid())
+  clientId  String
+  name      String
+  address   String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  client Client  @relation(fields: [clientId], references: [id])
+  orders Order[]
+
+  @@index([clientId, isActive])
+
+  returns ClientReturn[]
+}
+
+model Order {
+  id              String      @id @default(uuid())
+  number          Int         @default(autoincrement())
+  numberForm      Int?
+  clientId        String
+  form            Form
+  status          OrderStatus @default(PENDING)
+  createdById     String
+  assignedToId    String?
+  plannedDate     DateTime?
+  invoiceDate     DateTime?
+  completedAt     DateTime?
+  driverName      String?
+  carNumber       String?
+  deliveryAddress String?
+  note            String?
+  deletedAt       DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  printedAt       DateTime?
+  deliveryPointId String?
+  deliveryPoint   DeliveryPoint? @relation(fields: [deliveryPointId], references: [id])
+  returns ClientReturn[] 
+
+  client     Client          @relation(fields: [clientId], references: [id])
+  createdBy  User            @relation("CreatedBy", fields: [createdById], references: [id])
+  assignedTo User?           @relation("AssignedTo", fields: [assignedToId], references: [id])
+  items      OrderItem[]
+  movements  StockMovement[]
+  documents  OrderDocument[]
+
+  @@index([status, deletedAt])
+  @@index([form, deletedAt])
+  @@index([form, numberForm])
+  @@index([clientId])
+  @@index([createdAt])
+  @@index([completedAt])
+  @@index([status, completedAt])
+  @@index([assignedToId, status])
+}
+
+model OrderItem {
+  id            String   @id @default(uuid())
+  orderId       String
+  productId     String
+  plannedWeight Decimal  @db.Decimal(10, 3)
+  actualWeight  Decimal? @db.Decimal(10, 3)
+  pricePerKg    Decimal? @db.Decimal(10, 2)
+  displayUnit String?
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([orderId])
+  @@index([productId])
+}
+
+model OrderDocument {
+  id        String       @id @default(uuid())
+  orderId   String
+  type      DocumentType
+  createdAt DateTime     @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+}
+
+model SystemSettings {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String
+  action    String
+  entityId  String?
+  oldValue  Json?
+  newValue  Json?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([action, createdAt])
+  @@index([entityId])
+  @@index([createdAt])
+}
+
+model Driver {
+  id        String   @id @default(uuid())
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@index([isActive])
+}
+
+model Car {
+  id        String   @id @default(uuid())
+  number    String
+  brand     String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@index([isActive])
+}
+
+model ProductionCalc {
+  id        String   @id @default(uuid())
+  note      String?
+  createdAt DateTime @default(now())
+
+  totalInputCost Decimal @db.Decimal(10, 2)
+  totalOutputQty Decimal @db.Decimal(10, 3)
+  costPerKg      Decimal @db.Decimal(10, 4)
+
+  inputs  ProductionCalcInput[]
+  outputs ProductionCalcOutput[]
+
+  @@index([createdAt])
+}
+
+model ProductionCalcInput {
+  id           String  @id @default(uuid())
+  calcId       String
+  productName  String
+  quantity     Decimal @db.Decimal(10, 3)
+  pricePerKg   Decimal @db.Decimal(10, 2)
+  totalCost    Decimal @db.Decimal(10, 2)
+  supplierName String?
+  form         Form
+
+  calc ProductionCalc @relation(fields: [calcId], references: [id], onDelete: Cascade)
+
+  @@index([calcId])
+}
+
+model ProductionCalcOutput {
+  id             String   @id @default(uuid())
+  calcId         String
+  productName    String
+  quantity       Decimal  @db.Decimal(10, 3)
+  costPerKg      Decimal  @db.Decimal(10, 4)
+  markupPct      Decimal? @db.Decimal(5, 2)
+  salePricePerKg Decimal? @db.Decimal(10, 2)
+  margin         Decimal? @db.Decimal(10, 2)
+  form           Form
+
+  calc ProductionCalc @relation(fields: [calcId], references: [id], onDelete: Cascade)
+
+  @@index([calcId])
+}
+
+// ─── Повернення від клієнтів ──────────────────────────────────────────────────
+
+model ClientReturn {
+  id         String    @id @default(uuid())
+  clientId   String
+  deliveryPointId String?
+  orderId   String?
+  note       String?
+  createdAt  DateTime  @default(now())
+  resolvedAt DateTime? // коли врахували в наступній заявці
+
+  order     Order?   @relation(fields: [orderId], references: [id])
+  client Client           @relation(fields: [clientId], references: [id])
+  deliveryPoint DeliveryPoint? @relation(fields: [deliveryPointId], references: [id])
+  items  ClientReturnItem[]
+
+  @@index([clientId, resolvedAt])
+  @@index([deliveryPointId, resolvedAt])
+  @@index([createdAt])
+}
+
+model ClientReturnItem {
+  id          String  @id @default(uuid())
+  returnId    String
+  productId   String
+  totalQty    Decimal @db.Decimal(10, 3) // скільки прийшло від клієнта
+  goodQty     Decimal @db.Decimal(10, 3) // скільки повертаємо в холодильник
+  wasteQty    Decimal @db.Decimal(10, 3) // скільки йде в утиль
+  warehouseId String                      // куди кладемо добру продукцію
+  actualQty   Decimal? @db.Decimal(10, 3)
+
+  return    ClientReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  product   Product      @relation(fields: [productId], references: [id])
+  warehouse Warehouse    @relation(fields: [warehouseId], references: [id])
+
+  @@index([returnId])
+  @@index([productId])
+}
