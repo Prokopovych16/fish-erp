@@ -7,7 +7,6 @@ export class StatisticsService {
   constructor(private prisma: PrismaService) {}
 
   // Допоміжний метод — будує фільтр по даті і формі
-  // Використовується у всіх методах статистики
   private buildWhereFilter(
     from?: string,
     to?: string,
@@ -19,14 +18,12 @@ export class StatisticsService {
       deletedAt: null,
     };
 
-    // INSPECTOR бачить тільки FORM_1
     if (userRole === UserRole.INSPECTOR) {
       where.form = Form.FORM_1;
     } else if (form) {
       where.form = form;
     }
 
-    // Фільтр по даті
     if (from || to) {
       where.completedAt = {
         ...(from && { gte: new Date(from) }),
@@ -37,37 +34,32 @@ export class StatisticsService {
     return where;
   }
 
+  // Виручка по позиції — 0 якщо шт без фактичної ваги
+  private calcItemRevenue(item: any): number {
+    if (item.product?.unit === 'шт' && !item.actualWeight) return 0;
+    return (
+      Number(item.actualWeight ?? item.plannedWeight) *
+      Number(item.pricePerKg ?? 0)
+    );
+  }
+
   // ============================================================
-  // ДАШБОРД — головна сторінка адміна
+  // ДАШБОРД
   // ============================================================
   async getDashboard(from?: string, to?: string, form?: Form) {
     const where = this.buildWhereFilter(from, to, form);
 
-    // Всі виконані заявки за період
     const orders = await this.prisma.order.findMany({
       where,
-      include: { items: true },
+      include: { items: { include: { product: true } } },
     });
 
-    // Рахуємо загальну виручку
-    // виручка = сума по всіх позиціях (фактична вага * ціна)
     const totalRevenue = orders.reduce((sum, order) => {
-      return (
-        sum +
-        order.items.reduce((s, item) => {
-          return (
-            s +
-            Number(item.actualWeight ?? item.plannedWeight) *
-              Number(item.pricePerKg ?? 0)
-          );
-        }, 0)
-      );
+      return sum + order.items.reduce((s, item) => s + this.calcItemRevenue(item), 0);
     }, 0);
 
-    // Виручка по формах окремо
     const revenueByForm = await this.getRevenueByForm(from, to);
 
-    // Кількість активних заявок прямо зараз
     const activeOrders = await this.prisma.order.count({
       where: {
         deletedAt: null,
@@ -75,38 +67,33 @@ export class StatisticsService {
       },
     });
 
-    // Виконано сьогодні
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const completedToday = await this.prisma.order.count({
       where: {
         status: OrderStatus.DONE,
+        deletedAt: null,
         completedAt: { gte: today },
       },
     });
 
-    // Залишки по всіх складах
     const stock = await this.prisma.warehouse.findMany({
       where: { isActive: true },
       include: {
         stockItems: {
-          where: { quantity: { gt: 0 } }, // ← додай це
+          where: { quantity: { gt: 0 } },
           include: { product: true },
           orderBy: { arrivedAt: 'desc' },
         },
       },
     });
 
-    // Топ 5 клієнтів по виручці за період
     const topClients = await this.getTopClients(from, to, form, 5);
-
-    // Графік — заявки по днях за останні 30 днів
     const ordersChart = await this.getOrdersChart(from, to, form);
 
-    // Останні 5 виконаних заявок
     const lastOrders = await this.prisma.order.findMany({
       where: { status: OrderStatus.DONE, deletedAt: null },
-      include: { client: true, items: true },
+      include: { client: true, items: { include: { product: true } } },
       orderBy: { completedAt: 'desc' },
       take: 5,
     });
@@ -125,7 +112,7 @@ export class StatisticsService {
   }
 
   // ============================================================
-  // ФІНАНСИ — виручка по формах окремо
+  // ФІНАНСИ — виручка по формах
   // ============================================================
   async getRevenueByForm(from?: string, to?: string) {
     const results: Record<string, number> = { FORM_1: 0, FORM_2: 0, total: 0 };
@@ -134,20 +121,11 @@ export class StatisticsService {
       const where = this.buildWhereFilter(from, to, form);
       const orders = await this.prisma.order.findMany({
         where,
-        include: { items: true },
+        include: { items: { include: { product: true } } },
       });
 
       const revenue = orders.reduce((sum, order) => {
-        return (
-          sum +
-          order.items.reduce((s, item) => {
-            return (
-              s +
-              Number(item.actualWeight ?? item.plannedWeight) *
-                Number(item.pricePerKg ?? 0)
-            );
-          }, 0)
-        );
+        return sum + order.items.reduce((s, item) => s + this.calcItemRevenue(item), 0);
       }, 0);
 
       results[form] = revenue;
@@ -158,38 +136,24 @@ export class StatisticsService {
   }
 
   // ============================================================
-  // ГРАФІК — кількість і сума заявок по днях
+  // ГРАФІК — виручка і кількість по днях
   // ============================================================
   async getOrdersChart(from?: string, to?: string, form?: Form) {
     const where = this.buildWhereFilter(from, to, form);
 
     const orders = await this.prisma.order.findMany({
       where,
-      include: { items: true },
+      include: { items: { include: { product: true } } },
       orderBy: { completedAt: 'asc' },
     });
 
-    // Групуємо по днях
-    const byDay: Record<
-      string,
-      { date: string; count: number; revenue: number }
-    > = {};
+    const byDay: Record<string, { date: string; count: number; revenue: number }> = {};
 
     for (const order of orders) {
-      const date = order.completedAt!.toISOString().split('T')[0]; // YYYY-MM-DD
-
-      if (!byDay[date]) {
-        byDay[date] = { date, count: 0, revenue: 0 };
-      }
-
+      const date = order.completedAt!.toISOString().split('T')[0];
+      if (!byDay[date]) byDay[date] = { date, count: 0, revenue: 0 };
       byDay[date].count++;
-      byDay[date].revenue += order.items.reduce((s, item) => {
-        return (
-          s +
-          Number(item.actualWeight ?? item.plannedWeight) *
-            Number(item.pricePerKg ?? 0)
-        );
-      }, 0);
+      byDay[date].revenue += order.items.reduce((s, item) => s + this.calcItemRevenue(item), 0);
     }
 
     return Object.values(byDay);
@@ -203,66 +167,45 @@ export class StatisticsService {
 
     const orders = await this.prisma.order.findMany({
       where,
-      include: {
-        client: true,
-        items: true,
-      },
+      include: { client: true, items: { include: { product: true } } },
     });
 
-    // Групуємо по клієнту і рахуємо виручку і кількість заявок
     const clientMap: Record<
       string,
-      {
-        clientId: string;
-        clientName: string;
-        revenue: number;
-        ordersCount: number;
-        totalWeight: number;
-      }
+      { clientId: string; clientName: string; revenue: number; ordersCount: number; totalWeightKg: number; totalPcs: number }
     > = {};
 
     for (const order of orders) {
       const id = order.clientId;
       if (!clientMap[id]) {
-        clientMap[id] = {
-          clientId: id,
-          clientName: order.client.name,
-          revenue: 0,
-          ordersCount: 0,
-          totalWeight: 0,
-        };
+        clientMap[id] = { clientId: id, clientName: order.client.name, revenue: 0, ordersCount: 0, totalWeightKg: 0, totalPcs: 0 };
       }
 
       clientMap[id].ordersCount++;
-      clientMap[id].revenue += order.items.reduce((s, item) => {
-        return (
-          s +
-          Number(item.actualWeight ?? item.plannedWeight) *
-            Number(item.pricePerKg ?? 0)
-        );
-      }, 0);
-      clientMap[id].totalWeight += order.items.reduce((s, item) => {
-        return s + Number(item.actualWeight ?? item.plannedWeight);
-      }, 0);
+      clientMap[id].revenue += order.items.reduce((s, item) => s + this.calcItemRevenue(item), 0);
+
+      for (const item of order.items) {
+        const unit = item.product?.unit;
+        const qty = Number(item.actualWeight ?? item.plannedWeight);
+        if (unit === 'шт') clientMap[id].totalPcs += qty;
+        else clientMap[id].totalWeightKg += qty;
+      }
     }
 
-    // Сортуємо по виручці і беремо топ N
     return Object.values(clientMap)
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, limit);
   }
 
   // ============================================================
-  // ПРОДУКЦІЯ — топ по вазі і сумі, відхилення ваги
+  // ПРОДУКЦІЯ — топ по вазі і сумі
   // ============================================================
   async getProductsStats(from?: string, to?: string, form?: Form) {
     const where = this.buildWhereFilter(from, to, form);
 
     const orders = await this.prisma.order.findMany({
       where,
-      include: {
-        items: { include: { product: true } },
-      },
+      include: { items: { include: { product: true } } },
     });
 
     const productMap: Record<
@@ -270,11 +213,11 @@ export class StatisticsService {
       {
         productId: string;
         productName: string;
+        productUnit: string;
         totalPlannedWeight: number;
         totalActualWeight: number;
         revenue: number;
         ordersCount: number;
-        // різниця між плановою і фактичною вагою в %
         weightAccuracy: number;
       }
     > = {};
@@ -286,6 +229,7 @@ export class StatisticsService {
           productMap[id] = {
             productId: id,
             productName: item.product.name,
+            productUnit: item.product.unit,
             totalPlannedWeight: 0,
             totalActualWeight: 0,
             revenue: 0,
@@ -295,23 +239,16 @@ export class StatisticsService {
         }
 
         productMap[id].totalPlannedWeight += Number(item.plannedWeight);
-        productMap[id].totalActualWeight += Number(
-          item.actualWeight ?? item.plannedWeight,
-        );
-        productMap[id].revenue +=
-          Number(item.actualWeight ?? item.plannedWeight) *
-          Number(item.pricePerKg ?? 0);
+        productMap[id].totalActualWeight += Number(item.actualWeight ?? item.plannedWeight);
+        productMap[id].revenue += this.calcItemRevenue(item);
         productMap[id].ordersCount++;
       }
     }
 
-    // Рахуємо точність ваги — наскільки фактична відрізняється від планової
     for (const p of Object.values(productMap)) {
       if (p.totalPlannedWeight > 0) {
         p.weightAccuracy =
-          ((p.totalActualWeight - p.totalPlannedWeight) /
-            p.totalPlannedWeight) *
-          100;
+          ((p.totalActualWeight - p.totalPlannedWeight) / p.totalPlannedWeight) * 100;
       }
     }
 
@@ -322,49 +259,49 @@ export class StatisticsService {
   // ЗАЯВКИ — загальна статистика
   // ============================================================
   async getOrdersStats(from?: string, to?: string, form?: Form) {
-    const dateFilter =
-      from || to
-        ? {
-            createdAt: {
-              ...(from && { gte: new Date(from) }),
-              ...(to && { lte: new Date(to) }),
-            },
-          }
-        : {};
-
     const formFilter = form ? { form } : {};
 
-    // Кількість по статусах
+    // Для DONE — фільтр по completedAt
+    const completedDateFilter = from || to ? {
+      completedAt: {
+        ...(from && { gte: new Date(from) }),
+        ...(to && { lte: new Date(to) }),
+      },
+    } : {};
+
+    // Для поточних статусів (PENDING, IN_PROGRESS, CANCELLED) — фільтр по createdAt
+    const createdDateFilter = from || to ? {
+      createdAt: {
+        ...(from && { gte: new Date(from) }),
+        ...(to && { lte: new Date(to) }),
+      },
+    } : {};
+
     const [done, cancelled, pending, inProgress] = await Promise.all([
       this.prisma.order.count({
-        where: { ...dateFilter, ...formFilter, status: OrderStatus.DONE },
+        where: { ...completedDateFilter, ...formFilter, status: OrderStatus.DONE, deletedAt: null },
       }),
       this.prisma.order.count({
-        where: { ...dateFilter, ...formFilter, status: OrderStatus.CANCELLED },
+        where: { ...createdDateFilter, ...formFilter, status: OrderStatus.CANCELLED, deletedAt: null },
       }),
       this.prisma.order.count({
-        where: { ...dateFilter, ...formFilter, status: OrderStatus.PENDING },
+        where: { ...formFilter, status: OrderStatus.PENDING, deletedAt: null },
       }),
       this.prisma.order.count({
-        where: {
-          ...dateFilter,
-          ...formFilter,
-          status: OrderStatus.IN_PROGRESS,
-        },
+        where: { ...formFilter, status: OrderStatus.IN_PROGRESS, deletedAt: null },
       }),
     ]);
 
-    // Середній час виконання (від створення до completedAt) в годинах
     const completedOrders = await this.prisma.order.findMany({
-      where: { ...dateFilter, ...formFilter, status: OrderStatus.DONE },
+      where: { ...completedDateFilter, ...formFilter, status: OrderStatus.DONE, deletedAt: null },
       select: { createdAt: true, completedAt: true },
     });
 
-    const avgCompletionTime =
+    const avgCompletionTimeHours =
       completedOrders.length > 0
         ? completedOrders.reduce((sum, o) => {
             const diff = o.completedAt!.getTime() - o.createdAt.getTime();
-            return sum + diff / (1000 * 60 * 60); // в годинах
+            return sum + diff / (1000 * 60 * 60);
           }, 0) / completedOrders.length
         : 0;
 
@@ -375,10 +312,8 @@ export class StatisticsService {
       inProgress,
       total: done + cancelled + pending + inProgress,
       cancelledPercent:
-        done + cancelled > 0
-          ? ((cancelled / (done + cancelled)) * 100).toFixed(1)
-          : 0,
-      avgCompletionTimeHours: avgCompletionTime.toFixed(1),
+        done + cancelled > 0 ? ((cancelled / (done + cancelled)) * 100).toFixed(1) : 0,
+      avgCompletionTimeHours: avgCompletionTimeHours.toFixed(1),
     };
   }
 
@@ -386,34 +321,24 @@ export class StatisticsService {
   // ПРАЦІВНИКИ — продуктивність
   // ============================================================
   async getWorkersStats(from?: string, to?: string) {
-    const dateFilter =
-      from || to
-        ? {
-            completedAt: {
-              ...(from && { gte: new Date(from) }),
-              ...(to && { lte: new Date(to) }),
-            },
-          }
-        : {};
+    const dateFilter = from || to ? {
+      completedAt: {
+        ...(from && { gte: new Date(from) }),
+        ...(to && { lte: new Date(to) }),
+      },
+    } : {};
 
     const orders = await this.prisma.order.findMany({
-      where: { status: OrderStatus.DONE, ...dateFilter },
+      where: { status: OrderStatus.DONE, deletedAt: null, ...dateFilter },
       include: {
         assignedTo: { select: { id: true, name: true } },
-        items: true,
+        items: { include: { product: true } },
       },
     });
 
     const workerMap: Record<
       string,
-      {
-        workerId: string;
-        workerName: string;
-        ordersCount: number;
-        totalWeight: number;
-        // середнє відхилення фактичної від планової ваги
-        avgWeightDiff: number;
-      }
+      { workerId: string; workerName: string; ordersCount: number; totalWeightKg: number; totalPcs: number; avgWeightDiff: number }
     > = {};
 
     for (const order of orders) {
@@ -421,13 +346,7 @@ export class StatisticsService {
 
       const id = order.assignedTo.id;
       if (!workerMap[id]) {
-        workerMap[id] = {
-          workerId: id,
-          workerName: order.assignedTo.name,
-          ordersCount: 0,
-          totalWeight: 0,
-          avgWeightDiff: 0,
-        };
+        workerMap[id] = { workerId: id, workerName: order.assignedTo.name, ordersCount: 0, totalWeightKg: 0, totalPcs: 0, avgWeightDiff: 0 };
       }
 
       workerMap[id].ordersCount++;
@@ -438,7 +357,9 @@ export class StatisticsService {
       for (const item of order.items) {
         const actual = Number(item.actualWeight ?? item.plannedWeight);
         const planned = Number(item.plannedWeight);
-        workerMap[id].totalWeight += actual;
+        const unit = item.product?.unit;
+        if (unit === 'шт') workerMap[id].totalPcs += actual;
+        else workerMap[id].totalWeightKg += actual;
         totalDiff += Math.abs(actual - planned);
         itemCount++;
       }
@@ -448,16 +369,13 @@ export class StatisticsService {
       }
     }
 
-    // Усереднюємо відхилення по всіх заявках
     for (const w of Object.values(workerMap)) {
       if (w.ordersCount > 0) {
         w.avgWeightDiff = w.avgWeightDiff / w.ordersCount;
       }
     }
 
-    return Object.values(workerMap).sort(
-      (a, b) => b.ordersCount - a.ordersCount,
-    );
+    return Object.values(workerMap).sort((a, b) => b.ordersCount - a.ordersCount);
   }
 
   async getProduction(from: string, to: string) {
@@ -470,10 +388,7 @@ export class StatisticsService {
     const avgYield =
       calcs.length > 0
         ? calcs.reduce((s, c) => {
-            const inQty = c.inputs.reduce(
-              (si, i) => si + Number(i.quantity),
-              0,
-            );
+            const inQty = c.inputs.reduce((si, i) => si + Number(i.quantity), 0);
             const outQty = Number(c.totalOutputQty);
             return s + (inQty > 0 ? (outQty / inQty) * 100 : 0);
           }, 0) / calcs.length
@@ -484,29 +399,14 @@ export class StatisticsService {
         ? calcs.reduce((s, c) => s + Number(c.costPerKg), 0) / calcs.length
         : 0;
 
-    // По продуктах
     const byProduct: Record<
       string,
-      {
-        name: string;
-        batches: number;
-        totalInput: number;
-        totalOutput: number;
-        avgYield: number;
-        avgCost: number;
-      }
+      { name: string; batches: number; totalInput: number; totalOutput: number; avgYield: number; avgCost: number }
     > = {};
     for (const calc of calcs) {
       for (const out of calc.outputs) {
         if (!byProduct[out.productName]) {
-          byProduct[out.productName] = {
-            name: out.productName,
-            batches: 0,
-            totalInput: 0,
-            totalOutput: 0,
-            avgYield: 0,
-            avgCost: 0,
-          };
+          byProduct[out.productName] = { name: out.productName, batches: 0, totalInput: 0, totalOutput: 0, avgYield: 0, avgCost: 0 };
         }
         const inQty = calc.inputs.reduce((s, i) => s + Number(i.quantity), 0);
         byProduct[out.productName].batches++;
@@ -521,16 +421,9 @@ export class StatisticsService {
       avgCost: p.batches > 0 ? p.avgCost / p.batches : 0,
     }));
 
-    // Динаміка по датах
-    const byDate: Record<
-      string,
-      { date: string; yield: number; cost: number; count: number }
-    > = {};
+    const byDate: Record<string, { date: string; yield: number; cost: number; count: number }> = {};
     for (const calc of calcs) {
-      const date = new Date(calc.createdAt).toLocaleDateString('uk-UA', {
-        day: '2-digit',
-        month: '2-digit',
-      });
+      const date = new Date(calc.createdAt).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit' });
       if (!byDate[date]) byDate[date] = { date, yield: 0, cost: 0, count: 0 };
       const inQty = calc.inputs.reduce((s, i) => s + Number(i.quantity), 0);
       const outQty = Number(calc.totalOutputQty);

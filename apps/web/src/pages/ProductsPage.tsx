@@ -37,18 +37,143 @@ const CATEGORY_CONFIG: Record<Category, { label: string; icon: string; color: st
   SUPPLY: { label: 'Матеріали',  icon: '🧴', color: 'text-amber-700',  bg: 'bg-amber-50',  border: 'border-amber-200' },
 };
 
+// ─── GroupsTab ────────────────────────────────────────────────────────────────
+type ProductGroup = { id: string; name: string; products: { id: string; name: string; unit: string }[] };
+
+function GroupsTab({ isAdmin }: { isAdmin: boolean }) {
+  const queryClient = useQueryClient();
+  const [newGroupName, setNewGroupName] = useState('');
+  const [editingGroup, setEditingGroup] = useState<{ id: string; name: string } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const { data: groups = [] } = useQuery<ProductGroup[]>({
+    queryKey: ['product-groups'],
+    queryFn: () => api.get('/products/groups').then((r) => r.data),
+  });
+
+  const handleCreate = async () => {
+    if (!newGroupName.trim()) return;
+    setLoading(true); setError('');
+    try {
+      await api.post('/products/groups', { name: newGroupName.trim() });
+      queryClient.invalidateQueries({ queryKey: ['product-groups'] });
+      setNewGroupName('');
+    } catch (e) {
+      setError((e as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Помилка');
+    } finally { setLoading(false); }
+  };
+
+  const handleUpdate = async () => {
+    if (!editingGroup || !editingGroup.name.trim()) return;
+    setLoading(true); setError('');
+    try {
+      await api.patch(`/products/groups/${editingGroup.id}`, { name: editingGroup.name.trim() });
+      queryClient.invalidateQueries({ queryKey: ['product-groups'] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      setEditingGroup(null);
+    } catch (e) {
+      setError((e as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Помилка');
+    } finally { setLoading(false); }
+  };
+
+  const handleDelete = async (id: string) => {
+    setLoading(true); setError('');
+    try {
+      await api.delete(`/products/groups/${id}`);
+      queryClient.invalidateQueries({ queryKey: ['product-groups'] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+    } catch (e) {
+      setError((e as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Помилка видалення');
+    } finally { setLoading(false); }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 text-sm text-blue-700">
+        <p className="font-semibold mb-1">🔄 Групи взаємозаміни</p>
+        <p className="text-xs text-blue-500">Продукти в одній групі є взаємозамінними. При списанні зі складу система автоматично бере будь-який продукт групи за FIFO.</p>
+      </div>
+
+      {isAdmin && (
+        <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-2">
+          <div className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Нова група</div>
+          <div className="flex gap-2">
+            <input value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)}
+              placeholder="Назва групи (напр. «Хребет рибний»)"
+              onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+              className="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <button onClick={handleCreate} disabled={loading || !newGroupName.trim()}
+              className="bg-blue-600 text-white text-sm px-4 py-2 rounded-xl hover:bg-blue-700 disabled:opacity-50">
+              Додати
+            </button>
+          </div>
+          {error && <div className="text-red-500 text-sm">⚠️ {error}</div>}
+        </div>
+      )}
+
+      <div className="space-y-2">
+        {groups.length === 0 ? (
+          <div className="text-center text-gray-400 py-8 border-2 border-dashed border-gray-200 rounded-xl">Груп ще немає</div>
+        ) : groups.map((group) => (
+          <div key={group.id} className="bg-white border border-gray-200 rounded-xl p-4">
+            {editingGroup?.id === group.id ? (
+              <div className="flex gap-2 items-center mb-3">
+                <input value={editingGroup!.name} onChange={(e) => setEditingGroup({ id: editingGroup!.id, name: e.target.value })}
+                  className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <button onClick={handleUpdate} disabled={loading} className="bg-blue-600 text-white text-xs px-3 py-1.5 rounded-lg">Зберегти</button>
+                <button onClick={() => setEditingGroup(null)} className="border border-gray-200 text-gray-600 text-xs px-3 py-1.5 rounded-lg">Скасувати</button>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between mb-2">
+                <span className="font-semibold text-gray-800 text-sm">🔄 {group.name}</span>
+                {isAdmin && (
+                  <div className="flex gap-1">
+                    <button onClick={() => setEditingGroup({ id: group.id, name: group.name })}
+                      className="text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded hover:bg-blue-100">✏️</button>
+                    <button onClick={() => handleDelete(group.id)} disabled={loading || group.products.length > 0}
+                      className="text-xs bg-red-50 text-red-500 px-2 py-1 rounded hover:bg-red-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                      title={group.products.length > 0 ? 'Спочатку видаліть всі продукти з групи' : 'Видалити групу'}>
+                      🗑️
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+            <div className="flex flex-wrap gap-1.5">
+              {group.products.length === 0
+                ? <span className="text-xs text-gray-400 italic">Продуктів немає</span>
+                : group.products.map((p) => (
+                    <span key={p.id} className="text-xs bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full">{p.name} · {p.unit}</span>
+                  ))
+              }
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── ProductModal ─────────────────────────────────────────────────────────────
 function ProductModal({ product, onClose }: { product?: Product; onClose: () => void }) {
   const queryClient = useQueryClient();
   const [name, setName] = useState(product?.name || '');
   const [unit, setUnit] = useState(product?.unit || 'кг');
-  const [category, setCategory] = useState<Category>((product as any)?.category || 'FISH');
-  const [storageTemp, setStorageTemp] = useState((product as any)?.storageTemp || '');
-  const [storageDays, setStorageDays] = useState(String((product as any)?.storageDays || ''));
-  const [storageHumidity, setStorageHumidity] = useState((product as any)?.storageHumidity || '');
-  const [storageStandard, setStorageStandard] = useState((product as any)?.storageStandard || '');
+  const [category, setCategory] = useState<Category>(product?.category || 'FISH');
+  const [groupId, setGroupId] = useState<string>(product?.groupId || '');
+  const [storageTemp, setStorageTemp] = useState(product?.storageTemp || '');
+  const [storageDays, setStorageDays] = useState(String(product?.storageDays || ''));
+  const [storageHumidity, setStorageHumidity] = useState(product?.storageHumidity || '');
+  const [storageStandard, setStorageStandard] = useState(product?.storageStandard || '');
+  const [packagingType, setPackagingType] = useState(product?.packagingType || '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const { data: groups = [] } = useQuery({
+    queryKey: ['product-groups'],
+    queryFn: () => api.get('/products/groups').then((r) => r.data),
+  });
 
   const handleSave = async () => {
     if (!name.trim()) return setError('Вкажіть назву продукту');
@@ -56,10 +181,12 @@ function ProductModal({ product, onClose }: { product?: Product; onClose: () => 
     try {
       const payload = {
         name, unit, category,
+        groupId: groupId || null,
         storageTemp: storageTemp || undefined,
         storageDays: storageDays ? Number(storageDays) : undefined,
         storageHumidity: storageHumidity || undefined,
         storageStandard: storageStandard || undefined,
+        packagingType: packagingType || undefined,
       };
       if (product) {
         await api.patch(`/products/${product.id}`, payload);
@@ -68,29 +195,33 @@ function ProductModal({ product, onClose }: { product?: Product; onClose: () => 
       }
       queryClient.invalidateQueries({ queryKey: ['products'] });
       queryClient.invalidateQueries({ queryKey: ['products-active'] });
+      queryClient.invalidateQueries({ queryKey: ['product-groups'] });
       onClose();
-    } catch (e: any) {
-      setError(e.response?.data?.message || 'Помилка збереження');
+    } catch (e) {
+      setError((e as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Помилка збереження');
     } finally { setLoading(false); }
   };
 
-  const cfg = CATEGORY_CONFIG[category];
-
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden">
-        <div className="p-4 border-b">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-3">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md flex flex-col max-h-[90vh]">
+
+        {/* Шапка */}
+        <div className="px-4 py-3 border-b flex items-center justify-between flex-shrink-0">
           <h2 className="font-semibold text-gray-800">{product ? 'Редагувати продукт' : 'Новий продукт'}</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
         </div>
-        <div className="p-4 space-y-4">
+
+        {/* Тіло — скролиться */}
+        <div className="overflow-y-auto flex-1 px-4 py-3 space-y-3">
 
           {/* Категорія */}
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-2">Категорія</label>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Категорія</label>
             <div className="flex rounded-xl border border-gray-200 overflow-hidden text-sm">
               {(Object.entries(CATEGORY_CONFIG) as [Category, typeof CATEGORY_CONFIG[Category]][]).map(([val, cfg]) => (
                 <button key={val} onClick={() => { setCategory(val); setUnit(val === 'SUPPLY' ? 'шт' : 'кг'); }}
-                  className={`flex-1 py-2.5 font-semibold transition-colors flex items-center justify-center gap-1.5 ${
+                  className={`flex-1 py-2 font-semibold transition-colors flex items-center justify-center gap-1 ${
                     category === val ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
                   }`}>
                   {cfg.icon} {cfg.label}
@@ -101,81 +232,89 @@ function ProductModal({ product, onClose }: { product?: Product; onClose: () => 
 
           {/* Назва */}
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Назва *</label>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Назва *</label>
             <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-lg">{getProductIcon(name, category)}</span>
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-base">{getProductIcon(name, category)}</span>
               <input value={name} onChange={(e) => setName(e.target.value)}
-                className="w-full border border-gray-300 rounded-xl pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 rounded-xl pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder={category === 'SUPPLY' ? 'Вакуумна упаковка 500мл' : 'Скумбрія холодного копчення'}
                 autoFocus />
             </div>
           </div>
 
-          {/* Одиниця */}
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-2">Одиниця виміру</label>
-            <div className="grid grid-cols-5 gap-1.5">
-              {['кг', 'г', 'шт', 'л', 'уп'].map((u) => (
-                <button key={u} onClick={() => setUnit(u)}
-                  className={`py-2 rounded-lg text-sm border transition-colors ${
-                    unit === u ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
-                  }`}>
-                  {u}
-                </button>
-              ))}
+          {/* Одиниця + Пакування в один рядок */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Одиниця виміру</label>
+              <div className="grid grid-cols-5 gap-1">
+                {['кг', 'г', 'шт', 'л', 'уп'].map((u) => (
+                  <button key={u} onClick={() => setUnit(u)}
+                    className={`py-1.5 rounded-lg text-xs border transition-colors ${
+                      unit === u ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+                    }`}>
+                    {u}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">📦 Пакування</label>
+              <select value={packagingType} onChange={(e) => setPackagingType(e.target.value)}
+                className="w-full border border-gray-300 rounded-xl px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="">—</option>
+                {['в/у', 'баночка', 'вагова', 'упаковка', 'відро', 'контейнер'].map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
             </div>
           </div>
 
+          {/* Група взаємозаміни */}
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">🔄 Група взаємозаміни</label>
+            <select value={groupId} onChange={(e) => setGroupId(e.target.value)}
+              className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="">Без групи</option>
+              {(groups as ProductGroup[]).map((g) => (
+                <option key={g.id} value={g.id}>{g.name}</option>
+              ))}
+            </select>
+          </div>
+
           {/* Умови зберігання */}
-          <div className="border border-gray-100 rounded-xl p-3 space-y-3 bg-gray-50">
+          <div className="border border-gray-100 rounded-xl p-3 bg-gray-50 space-y-2">
             <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-              🌡️ Умови зберігання <span className="text-gray-400 normal-case font-normal">— необов'язково</span>
+              🌡️ Умови зберігання
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="block text-xs text-gray-500 mb-1">Температура (°C)</label>
-                <input
-                  value={storageTemp}
-                  onChange={(e) => setStorageTemp(e.target.value)}
-                  placeholder="-4 до -8"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                />
+                <label className="block text-xs text-gray-500 mb-1">Температура</label>
+                <input value={storageTemp} onChange={(e) => setStorageTemp(e.target.value)}
+                  placeholder="-4 до -8" className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
               </div>
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Термін (діб)</label>
-                <input
-                  type="number"
-                  min="0"
-                  value={storageDays}
-                  onChange={(e) => setStorageDays(e.target.value)}
-                  placeholder="20"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                />
+                <input type="number" min="0" value={storageDays} onChange={(e) => setStorageDays(e.target.value)}
+                  placeholder="20" className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
               </div>
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Вологість (%)</label>
-                <input
-                  value={storageHumidity}
-                  onChange={(e) => setStorageHumidity(e.target.value)}
-                  placeholder="75-80"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                />
+                <input value={storageHumidity} onChange={(e) => setStorageHumidity(e.target.value)}
+                  placeholder="75-80" className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
               </div>
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Норматив</label>
-                <input
-                  value={storageStandard}
-                  onChange={(e) => setStorageStandard(e.target.value)}
-                  placeholder="ДСТУ, ГОСТ, ТУ"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                />
+                <input value={storageStandard} onChange={(e) => setStorageStandard(e.target.value)}
+                  placeholder="ГОСТ 1084-2016" className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
               </div>
             </div>
           </div>
 
           {error && <div className="text-red-500 text-sm bg-red-50 px-3 py-2 rounded-lg">{error}</div>}
         </div>
-        <div className="p-4 border-t flex gap-2">
+
+        {/* Футер */}
+        <div className="px-4 py-3 border-t flex gap-2 flex-shrink-0">
           <button onClick={onClose} className="flex-1 border border-gray-300 text-gray-600 text-sm px-4 py-2 rounded-xl hover:bg-gray-50">Скасувати</button>
           <button onClick={handleSave} disabled={loading}
             className="flex-1 bg-blue-600 text-white text-sm px-4 py-2 rounded-xl hover:bg-blue-700 disabled:opacity-50">
@@ -191,6 +330,7 @@ function ProductModal({ product, onClose }: { product?: Product; onClose: () => 
 export default function ProductsPage() {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState<'products' | 'groups'>('products');
   const [search, setSearch] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const [editProduct, setEditProduct] = useState<Product | undefined>();
@@ -213,14 +353,14 @@ export default function ProductsPage() {
   const filtered = products.filter((p: Product) => {
     const matchSearch = p.name.toLowerCase().includes(search.toLowerCase());
     const matchActive = showInactive ? true : p.isActive;
-    const matchCategory = categoryFilter === 'ALL' ? true : (p as any).category === categoryFilter;
+    const matchCategory = categoryFilter === 'ALL' ? true : p.category === categoryFilter;
     return matchSearch && matchActive && matchCategory;
   });
 
   const activeCount = products.filter((p: Product) => p.isActive).length;
   const inactiveCount = products.filter((p: Product) => !p.isActive).length;
-  const fishCount = products.filter((p: Product) => p.isActive && (p as any).category !== 'SUPPLY').length;
-  const supplyCount = products.filter((p: Product) => p.isActive && (p as any).category === 'SUPPLY').length;
+  const fishCount = products.filter((p: Product) => p.isActive && p.category !== 'SUPPLY').length;
+  const supplyCount = products.filter((p: Product) => p.isActive && p.category === 'SUPPLY').length;
 
   const grouped = filtered.reduce((acc: Record<string, Product[]>, p: Product) => {
     const key = p.name.charAt(0).toUpperCase();
@@ -243,25 +383,40 @@ export default function ProductsPage() {
           </p>
         </div>
         <div className="flex gap-2 flex-wrap">
-          <div className="flex rounded-lg border border-gray-200 overflow-hidden text-sm">
-            <button onClick={() => setView('grid')} className={`px-3 py-1.5 transition-colors ${view === 'grid' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>⊞</button>
-            <button onClick={() => setView('table')} className={`px-3 py-1.5 transition-colors ${view === 'table' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>☰</button>
-          </div>
-          {isAdmin && inactiveCount > 0 && (
-            <button onClick={() => setShowInactive(v => !v)}
-              className={`text-sm px-3 py-1.5 rounded-lg border transition-colors ${showInactive ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
-              {showInactive ? 'Сховати архів' : `Архів (${inactiveCount})`}
-            </button>
-          )}
-          {isAdmin && (
-            <button onClick={() => setShowCreate(true)}
-              className="bg-blue-600 text-white text-sm px-4 py-1.5 rounded-lg hover:bg-blue-700 transition-colors">
-              + Новий
-            </button>
-          )}
+          {activeTab === 'products' && <>
+            <div className="flex rounded-lg border border-gray-200 overflow-hidden text-sm">
+              <button onClick={() => setView('grid')} className={`px-3 py-1.5 transition-colors ${view === 'grid' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>⊞</button>
+              <button onClick={() => setView('table')} className={`px-3 py-1.5 transition-colors ${view === 'table' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>☰</button>
+            </div>
+            {isAdmin && inactiveCount > 0 && (
+              <button onClick={() => setShowInactive(v => !v)}
+                className={`text-sm px-3 py-1.5 rounded-lg border transition-colors ${showInactive ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                {showInactive ? 'Сховати архів' : `Архів (${inactiveCount})`}
+              </button>
+            )}
+            {isAdmin && (
+              <button onClick={() => setShowCreate(true)}
+                className="bg-blue-600 text-white text-sm px-4 py-1.5 rounded-lg hover:bg-blue-700 transition-colors">
+                + Новий
+              </button>
+            )}
+          </>}
         </div>
       </div>
 
+      {/* Вкладки */}
+      <div className="flex rounded-xl border border-gray-200 overflow-hidden text-sm w-fit bg-white">
+        {[{ id: 'products', label: '🐟 Продукти' }, { id: 'groups', label: '🔄 Групи взаємозаміни' }].map((tab) => (
+          <button key={tab.id} onClick={() => setActiveTab(tab.id as 'products' | 'groups')}
+            className={`px-4 py-2 font-medium transition-colors whitespace-nowrap ${activeTab === tab.id ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'groups' && <GroupsTab isAdmin={isAdmin} />}
+
+      {activeTab === 'products' && <>
       {/* Пошук і фільтр категорії */}
       <div className="flex gap-2 flex-wrap">
         <div className="relative flex-1 min-w-[200px]">
@@ -279,7 +434,7 @@ export default function ProductsPage() {
             { value: 'FISH',   label: '🐟 Риба' },
             { value: 'SUPPLY', label: '🧴 Матеріали' },
           ].map((c) => (
-            <button key={c.value} onClick={() => setCategoryFilter(c.value as any)}
+            <button key={c.value} onClick={() => setCategoryFilter(c.value as 'ALL' | Category)}
               className={`px-3 py-1.5 transition-colors whitespace-nowrap ${categoryFilter === c.value ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
               {c.label}
             </button>
@@ -313,7 +468,7 @@ export default function ProductsPage() {
                 )}
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
                   {prods.map((product: Product) => {
-                    const cat = (product as any).category as Category ?? 'FISH';
+                    const cat = (product.category ?? 'FISH') as Category;
                     const cfg = CATEGORY_CONFIG[cat];
                     return (
                       <div key={product.id}
@@ -365,7 +520,7 @@ export default function ProductsPage() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {filtered.map((product: Product) => {
-                const cat = (product as any).category as Category ?? 'FISH';
+                const cat = (product.category ?? 'FISH') as Category;
                 const cfg = CATEGORY_CONFIG[cat];
                 return (
                   <tr key={product.id} className={`hover:bg-gray-50 transition-colors ${!product.isActive ? 'opacity-50' : ''}`}>
@@ -407,6 +562,8 @@ export default function ProductsPage() {
           </table>
         </div>
       )}
+
+      </>}
 
       {showCreate && <ProductModal onClose={() => setShowCreate(false)} />}
       {editProduct && <ProductModal product={editProduct} onClose={() => setEditProduct(undefined)} />}

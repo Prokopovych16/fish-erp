@@ -28,4 +28,8 @@ export class CreateProductDto {
   @IsOptional()
   @IsString()
   storageStandard?: string;
+
+  @IsOptional()
+  @IsString()
+  packagingType?: string;
 }

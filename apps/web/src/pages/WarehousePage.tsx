@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '@/api/axios';
+import { useAuthStore } from '@/store/auth';
 import { ProductionModal } from '@/pages/ProductionModal';
 import { ReturnModal } from '@/pages/ReturnModal';
 
@@ -44,13 +45,18 @@ const movementTypeIcon: Record<MovementType, string> = {
 function WarehouseModal({ warehouse, onClose, onMovement }: {
   warehouse: any; onClose: () => void; onMovement: () => void;
 }) {
-  const [formFilter, setFormFilter] = useState<'ALL' | 'FORM_1' | 'FORM_2'>('ALL');
+  const { user } = useAuthStore();
+  const isInspector = user?.role === 'INSPECTOR';
+  const [formFilter, setFormFilter] = useState<'ALL' | 'FORM_1' | 'FORM_2'>(isInspector ? 'FORM_1' : 'ALL');
+  const [search, setSearch] = useState('');
   const items = warehouse.stockItems || [];
   const filtered = (formFilter === 'ALL' ? items : items.filter((i: any) => i.form === formFilter))
-    .filter((i: any) => Number(i.quantity) > 0);
+    .filter((i: any) => Number(i.quantity) > 0)
+    .filter((i: any) => !search || i.product.name.toLowerCase().includes(search.toLowerCase()));
   const totalSum = filtered.reduce((s: number, i: any) => s + Number(i.quantity) * Number(i.pricePerKg ?? 0), 0);
   const totalSumNoVat = totalSum / (1 + VAT_RATE);
-  const totalQty = filtered.reduce((s: number, i: any) => s + Number(i.quantity), 0);
+  const totalKg = filtered.filter((i: any) => i.product.unit === 'кг').reduce((s: number, i: any) => s + Number(i.quantity), 0);
+  const totalPcs = filtered.filter((i: any) => i.product.unit === 'шт').reduce((s: number, i: any) => s + Number(i.quantity), 0);
   const type = warehouse.type as WarehouseType;
 
 
@@ -70,7 +76,7 @@ function WarehouseModal({ warehouse, onClose, onMovement }: {
               <div className="hidden sm:flex items-center gap-4 text-sm">
                 {[
                   { label: 'Позицій', value: String(filtered.length) },
-                  { label: 'Загально', value: `${totalQty.toFixed(1)} кг` },
+                  { label: 'Загально', value: [totalKg > 0 ? `${totalKg.toFixed(1)} кг` : '', totalPcs > 0 ? `${Math.round(totalPcs)} шт` : ''].filter(Boolean).join(' + ') || '0' },
                   { label: 'Сума з ПДВ', value: `${totalSum.toFixed(0)} ₴` },
                   { label: 'Без ПДВ', value: `${totalSumNoVat.toFixed(0)} ₴` },
                 ].map((stat, i, arr) => (
@@ -88,16 +94,27 @@ function WarehouseModal({ warehouse, onClose, onMovement }: {
           </div>
         </div>
 
-        <div className="px-5 py-2.5 border-b bg-gray-50 flex items-center justify-between shrink-0">
-          <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs bg-white">
-            {[{ value: 'ALL', label: 'Всі' }, { value: 'FORM_1', label: '🏦 Ф1' }, { value: 'FORM_2', label: '💵 Ф2' }].map((f) => (
-              <button key={f.value} onClick={() => setFormFilter(f.value as typeof formFilter)}
-                className={`px-3 py-1.5 transition-colors ${formFilter === f.value ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
-                {f.label}
-              </button>
-            ))}
+        <div className="px-5 py-2.5 border-b bg-gray-50 flex flex-col gap-2 shrink-0">
+          <div className="flex items-center justify-between gap-2">
+            {!isInspector && (
+              <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs bg-white">
+                {[{ value: 'ALL', label: 'Всі' }, { value: 'FORM_1', label: '🏦 Ф1' }, { value: 'FORM_2', label: '💵 Ф2' }].map((f) => (
+                  <button key={f.value} onClick={() => setFormFilter(f.value as typeof formFilter)}
+                    className={`px-3 py-1.5 transition-colors ${formFilter === f.value ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+            )}
+            <span className="text-xs text-gray-400">{filtered.length} позицій</span>
           </div>
-          <span className="text-xs text-gray-400">{filtered.length} позицій</span>
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Пошук по назві продукту..."
+            className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+          />
         </div>
 
         <div className="flex-1 overflow-y-auto">
@@ -143,7 +160,7 @@ function WarehouseModal({ warehouse, onClose, onMovement }: {
                                   <span className="text-base">🐟</span>
                                   <div>
                                     <div className="font-semibold text-gray-800">{productName}</div>
-                                    {stockItems.length > 1 && <div className="text-xs text-gray-400">{stockItems.length} партії · {productQty.toFixed(3)} кг</div>}
+                                    {stockItems.length > 1 && <div className="text-xs text-gray-400">{stockItems.length} партії · {productQty.toFixed(3)} {(stockItems as any[])[0]?.product?.unit || 'кг'}</div>}
                                   </div>
                                 </div>
                               ) : (
@@ -686,11 +703,12 @@ export default function WarehousePage() {
 
   const totalStats = stock.reduce(
     (acc: any, w: any) => {
-      const qty = w.stockItems?.reduce((s: number, i: any) => s + Number(i.quantity), 0) || 0;
+      const kg = w.stockItems?.filter((i: any) => i.product.unit === 'кг').reduce((s: number, i: any) => s + Number(i.quantity), 0) || 0;
+      const pcs = w.stockItems?.filter((i: any) => i.product.unit === 'шт').reduce((s: number, i: any) => s + Number(i.quantity), 0) || 0;
       const sum = w.stockItems?.reduce((s: number, i: any) => s + Number(i.quantity) * Number(i.pricePerKg ?? 0), 0) || 0;
-      return { qty: acc.qty + qty, sum: acc.sum + sum };
+      return { kg: acc.kg + kg, pcs: acc.pcs + pcs, sum: acc.sum + sum };
     },
-    { qty: 0, sum: 0 },
+    { kg: 0, pcs: 0, sum: 0 },
   );
 
   return (
@@ -699,34 +717,33 @@ export default function WarehousePage() {
         <div>
           <h1 className="text-xl font-bold text-gray-800">Склади</h1>
           <p className="text-xs text-gray-400 mt-0.5">
-            {stock.length} складів · {totalStats.qty.toFixed(1)} кг · {totalStats.sum.toFixed(0)} ₴
+            {stock.length} складів · {totalStats.kg.toFixed(1)} кг{totalStats.pcs > 0 ? ` · ${Math.round(totalStats.pcs)} шт` : ''} · {totalStats.sum.toFixed(0)} ₴
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button onClick={() => setShowReturn(true)}
-            className="bg-orange-500 text-white text-sm px-4 py-2 rounded-xl hover:bg-orange-600 transition-colors font-medium flex items-center gap-2">
-            ↩ Повернення
+            className="bg-orange-500 text-white text-xs sm:text-sm px-3 sm:px-4 py-2 rounded-xl hover:bg-orange-600 transition-colors font-medium flex items-center gap-1.5">
+            ↩ <span className="hidden xs:inline">Повернення</span><span className="xs:hidden">Повернення</span>
           </button>
-          {/* Кнопка виробництва — фіолетова */}
           <button onClick={() => setShowProduction(true)}
-            className="bg-purple-600 text-white text-sm px-4 py-2 rounded-xl hover:bg-purple-700 transition-colors font-medium flex items-center gap-2">
+            className="bg-purple-600 text-white text-xs sm:text-sm px-3 sm:px-4 py-2 rounded-xl hover:bg-purple-700 transition-colors font-medium flex items-center gap-1.5">
             ⚙️ Виробництво
           </button>
           <button onClick={() => setShowMovement(true)}
-            className="bg-blue-600 text-white text-sm px-4 py-2 rounded-xl hover:bg-blue-700 transition-colors font-medium flex items-center gap-2">
+            className="bg-blue-600 text-white text-xs sm:text-sm px-3 sm:px-4 py-2 rounded-xl hover:bg-blue-700 transition-colors font-medium flex items-center gap-1.5">
             + Рух товару
           </button>
         </div>
       </div>
 
-      <div className="flex rounded-xl border border-gray-200 overflow-hidden text-sm w-fit bg-white">
+      <div className="flex rounded-xl border border-gray-200 overflow-hidden text-xs sm:text-sm w-full sm:w-fit bg-white">
         {[
           { value: 'stock', label: '📦 Залишки' },
           { value: 'movements', label: '📋 Історія рухів' },
           { value: 'returns', label: '↩ Повернення' },
         ].map((tab) => (
           <button key={tab.value} onClick={() => setActiveTab(tab.value as typeof activeTab)}
-            className={`px-4 py-2 transition-colors ${activeTab === tab.value ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
+            className={`flex-1 sm:flex-none px-3 sm:px-4 py-2 transition-colors ${activeTab === tab.value ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
             {tab.label}
           </button>
         ))}
@@ -741,7 +758,8 @@ export default function WarehousePage() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {stock.map((warehouse: any) => {
               const wType = warehouse.type as WarehouseType;
-              const totalQty = warehouse.stockItems?.reduce((s: number, i: any) => s + Number(i.quantity), 0) || 0;
+              const wTotalKg = warehouse.stockItems?.filter((i: any) => i.product.unit === 'кг').reduce((s: number, i: any) => s + Number(i.quantity), 0) || 0;
+              const wTotalPcs = warehouse.stockItems?.filter((i: any) => i.product.unit === 'шт').reduce((s: number, i: any) => s + Number(i.quantity), 0) || 0;
               const totalSum = warehouse.stockItems?.reduce((s: number, i: any) => s + Number(i.quantity) * Number(i.pricePerKg ?? 0), 0) || 0;
               return (
                 <div key={warehouse.id} onClick={() => setSelectedWarehouse(warehouse)}
@@ -756,7 +774,12 @@ export default function WarehousePage() {
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="text-white font-bold text-lg">{totalQty.toFixed(1)} кг</div>
+                        <div className="text-white font-bold text-lg">
+                          {wTotalKg > 0 && <span>{wTotalKg.toFixed(1)} кг</span>}
+                          {wTotalKg > 0 && wTotalPcs > 0 && <span className="text-white/50"> · </span>}
+                          {wTotalPcs > 0 && <span>{Math.round(wTotalPcs)} шт</span>}
+                          {wTotalKg === 0 && wTotalPcs === 0 && <span>0 кг</span>}
+                        </div>
                         {totalSum > 0 && <div className="text-white/70 text-xs">{totalSum.toFixed(0)} ₴</div>}
                       </div>
                     </div>
@@ -803,7 +826,34 @@ export default function WarehousePage() {
           <div className="text-center text-gray-400 py-12 border-2 border-dashed border-gray-200 rounded-xl">Рухів ще не було</div>
         ) : (
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="overflow-x-auto">
+            {/* Мобільний вид */}
+            <div className="sm:hidden divide-y divide-gray-100">
+              {movements.map((m: any) => (
+                <div key={m.id} className="p-4">
+                  <div className="flex items-start justify-between gap-2 mb-1.5">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${movementTypeColor[m.type as MovementType]}`}>
+                        {movementTypeIcon[m.type as MovementType]} {movementTypeLabel[m.type as MovementType]}
+                      </span>
+                      {m.form && (
+                        <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${m.form === 'FORM_1' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
+                          {m.form === 'FORM_1' ? 'Ф1' : 'Ф2'}
+                        </span>
+                      )}
+                    </div>
+                    <span className="font-bold text-gray-800 shrink-0">{Number(m.quantity).toFixed(3)}</span>
+                  </div>
+                  <div className="font-medium text-gray-700 text-sm">🐟 {m.product?.name || '—'}</div>
+                  <div className="text-xs text-gray-400 mt-0.5">
+                    {m.warehouse?.name}{m.toWarehouse && ` → ${m.toWarehouse.name}`}
+                    <span className="mx-1">·</span>{new Date(m.createdAt).toLocaleDateString('uk-UA')}
+                  </div>
+                  {m.note && <div className="text-xs text-gray-400 mt-0.5 italic">{m.note}</div>}
+                </div>
+              ))}
+            </div>
+            {/* Десктопний вид */}
+            <div className="hidden sm:block overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr className="text-left text-xs text-gray-500">
@@ -855,7 +905,41 @@ export default function WarehousePage() {
           <div className="text-center text-gray-400 py-12 border-2 border-dashed border-gray-200 rounded-xl">Повернень ще не було</div>
         ) : (
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="overflow-x-auto">
+            {/* Мобільний вид */}
+            <div className="sm:hidden divide-y divide-gray-100">
+              {returns.map((ret: any) => {
+                const retItems = ret.items as Array<{ totalQty: unknown; goodQty: unknown; wasteQty: unknown }>;
+                const totalQty = retItems.reduce((s: number, i) => s + Number(i.totalQty), 0);
+                const goodQty = retItems.reduce((s: number, i) => s + Number(i.goodQty), 0);
+                const wasteQty = retItems.reduce((s: number, i) => s + Number(i.wasteQty), 0);
+                return (
+                  <div key={ret.id} className="p-4 active:bg-blue-50/50 cursor-pointer" onClick={() => setSelectedReturn(ret)}>
+                    <div className="flex items-start justify-between gap-2 mb-1.5">
+                      <div>
+                        <div className="font-semibold text-gray-800">{ret.client?.name}</div>
+                        {ret.deliveryPoint && <div className="text-xs text-gray-400">📍 {ret.deliveryPoint.name}</div>}
+                      </div>
+                      {ret.resolvedAt
+                        ? <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium shrink-0">✓ Враховано</span>
+                        : <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 font-medium shrink-0">⏳ Відкрито</span>
+                      }
+                    </div>
+                    <div className="flex items-center gap-3 text-xs mt-1.5">
+                      <span className="text-gray-500">Всього: <span className="font-medium text-gray-700">{totalQty.toFixed(3)} кг</span></span>
+                      <span className="text-gray-300">·</span>
+                      <span className="text-gray-500">Добра: <span className="font-medium text-green-600">{goodQty.toFixed(3)} кг</span></span>
+                      {wasteQty > 0 && <>
+                        <span className="text-gray-300">·</span>
+                        <span className="text-red-500 font-medium">{wasteQty.toFixed(3)} кг утиль</span>
+                      </>}
+                    </div>
+                    <div className="text-xs text-gray-400 mt-1">{new Date(ret.createdAt).toLocaleDateString('uk-UA')}</div>
+                  </div>
+                );
+              })}
+            </div>
+            {/* Десктопний вид */}
+            <div className="hidden sm:block overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr className="text-left text-xs text-gray-500">

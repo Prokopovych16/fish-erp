@@ -20,19 +20,22 @@ function WeightsEditModal({ order, onClose, onSaved }: {
 }) {
   const queryClient = useQueryClient();
   const [weights, setWeights] = useState<Record<string, string>>(
-    Object.fromEntries(order.items.map((i) => [i.id, i.actualWeight ? String(i.actualWeight) : String(i.plannedWeight)])),
+    Object.fromEntries(order.items.map((i) => [i.id, i.actualWeight ? String(i.actualWeight) : ''])),
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const displayNumber = (order as any).numberForm ?? order.number;
   const totalPlanned = order.items.reduce((s, i) => s + Number(i.plannedWeight), 0);
   const totalActual = order.items.reduce((s, i) => s + (Number(weights[i.id]) || 0), 0);
-  const totalSum = order.items.reduce((s, i) => s + (Number(weights[i.id]) || 0) * Number(i.pricePerKg ?? 0), 0);
+  const totalSum = order.items.reduce((s, i) => {
+    if (i.product.unit === 'шт' && !weights[i.id]) return s;
+    return s + (Number(weights[i.id]) || 0) * Number(i.pricePerKg ?? 0);
+  }, 0);
 
   const handleSave = async () => {
     setLoading(true); setError('');
     try {
-      const items = order.items.map((i) => ({ itemId: i.id, actualWeight: Number(weights[i.id]) || Number(i.plannedWeight) }));
+      const items = order.items.filter((i) => weights[i.id] !== '').map((i) => ({ itemId: i.id, actualWeight: Number(weights[i.id]) }));
       const res = await api.patch(`/orders/${order.id}/items`, { items });
       queryClient.invalidateQueries({ queryKey: ['archive'] });
       onSaved(res.data); onClose();
@@ -107,7 +110,7 @@ function WeightsEditModal({ order, onClose, onSaved }: {
             <div><div className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">План</div><div className="font-bold text-sm text-gray-700">{totalPlanned.toFixed(3)} кг</div></div>
             <div><div className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">Факт</div><div className={`font-bold text-sm ${totalActual > 0 ? 'text-blue-600' : 'text-gray-400'}`}>{totalActual.toFixed(3)} кг</div></div>
           </div>
-          {totalSum > 0 && <div className="mt-2 text-right text-sm"><span className="text-gray-500">Сума: </span><span className="font-bold text-green-600">{totalSum.toFixed(2)} ₴</span></div>}
+          {totalSum > 0 && <div className="mt-2 text-right text-sm"><span className="text-gray-500">Сума (з ПДВ): </span><span className="font-bold text-green-600">{(totalSum * 1.2).toFixed(2)} ₴</span></div>}
         </div>
         <div className="px-5 pb-5 border-t pt-4 flex gap-2 shrink-0">
           <button onClick={() => setWeights(Object.fromEntries(order.items.map((i) => [i.id, String(i.plannedWeight)])))}
@@ -124,15 +127,18 @@ function WeightsEditModal({ order, onClose, onSaved }: {
 }
 
 // ─── OrderDetailsModal ────────────────────────────────────────────────────────
-function OrderDetailsModal({ order, onClose, onEditWeights, userRole }: {
-  order: Order; onClose: () => void; onEditWeights: (order: Order) => void; userRole: string;
+function OrderDetailsModal({ order, onClose, onEditWeights, onEdit, userRole }: {
+  order: Order; onClose: () => void; onEditWeights: (order: Order) => void; onEdit: (order: Order) => void; userRole: string;
 }) {
   const queryClient = useQueryClient();
   const [printed, setPrinted] = useState(!!(order as any).printedAt);
   const [printLoading, setPrintLoading] = useState(false);
   const deliveryPoint = (order as any).deliveryPoint;
   const displayNumber = (order as any).numberForm ?? order.number;
-  const total = order.items.reduce((s, i) => s + Number(i.actualWeight ?? i.plannedWeight) * Number(i.pricePerKg ?? 0), 0);
+  const total = order.items.reduce((s, i) => {
+    if (i.product.unit === 'шт' && !i.actualWeight) return s;
+    return s + Number(i.actualWeight ?? i.plannedWeight) * Number(i.pricePerKg ?? 0);
+  }, 0);
   const totalWeight = order.items.reduce((s, i) => s + Number(i.actualWeight ?? i.plannedWeight), 0);
   const totalPlanned = order.items.reduce((s, i) => s + Number(i.plannedWeight), 0);
 
@@ -197,6 +203,7 @@ function OrderDetailsModal({ order, onClose, onEditWeights, userRole }: {
                     const weight = Number(item.actualWeight ?? item.plannedWeight);
                     const price = Number(item.pricePerKg ?? 0);
                     const planned = Number(item.plannedWeight);
+                    const canCalcPrice = item.product.unit !== 'шт' || !!item.actualWeight;
                     const diff = item.actualWeight ? Number(item.actualWeight) - planned : null;
                     const diffPct = diff !== null && planned > 0 ? (diff / planned) * 100 : null;
                     return (
@@ -215,8 +222,8 @@ function OrderDetailsModal({ order, onClose, onEditWeights, userRole }: {
                             </div>
                           ) : <span className="text-gray-400">—</span>}
                         </td>
-                        <td className="px-3 py-2.5 text-right text-gray-500 text-xs">{price > 0 ? `${price.toFixed(2)} ₴` : '—'}</td>
-                        <td className="px-3 py-2.5 text-right font-bold text-gray-800">{weight * price > 0 ? `${(weight * price).toFixed(2)} ₴` : '—'}</td>
+                        <td className="px-3 py-2.5 text-right text-gray-500 text-xs">{canCalcPrice && price > 0 ? `${(price * 1.2).toFixed(2)} ₴` : '—'}</td>
+                        <td className="px-3 py-2.5 text-right font-bold text-gray-800">{canCalcPrice && weight * price > 0 ? `${(weight * price * 1.2).toFixed(2)} ₴` : '—'}</td>
                       </tr>
                     );
                   })}
@@ -227,7 +234,7 @@ function OrderDetailsModal({ order, onClose, onEditWeights, userRole }: {
                     <td className="px-3 py-2.5 text-right text-gray-400 text-xs font-normal">{totalPlanned.toFixed(3)}</td>
                     <td className="px-3 py-2.5 text-right">{totalWeight.toFixed(3)}</td>
                     <td className="px-3 py-2.5 text-right">—</td>
-                    <td className="px-3 py-2.5 text-right text-green-600">{total.toFixed(2)} ₴</td>
+                    <td className="px-3 py-2.5 text-right text-green-600">{(total * 1.2).toFixed(2)} ₴</td>
                   </tr>
                 </tfoot>
               </table>
@@ -255,9 +262,13 @@ function OrderDetailsModal({ order, onClose, onEditWeights, userRole }: {
                     className={`${btn.cls} text-white text-xs px-3 py-2 rounded-xl disabled:opacity-50 font-semibold`}>{btn.label}</button>
                 ))}
               </div>
+              <button onClick={() => onEdit(order)}
+                className="w-full border border-blue-200 text-blue-700 text-sm px-4 py-2.5 rounded-xl hover:bg-blue-50 font-semibold">
+                ✏️ Редагувати заявку
+              </button>
               <button onClick={() => onEditWeights(order)}
                 className="w-full border border-yellow-200 text-yellow-700 text-sm px-4 py-2.5 rounded-xl hover:bg-yellow-50 font-semibold">
-                ✏️ Редагувати фактичну вагу
+                ⚖️ Редагувати фактичну вагу
               </button>
             </>
           )}
@@ -284,30 +295,30 @@ function ReportDatePicker({ from, to, onFromChange, onToChange, onPrint, loading
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
       <div className="text-xs font-bold text-gray-500 uppercase tracking-wide">Період для звіту</div>
-      <div className="flex flex-wrap gap-2 items-end">
+      <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-end sm:gap-2">
         <div>
           <label className="block text-xs text-gray-500 mb-1">Від</label>
           <input type="date" value={from} onChange={(e) => onFromChange(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
         <div>
           <label className="block text-xs text-gray-500 mb-1">До</label>
           <input type="date" value={to} onChange={(e) => onToChange(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
-        <div className="flex gap-1.5">
+        <div className="flex gap-1.5 col-span-2 sm:col-span-1">
           <button onClick={() => { onFromChange(firstOfMonth); onToChange(today); }}
-            className="text-xs border border-gray-200 text-gray-600 px-2.5 py-2 rounded-lg hover:bg-gray-50">Цей місяць</button>
+            className="flex-1 sm:flex-none text-xs border border-gray-200 text-gray-600 px-2.5 py-2 rounded-lg hover:bg-gray-50">Цей місяць</button>
           <button onClick={() => {
             const d = new Date(); d.setMonth(d.getMonth() - 1);
             const f = new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
             const t = new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().slice(0, 10);
             onFromChange(f); onToChange(t);
-          }} className="text-xs border border-gray-200 text-gray-600 px-2.5 py-2 rounded-lg hover:bg-gray-50">Мин. місяць</button>
+          }} className="flex-1 sm:flex-none text-xs border border-gray-200 text-gray-600 px-2.5 py-2 rounded-lg hover:bg-gray-50">Мин. місяць</button>
         </div>
-        {extra}
+        {extra && <div className="col-span-2 sm:col-span-1">{extra}</div>}
         <button onClick={onPrint} disabled={loading || !from || !to}
-          className="bg-blue-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 font-semibold flex items-center gap-2">
+          className="col-span-2 sm:col-span-1 bg-blue-600 text-white text-sm px-4 py-2.5 rounded-lg hover:bg-blue-700 disabled:opacity-50 font-semibold flex items-center justify-center gap-2">
           {loading ? '⏳ Генерую...' : `🖨️ ${label}`}
         </button>
       </div>
@@ -317,6 +328,8 @@ function ReportDatePicker({ from, to, onFromChange, onToChange, onPrint, loading
 
 // ─── RegistryTab ──────────────────────────────────────────────────────────────
 function RegistryTab() {
+  const { user } = useAuthStore();
+  const isInspector = user?.role === 'INSPECTOR';
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [formFilter, setFormFilter] = useState('');
@@ -327,7 +340,8 @@ function RegistryTab() {
     setLoading(true);
     try {
       const params = new URLSearchParams({ from, to });
-      if (formFilter) params.append('form', formFilter);
+      const effectiveForm = isInspector ? 'FORM_1' : formFilter;
+      if (effectiveForm) params.append('form', effectiveForm);
       const r = await api.get(`/documents/reports/registry?${params}`, { responseType: 'blob' });
       const url = window.URL.createObjectURL(new Blob([r.data], { type: 'application/pdf' }));
       window.open(url, '_blank');
@@ -343,7 +357,7 @@ function RegistryTab() {
         onFromChange={setFrom} onToChange={setTo}
         onPrint={handlePrint} loading={loading}
         label="Роздрукувати реєстр"
-        extra={
+        extra={!isInspector ? (
           <div>
             <label className="block text-xs text-gray-500 mb-1">Форма</label>
             <select value={formFilter} onChange={(e) => setFormFilter(e.target.value)}
@@ -353,7 +367,7 @@ function RegistryTab() {
               <option value="FORM_2">Ф2 (готівка)</option>
             </select>
           </div>
-        }
+        ) : undefined}
       />
       <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 text-sm text-blue-700">
         <p className="font-semibold mb-1">📋 Реєстр накладних</p>
@@ -397,12 +411,215 @@ function SuppliersTab() {
   );
 }
 
+// ─── EditArchiveOrderModal ────────────────────────────────────────────────────
+function EditArchiveOrderModal({ order, onClose, onSaved }: { order: Order; onClose: () => void; onSaved: () => void }) {
+  const queryClient = useQueryClient();
+  const displayNumber = (order as any).numberForm ?? order.number;
+
+  const [clientId, setClientId] = useState(order.clientId);
+  const [numberFormVal, setNumberFormVal] = useState(String((order as any).numberForm ?? ''));
+  const [driverName, setDriverName] = useState(order.driverName || '');
+  const [carNumber, setCarNumber] = useState(order.carNumber || '');
+  const [deliveryPointId, setDeliveryPointId] = useState((order as any).deliveryPointId || '');
+  const [note, setNote] = useState(order.note || '');
+  const [invoiceDate, setInvoiceDate] = useState(
+    (order as any).invoiceDate ? new Date((order as any).invoiceDate).toISOString().slice(0, 10) : '',
+  );
+  const [plannedDate, setPlannedDate] = useState(
+    (order as any).plannedDate ? new Date((order as any).plannedDate).toISOString().slice(0, 10) : '',
+  );
+  const [items, setItems] = useState(
+    order.items.map((i) => ({
+      id: i.id,
+      productId: i.productId,
+      productName: i.product.name,
+      productUnit: i.product.unit,
+      plannedWeight: String(i.plannedWeight),
+      actualWeight: i.actualWeight != null ? String(i.actualWeight) : '',
+      displayUnit: (i as any).displayUnit || i.product?.unit || 'кг',
+      pricePerKg: Number(i.pricePerKg ?? 0),
+    })),
+  );
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const { data: clients } = useQuery({ queryKey: ['clients'], queryFn: () => api.get('/clients').then((r) => r.data) });
+  const { data: drivers = [] } = useQuery({ queryKey: ['drivers'], queryFn: () => api.get('/drivers').then((r) => r.data) });
+  const { data: cars = [] } = useQuery({ queryKey: ['cars'], queryFn: () => api.get('/cars').then((r) => r.data) });
+  const { data: deliveryPoints = [] } = useQuery({
+    queryKey: ['delivery-points', clientId],
+    queryFn: () => api.get(`/clients/${clientId}/delivery-points`).then((r) => r.data),
+    enabled: !!clientId,
+  });
+
+  const handleSave = async () => {
+    if (!clientId) return setError('Оберіть клієнта');
+    setLoading(true); setError('');
+    try {
+      await api.patch(`/orders/${order.id}`, {
+        clientId,
+        numberForm: numberFormVal ? Number(numberFormVal) : undefined,
+        driverName: driverName || undefined,
+        carNumber: carNumber || undefined,
+        deliveryPointId: deliveryPointId || undefined,
+        note: note || undefined,
+        plannedDate: plannedDate || undefined,
+        invoiceDate: invoiceDate || undefined,
+      });
+      // Зберігаємо фактичні ваги окремо
+      const weightItems = items.filter((i) => i.actualWeight !== '').map((i) => ({ itemId: i.id, actualWeight: Number(i.actualWeight) }));
+      if (weightItems.length > 0) {
+        await api.patch(`/orders/${order.id}/items`, { items: weightItems });
+      }
+      queryClient.invalidateQueries({ queryKey: ['archive'] });
+      onSaved();
+      onClose();
+    } catch (e: any) {
+      const msg = e.response?.data?.message;
+      try {
+        const parsed = JSON.parse(msg);
+        if (parsed.type === 'DUPLICATE_NUMBER') {
+          setError(`⚠️ Накладна №${parsed.numberForm} вже існує. Змініть номер.`);
+        } else {
+          setError(msg || 'Помилка збереження');
+        }
+      } catch {
+        setError(msg || 'Помилка збереження');
+      }
+    } finally { setLoading(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[92vh] flex flex-col overflow-hidden">
+        <div className="px-5 py-4 border-b flex items-center justify-between shrink-0">
+          <div>
+            <h2 className="font-bold text-gray-800 text-lg">Редагування №{displayNumber}</h2>
+            <p className="text-xs text-gray-400 mt-0.5">
+              <FormBadge form={order.form} />
+            </p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+        </div>
+        <div className="overflow-y-auto flex-1 p-5 space-y-4">
+
+          <div>
+            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Номер накладної</label>
+            <input type="number" min="1" value={numberFormVal}
+              onChange={(e) => setNumberFormVal(e.target.value)}
+              className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Клієнт *</label>
+            <select value={clientId} onChange={(e) => { setClientId(e.target.value); setDeliveryPointId(''); }}
+              className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="">Оберіть клієнта...</option>
+              {(clients as any[])?.filter((c: any) => c.isActive).map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+
+          {clientId && (
+            <div>
+              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Точка доставки</label>
+              <select value={deliveryPointId} onChange={(e) => setDeliveryPointId(e.target.value)}
+                className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="">Не вказано</option>
+                {(deliveryPoints as any[]).map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Водій</label>
+              <select value={driverName} onChange={(e) => setDriverName(e.target.value)}
+                className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="">Оберіть...</option>
+                {(drivers as any[]).filter((d: any) => d.isActive).map((d: any) => <option key={d.id} value={d.name}>🚗 {d.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Авто</label>
+              <select value={carNumber} onChange={(e) => setCarNumber(e.target.value)}
+                className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="">Оберіть...</option>
+                {(cars as any[]).filter((c: any) => c.isActive).map((c: any) => <option key={c.id} value={c.number}>🚛 {c.number}{c.brand ? ` · ${c.brand}` : ''}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Дата накладної</label>
+              <input type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)}
+                className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Планова дата</label>
+              <input type="date" value={plannedDate} onChange={(e) => setPlannedDate(e.target.value)}
+                className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Примітка</label>
+            <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2}
+              className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Фактичні ваги</label>
+            <div className="space-y-2">
+              {items.map((item, idx) => (
+                <div key={item.id} className="border border-gray-200 rounded-xl p-3 bg-gray-50/50">
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1">
+                      <div className="text-xs font-semibold text-gray-700 mb-1">{item.productName}</div>
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1">
+                          <div className="text-[10px] text-gray-400 mb-0.5">Планова</div>
+                          <input type="number" step="0.001" min="0" value={item.plannedWeight}
+                            onChange={(e) => setItems((prev) => prev.map((p, i) => i === idx ? { ...p, plannedWeight: e.target.value } : p))}
+                            className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white" />
+                        </div>
+                        <div className="text-gray-300 mt-4">→</div>
+                        <div className="flex-1">
+                          <div className="text-[10px] text-gray-400 mb-0.5">Фактична</div>
+                          <input type="number" step="0.001" min="0" value={item.actualWeight}
+                            onChange={(e) => setItems((prev) => prev.map((p, i) => i === idx ? { ...p, actualWeight: e.target.value } : p))}
+                            className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
+                        </div>
+                        <div className="text-xs text-gray-400 mt-4">{item.productUnit}</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {error && <div className="text-red-500 text-sm bg-red-50 border border-red-100 px-3 py-2.5 rounded-xl">⚠️ {error}</div>}
+        </div>
+        <div className="px-5 pb-5 pt-4 border-t flex gap-2 shrink-0">
+          <button onClick={onClose} className="flex-1 border border-gray-200 text-gray-600 text-sm px-4 py-2.5 rounded-xl hover:bg-gray-50">Скасувати</button>
+          <button onClick={handleSave} disabled={loading}
+            className="flex-1 bg-blue-600 text-white text-sm px-4 py-2.5 rounded-xl hover:bg-blue-700 disabled:opacity-50 font-bold">
+            {loading ? 'Зберігаю...' : 'Зберегти'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── ArchivePage ──────────────────────────────────────────────────────────────
 export default function ArchivePage() {
   const { user } = useAuthStore();
   const [activeTab, setActiveTab] = useState<'orders' | 'registry' | 'suppliers'>('orders');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+  const [editingFullOrder, setEditingFullOrder] = useState<Order | null>(null);
   const [form, setForm] = useState<Form | ''>('');
   const [clientId, setClientId] = useState('');
   const [number, setNumber] = useState('');
@@ -411,10 +628,15 @@ export default function ArchivePage() {
   const [page, setPage] = useState(1);
   const [showFilters, setShowFilters] = useState(false);
 
+  const isInspector = user?.role === 'INSPECTOR';
+
   const { data, isLoading } = useQuery({
-    queryKey: ['archive', form, clientId, number, from, to, page],
+    queryKey: ['archive', form, clientId, number, from, to, page, isInspector],
     queryFn: () => api.get('/orders/archive', {
-      params: { ...(form && { form }), ...(clientId && { clientId }), ...(number && { number }), ...(from && { from }), ...(to && { to }), page, limit: 20 },
+      params: {
+        ...(isInspector ? { form: 'FORM_1' } : form && { form }),
+        ...(clientId && { clientId }), ...(number && { number }), ...(from && { from }), ...(to && { to }), page, limit: 20,
+      },
     }).then((r) => r.data),
     enabled: activeTab === 'orders',
   });
@@ -468,10 +690,10 @@ export default function ArchivePage() {
       </div>
 
       {/* Вкладки */}
-      <div className="flex rounded-xl border border-gray-200 overflow-hidden text-sm w-fit bg-white">
+      <div className="flex rounded-xl border border-gray-200 overflow-hidden text-sm w-full sm:w-fit bg-white">
         {TABS.map((tab) => (
           <button key={tab.id} onClick={() => setActiveTab(tab.id as any)}
-            className={`px-4 py-2 font-medium transition-colors whitespace-nowrap ${activeTab === tab.id ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
+            className={`flex-1 sm:flex-none px-3 sm:px-4 py-2 font-medium transition-colors whitespace-nowrap text-xs sm:text-sm ${activeTab === tab.id ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
             {tab.label}
           </button>
         ))}
@@ -533,7 +755,44 @@ export default function ArchivePage() {
             </div>
           ) : (
             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-              <div className="overflow-x-auto">
+              {/* Мобільний вид — картки */}
+              <div className="sm:hidden divide-y divide-gray-100">
+                {orders.map((order) => {
+                  const orderTotal = order.items.reduce((s, i) => {
+                    if (i.product.unit === 'шт' && !i.actualWeight) return s;
+                    return s + Number(i.actualWeight ?? i.plannedWeight) * Number(i.pricePerKg ?? 0);
+                  }, 0);
+                  const orderWeight = order.items.reduce((s, i) => s + Number(i.actualWeight ?? i.plannedWeight), 0);
+                  const extOrder = order as Order & { printedAt?: string; numberForm?: number; deliveryPoint?: { name: string } };
+                  const isPrinted = !!extOrder.printedAt;
+                  const displayNumber = extOrder.numberForm ?? order.number;
+                  return (
+                    <div key={order.id} onClick={() => setSelectedOrder(order)}
+                      className="p-4 active:bg-blue-50/50 cursor-pointer">
+                      <div className="flex items-start justify-between gap-2 mb-1.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-bold text-gray-800">№{displayNumber}</span>
+                          {isPrinted && <span className="text-purple-400 text-xs font-bold">✓</span>}
+                          <FormBadge form={order.form} />
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${order.status === 'DONE' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                            {order.status === 'DONE' ? '✓ Виконано' : '✕ Скасовано'}
+                          </span>
+                        </div>
+                        <span className="font-bold text-green-600 text-sm shrink-0">{(orderTotal * 1.2).toFixed(0)} ₴</span>
+                      </div>
+                      <div className="text-sm text-gray-700 font-medium truncate">{order.client.name}</div>
+                      {extOrder.deliveryPoint && <div className="text-xs text-gray-400">📍 {extOrder.deliveryPoint.name}</div>}
+                      <div className="flex items-center gap-3 mt-1.5 text-xs text-gray-400">
+                        <span>{orderWeight.toFixed(1)} кг</span>
+                        <span>·</span>
+                        <span>{new Date(order.createdAt).toLocaleDateString('uk-UA')}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {/* Десктопний вид — таблиця */}
+              <div className="hidden sm:block overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr className="text-left text-xs text-gray-500">
@@ -548,10 +807,14 @@ export default function ArchivePage() {
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {orders.map((order) => {
-                      const orderTotal = order.items.reduce((s, i) => s + Number(i.actualWeight ?? i.plannedWeight) * Number(i.pricePerKg ?? 0), 0);
+                      const extOrd = order as Order & { printedAt?: string; numberForm?: number; deliveryPoint?: { name: string } };
+                      const orderTotal = order.items.reduce((s, i) => {
+                        if (i.product.unit === 'шт' && !i.actualWeight) return s;
+                        return s + Number(i.actualWeight ?? i.plannedWeight) * Number(i.pricePerKg ?? 0);
+                      }, 0);
                       const orderWeight = order.items.reduce((s, i) => s + Number(i.actualWeight ?? i.plannedWeight), 0);
-                      const isPrinted = !!(order as any).printedAt;
-                      const displayNumber = (order as any).numberForm ?? order.number;
+                      const isPrinted = !!extOrd.printedAt;
+                      const displayNumber = extOrd.numberForm ?? order.number;
                       return (
                         <tr key={order.id} onClick={() => setSelectedOrder(order)}
                           className="hover:bg-blue-50/50 cursor-pointer transition-colors group">
@@ -563,7 +826,7 @@ export default function ArchivePage() {
                           </td>
                           <td className="px-4 py-3 max-w-[160px]">
                             <span className="truncate block text-gray-700 font-medium">{order.client.name}</span>
-                            {(order as any).deliveryPoint && <span className="text-[10px] text-gray-400">📍 {(order as any).deliveryPoint.name}</span>}
+                            {extOrd.deliveryPoint && <span className="text-[10px] text-gray-400">📍 {extOrd.deliveryPoint.name}</span>}
                           </td>
                           <td className="px-4 py-3"><FormBadge form={order.form} /></td>
                           <td className="px-4 py-3">
@@ -572,7 +835,7 @@ export default function ArchivePage() {
                             </span>
                           </td>
                           <td className="px-4 py-3 text-right text-gray-600 text-xs font-medium">{orderWeight.toFixed(1)} кг</td>
-                          <td className="px-4 py-3 text-right"><span className="font-bold text-green-600">{orderTotal.toFixed(2)} ₴</span></td>
+                          <td className="px-4 py-3 text-right"><span className="font-bold text-green-600">{(orderTotal * 1.2).toFixed(2)} ₴</span></td>
                           <td className="px-4 py-3 text-right text-gray-400 text-xs">{new Date(order.createdAt).toLocaleDateString('uk-UA')}</td>
                         </tr>
                       );
@@ -607,12 +870,18 @@ export default function ArchivePage() {
       {activeTab === 'registry' && <RegistryTab />}
       {activeTab === 'suppliers' && <SuppliersTab />}
 
-      {selectedOrder && !editingOrder && (
+      {selectedOrder && !editingOrder && !editingFullOrder && (
         <OrderDetailsModal order={selectedOrder} onClose={() => setSelectedOrder(null)}
-          onEditWeights={(order) => setEditingOrder(order)} userRole={user?.role || ''} />
+          onEditWeights={(order) => setEditingOrder(order)}
+          onEdit={(order) => { setEditingFullOrder(order); setSelectedOrder(null); }}
+          userRole={user?.role || ''} />
       )}
       {editingOrder && (
         <WeightsEditModal order={editingOrder} onClose={() => setEditingOrder(null)} onSaved={handleWeightsSaved} />
+      )}
+      {editingFullOrder && (
+        <EditArchiveOrderModal order={editingFullOrder} onClose={() => setEditingFullOrder(null)}
+          onSaved={() => setEditingFullOrder(null)} />
       )}
     </div>
   );

@@ -117,6 +117,15 @@ model Client {
   @@index([name])
 }
 
+model ProductGroup {
+  id        String    @id @default(uuid())
+  name      String    @unique
+  createdAt DateTime  @default(now())
+  products  Product[]
+
+  @@index([name])
+}
+
 model Product {
   id        String   @id @default(uuid())
   name      String
@@ -128,7 +137,10 @@ model Product {
   storageDays     Int?     // термін зберігання в добах
   storageHumidity String?  // вологість, наприклад "75-80"
   storageStandard String?  // ГОСТ, ДСТУ, ТУ
+  packagingType   String?  // в/у | баночка | вагова | упаковка | відро | контейнер
+  groupId   String?  // взаємозамінна група продуктів
 
+  group          ProductGroup?      @relation(fields: [groupId], references: [id])
   prices         ClientPrice[]
   orderItems     OrderItem[]
   stockItems     StockItem[]
@@ -137,6 +149,7 @@ model Product {
 
   @@index([isActive])
   @@index([name])
+  @@index([groupId])
 }
 
 model ClientPrice {

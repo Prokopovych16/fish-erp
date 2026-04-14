@@ -203,16 +203,22 @@ function ShortageModal({ data, onClose, onTransferred, userRole }: {
 }
 
 // ─── OrderDetailsModal ────────────────────────────────────────────────────────
-function OrderDetailsModal({ order, onClose, onStatusChange, onUpdateWeights, userRole }: {
+function OrderDetailsModal({ order, onClose, onStatusChange, onUpdateWeights, onEdit, userRole }: {
   order: Order; onClose: () => void;
   onStatusChange: (id: string, status: OrderStatus) => void;
-  onUpdateWeights: (order: Order) => void; userRole: string;
+  onUpdateWeights: (order: Order) => void;
+  onEdit?: () => void;
+  userRole: string;
 }) {
   const queryClient = useQueryClient();
   const [printed, setPrinted] = useState(!!(order as any).printedAt);
   const displayNumber = (order as any).numberForm ?? order.number;
   const deliveryPoint = (order as any).deliveryPoint;
-  const total = order.items.reduce((s, i) => s + Number(i.actualWeight ?? i.plannedWeight) * Number(i.pricePerKg ?? 0), 0);
+  const total = order.items.reduce((s, i) => {
+    // шт-товар без фактичної ваги — ціну не рахуємо
+    if (i.product.unit === 'шт' && !i.actualWeight) return s;
+    return s + Number(i.actualWeight ?? i.plannedWeight) * Number(i.pricePerKg ?? 0);
+  }, 0);
   const totalPlanned = order.items.reduce((s, i) => s + Number(i.plannedWeight), 0);
   const totalActual = order.items.reduce((s, i) => s + Number(i.actualWeight ?? i.plannedWeight), 0);
   const [returnWeights, setReturnWeights] = useState<Record<string, string>>({});
@@ -281,7 +287,12 @@ const handleProcessReturn = async (retId: string) => {
             <div className="text-sm text-gray-600 mt-0.5 font-medium">{order.client.name}</div>
             {deliveryPoint && <DeliveryPointBadge point={deliveryPoint} />}
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none shrink-0">×</button>
+          <div className="flex items-center gap-2 shrink-0">
+            {userRole === 'ADMIN' && onEdit && (
+              <button onClick={onEdit} className="text-xs font-semibold text-blue-600 border border-blue-200 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors">✏️ Редагувати</button>
+            )}
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+          </div>
         </div>
         <div className="p-5 overflow-y-auto flex-1 space-y-4">
           {(order.driverName || order.carNumber) && (
@@ -318,13 +329,15 @@ const handleProcessReturn = async (retId: string) => {
                   {order.items.map((item) => {
                     const w = Number(item.actualWeight ?? item.plannedWeight);
                     const p = Number(item.pricePerKg ?? 0);
+                    // шт: ціна тільки якщо є фактична вага
+                    const canCalcPrice = item.product.unit !== 'шт' || !!item.actualWeight;
                     return (
                       <tr key={item.id} className="hover:bg-gray-50/50">
                         <td className="px-3 py-2.5 font-semibold text-gray-800">{item.product.name}</td>
                         <td className="px-3 py-2.5 text-right text-gray-400">{Number(item.plannedWeight).toFixed(3)}</td>
                         <td className="px-3 py-2.5 text-right font-semibold text-green-600">{item.actualWeight ? Number(item.actualWeight).toFixed(3) : '—'}</td>
-                        {userRole !== 'WORKER' && <td className="px-3 py-2.5 text-right text-gray-500">{p > 0 ? `${p.toFixed(2)} ₴` : '—'}</td>}
-                        {userRole !== 'WORKER' && <td className="px-3 py-2.5 text-right font-bold text-gray-800">{w * p > 0 ? `${(w * p).toFixed(2)} ₴` : '—'}</td>}
+                        {userRole !== 'WORKER' && <td className="px-3 py-2.5 text-right text-gray-500">{canCalcPrice && p > 0 ? `${(p * 1.2).toFixed(2)} ₴` : '—'}</td>}
+                        {userRole !== 'WORKER' && <td className="px-3 py-2.5 text-right font-bold text-gray-800">{canCalcPrice && w * p > 0 ? `${(w * p * 1.2).toFixed(2)} ₴` : '—'}</td>}
                       </tr>
                     );
                   })}
@@ -335,7 +348,7 @@ const handleProcessReturn = async (retId: string) => {
                     <td className="px-3 py-2.5 text-right text-gray-400">{totalPlanned.toFixed(3)}</td>
                     <td className="px-3 py-2.5 text-right text-green-600">{totalActual.toFixed(3)}</td>
                     {userRole !== 'WORKER' && <td className="px-3 py-2.5 text-right">—</td>}
-                    {userRole !== 'WORKER' && <td className="px-3 py-2.5 text-right text-green-600">{total > 0 ? `${total.toFixed(2)} ₴` : '—'}</td>}
+                    {userRole !== 'WORKER' && <td className="px-3 py-2.5 text-right text-green-600">{total > 0 ? `${(total * 1.2).toFixed(2)} ₴` : '—'}</td>}
                   </tr>
                 </tfoot>
               </table>
@@ -462,7 +475,11 @@ function WeightsModal({ order, onClose, onSave, userRole }: {
   const totalActual = order.items.reduce((s, i) => s + (Number(weights[i.id]) || 0), 0);
   const totalDiff = totalActual - totalPlanned;
   const totalDiffPct = totalPlanned > 0 ? (totalDiff / totalPlanned) * 100 : 0;
-  const totalSum = order.items.reduce((s, i) => s + (Number(weights[i.id]) || 0) * Number(i.pricePerKg ?? 0), 0);
+  const totalSum = order.items.reduce((s, i) => {
+    // шт-товар без введеної ваги — ціну не рахуємо
+    if (i.product.unit === 'шт' && !weights[i.id]) return s;
+    return s + (Number(weights[i.id]) || 0) * Number(i.pricePerKg ?? 0);
+  }, 0);
   const isUnit = (unit: string) => unit === 'шт';
 
   const kgItems = order.items.filter(i => {
@@ -534,7 +551,6 @@ function WeightsModal({ order, onClose, onSave, userRole }: {
                     <input type="number" step={unitMode ? '1' : '0.001'} min="0"
                       value={weights[item.id]}
                       onChange={(e) => setWeights((prev) => ({ ...prev, [item.id]: e.target.value }))}
-                      placeholder={planned.toFixed(unitMode ? 0 : 3)}
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
                   </div>
                  <div className="text-xs text-gray-400 shrink-0 mt-5">
@@ -569,14 +585,14 @@ function WeightsModal({ order, onClose, onSave, userRole }: {
             ))}
           </div>
           {totalSum > 0 && userRole !== 'WORKER' && (
-            <div className="mt-2 text-right text-sm"><span className="text-gray-500">Сума: </span><span className="font-bold text-green-600">{totalSum.toFixed(2)} ₴</span></div>
+            <div className="mt-2 text-right text-sm"><span className="text-gray-500">Сума (з ПДВ): </span><span className="font-bold text-green-600">{(totalSum * 1.2).toFixed(2)} ₴</span></div>
           )}
         </div>
         <div className="px-5 pb-5 border-t pt-4 flex gap-2 shrink-0">
           <button onClick={() => setWeights(Object.fromEntries(order.items.map((i) => [i.id, String(i.plannedWeight)])))}
             className="border border-gray-200 text-gray-600 text-sm px-3 py-2.5 rounded-xl hover:bg-gray-50 whitespace-nowrap font-medium">= План</button>
           <button onClick={onClose} className="flex-1 border border-gray-200 text-gray-600 text-sm px-4 py-2.5 rounded-xl hover:bg-gray-50">Скасувати</button>
-          <button onClick={() => onSave(order.items.map((i) => ({ itemId: i.id, actualWeight: Number(weights[i.id]) || Number(i.plannedWeight) })))}
+          <button onClick={() => onSave(order.items.filter((i) => weights[i.id] !== '').map((i) => ({ itemId: i.id, actualWeight: Number(weights[i.id]) })))}
             className="flex-1 bg-blue-600 text-white text-sm px-4 py-2.5 rounded-xl hover:bg-blue-700 font-bold">Зберегти</button>
         </div>
       </div>
@@ -587,6 +603,8 @@ function WeightsModal({ order, onClose, onSave, userRole }: {
 // ─── CreateOrderModal ─────────────────────────────────────────────────────────
 function CreateOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const queryClient = useQueryClient();
+  const { user: currentUser } = useAuthStore();
+  const isInspector = currentUser?.role === 'INSPECTOR';
   const [clientId, setClientId] = useState('');
   const [form, setForm] = useState<Form>('FORM_1');
   const [note, setNote] = useState('');
@@ -647,6 +665,7 @@ function CreateOrderModal({ onClose, onCreated }: { onClose: () => void; onCreat
   };
   const totalWeight = items.reduce((s, i) => s + (Number(i.plannedWeight) || 0), 0);
   const totalSum = items.reduce((s, i) => {
+    if (i.displayUnit !== getUnit(i.productId)) return s;
     const price = getPriceForProduct(i.productId);
     return s + (price ? price * (Number(i.plannedWeight) || 0) : 0);
   }, 0);
@@ -715,7 +734,7 @@ function CreateOrderModal({ onClose, onCreated }: { onClose: () => void; onCreat
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Форма</label>
               <div className="flex rounded-xl border border-gray-300 overflow-hidden text-sm h-[42px]">
-                {[{ value: 'FORM_1', label: '🏦 Ф1' }, { value: 'FORM_2', label: '💵 Ф2' }].map((f) => (
+                {[{ value: 'FORM_1', label: '🏦 Ф1' }, ...(isInspector ? [] : [{ value: 'FORM_2', label: '💵 Ф2' }])].map((f) => (
                   <button key={f.value} onClick={() => setForm(f.value as Form)}
                     className={`flex-1 font-semibold transition-colors ${form === f.value ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
                     {f.label}
@@ -864,14 +883,14 @@ function CreateOrderModal({ onClose, onCreated }: { onClose: () => void; onCreat
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Позиції *</label>
-              {totalWeight > 0 && <span className="text-xs text-gray-400">Всього: <b className="text-gray-700">{totalWeight.toFixed(3)}</b>{totalSum > 0 && <b className="text-green-600 ml-2">{totalSum.toFixed(2)} ₴</b>}</span>}
+              {totalWeight > 0 && <span className="text-xs text-gray-400">Всього: <b className="text-gray-700">{totalWeight.toFixed(3)}</b>{totalSum > 0 && <b className="text-green-600 ml-2">{(totalSum * 1.2).toFixed(2)} ₴</b>}</span>}
             </div>
             <div className="space-y-2">
               {items.map((item, idx) => {
                 const price = getPriceForProduct(item.productId);
                 const unit = getUnit(item.productId);
-                const unitMode = unit === 'шт';
-                const lineSum = price && item.plannedWeight ? price * Number(item.plannedWeight) : null;
+                const canCalcPrice = item.displayUnit === unit;
+                const lineSum = canCalcPrice && price && item.plannedWeight ? price * Number(item.plannedWeight) : null;
                 return (
                   <div key={idx} className={`rounded-xl border p-3 ${item.productId && item.plannedWeight ? 'border-green-200 bg-green-50/40' : 'border-gray-200 bg-gray-50/50'}`}>
                     <div className="flex gap-2 items-center">
@@ -914,9 +933,9 @@ function CreateOrderModal({ onClose, onCreated }: { onClose: () => void; onCreat
                     </div>
                     {item.productId && (
                       <div className="mt-1.5 pl-7 text-xs flex items-center gap-2">
-                        {unitMode && <span className="bg-blue-50 text-blue-600 px-2 py-0.5 rounded font-semibold">шт — робочий вписує кількість</span>}
-                        {!unitMode && price && <><span className="text-gray-400">Ціна: <b className="text-gray-600">{price.toFixed(2)} ₴/{unit}</b></span>{lineSum && lineSum > 0 && <b className="text-green-600">= {lineSum.toFixed(2)} ₴</b>}</>}
-                        {!unitMode && !price && <span className="text-orange-500">⚠️ Ціна не встановлена</span>}
+                        {!canCalcPrice && <span className="text-orange-400">— різні одиниці, ціна не рахується</span>}
+                        {canCalcPrice && price && <><span className="text-gray-400">Ціна: <b className="text-gray-600">{price.toFixed(2)} ₴/{unit}</b></span>{lineSum && lineSum > 0 && <b className="text-green-600">= {lineSum.toFixed(2)} ₴</b>}</>}
+                        {canCalcPrice && !price && <span className="text-orange-500">⚠️ Ціна не встановлена</span>}
                       </div>
                     )}
                   </div>
@@ -980,7 +999,7 @@ function CreateOrderModal({ onClose, onCreated }: { onClose: () => void; onCreat
               {clientId && <div className="flex items-center gap-1.5"><span className="text-gray-400">Клієнт:</span><span className="font-semibold text-gray-700">{clients?.find((c: any) => c.id === clientId)?.name}</span><FormBadge form={form} /></div>}
               {selectedPoint && <div className="flex items-center gap-1"><span>📍</span><span className="font-semibold text-gray-700">{selectedPoint.name}</span></div>}
               {totalWeight > 0 && <div className="flex items-center gap-1.5"><span className="text-gray-400">Вага:</span><b className="text-gray-700">{totalWeight.toFixed(3)}</b></div>}
-              {totalSum > 0 && <div className="flex items-center gap-1.5"><span className="text-gray-400">Сума:</span><b className="text-green-600 text-sm">{totalSum.toFixed(2)} ₴</b></div>}
+              {totalSum > 0 && <div className="flex items-center gap-1.5"><span className="text-gray-400">Сума (з ПДВ):</span><b className="text-green-600 text-sm">{(totalSum * 1.2).toFixed(2)} ₴</b></div>}
               {isDraft && <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-semibold">📋 Чернетка</span>}
             </div>
           )}
@@ -991,6 +1010,281 @@ function CreateOrderModal({ onClose, onCreated }: { onClose: () => void; onCreat
               {loading ? 'Створюю...' : isDraft ? '📋 Зберегти чернетку' : '✓ Створити заявку'}
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── EditOrderModal ───────────────────────────────────────────────────────────
+function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: () => void; onSaved: () => void }) {
+  const queryClient = useQueryClient();
+  const displayNumber = (order as any).numberForm ?? order.number;
+  const isDone = order.status === 'DONE';
+
+  const [clientId, setClientId] = useState(order.clientId);
+  const [numberFormVal, setNumberFormVal] = useState(String((order as any).numberForm ?? ''));
+  const [driverName, setDriverName] = useState(order.driverName || '');
+  const [carNumber, setCarNumber] = useState(order.carNumber || '');
+  const [deliveryPointId, setDeliveryPointId] = useState((order as any).deliveryPointId || '');
+  const [note, setNote] = useState(order.note || '');
+  const [invoiceDate, setInvoiceDate] = useState(
+    (order as any).invoiceDate ? new Date((order as any).invoiceDate).toISOString().slice(0, 10) : '',
+  );
+  const [plannedDate, setPlannedDate] = useState(
+    (order as any).plannedDate ? new Date((order as any).plannedDate).toISOString().slice(0, 10) : '',
+  );
+  const [items, setItems] = useState(
+    order.items.map((i) => ({
+      productId: i.productId,
+      plannedWeight: String(i.plannedWeight),
+      actualWeight: i.actualWeight != null ? String(i.actualWeight) : '',
+      displayUnit: (i as any).displayUnit || i.product?.unit || 'кг',
+    })),
+  );
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const { data: clients } = useQuery({ queryKey: ['clients'], queryFn: () => api.get('/clients').then((r) => r.data) });
+  const { data: products } = useQuery({ queryKey: ['products-active'], queryFn: () => api.get('/products/active').then((r) => r.data) });
+  const { data: drivers = [] } = useQuery({ queryKey: ['drivers'], queryFn: () => api.get('/drivers').then((r) => r.data) });
+  const { data: cars = [] } = useQuery({ queryKey: ['cars'], queryFn: () => api.get('/cars').then((r) => r.data) });
+  const { data: clientPrices = [] } = useQuery({
+    queryKey: ['client-prices', clientId, order.form],
+    queryFn: () => api.get(`/clients/${clientId}/prices`, { params: { form: order.form } }).then((r) => r.data),
+    enabled: !!clientId,
+  });
+  const { data: deliveryPoints = [] } = useQuery({
+    queryKey: ['delivery-points', clientId],
+    queryFn: () => api.get(`/clients/${clientId}/delivery-points`).then((r) => r.data),
+    enabled: !!clientId,
+  });
+
+  const getPriceForProduct = (productId: string) => {
+    const p = (clientPrices as any[]).find((cp: any) => cp.productId === productId);
+    return p ? Number(p.price) : null;
+  };
+  const getUnit = (productId: string): string => {
+    const p = (products as any[])?.find((pr: any) => pr.id === productId);
+    return p?.unit ?? 'кг';
+  };
+
+  const totalWeight = items.reduce((s, i) => s + (Number(i.plannedWeight) || 0), 0);
+  const totalSum = items.reduce((s, i) => {
+    if (i.displayUnit !== getUnit(i.productId)) return s;
+    const price = getPriceForProduct(i.productId);
+    return s + (price ? price * (Number(i.plannedWeight) || 0) : 0);
+  }, 0);
+
+  const handleSave = async () => {
+    if (!clientId) return setError('Оберіть клієнта');
+    if (!isDone && items.some((i) => !i.productId || !i.plannedWeight)) return setError('Заповніть всі позиції');
+    setLoading(true); setError('');
+    try {
+      await api.patch(`/orders/${order.id}`, {
+        clientId,
+        numberForm: numberFormVal ? Number(numberFormVal) : undefined,
+        driverName: driverName || undefined,
+        carNumber: carNumber || undefined,
+        deliveryPointId: deliveryPointId || undefined,
+        note: note || undefined,
+        plannedDate: plannedDate || undefined,
+        invoiceDate: invoiceDate || undefined,
+        ...(!isDone && {
+          items: items
+            .filter((i) => i.productId && i.plannedWeight)
+            .map((i) => ({
+              productId: i.productId,
+              plannedWeight: Number(i.plannedWeight),
+              actualWeight: i.actualWeight ? Number(i.actualWeight) : undefined,
+              displayUnit: i.displayUnit,
+            })),
+        }),
+      });
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      onSaved();
+      onClose();
+    } catch (e: any) {
+      const msg = e.response?.data?.message;
+      try {
+        const parsed = JSON.parse(msg);
+        if (parsed.type === 'DUPLICATE_NUMBER') {
+          setError(`⚠️ Накладна №${parsed.numberForm} вже існує. Змініть номер.`);
+        } else {
+          setError(msg || 'Помилка збереження');
+        }
+      } catch {
+        setError(msg || 'Помилка збереження');
+      }
+    } finally { setLoading(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[92vh] flex flex-col overflow-hidden">
+        <div className="px-5 py-4 border-b flex items-center justify-between shrink-0">
+          <div>
+            <h2 className="font-bold text-gray-800 text-lg">Редагування №{displayNumber}</h2>
+            <p className="text-xs text-gray-400 mt-0.5">
+              <FormBadge form={order.form} /> <span className={`ml-1 text-[10px] px-2 py-0.5 rounded-full font-bold ${STATUS_COLOR[order.status]}`}>{STATUS_LABEL[order.status]}</span>
+            </p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+        </div>
+        <div className="overflow-y-auto flex-1 p-5 space-y-4">
+
+          {/* Номер накладної */}
+          <div>
+            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
+              Номер накладної <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="number" min="1" value={numberFormVal}
+              onChange={(e) => setNumberFormVal(e.target.value)}
+              className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Введіть номер..."
+            />
+            <p className="text-xs text-gray-400 mt-1">При зміні — перевіряється на дублікат</p>
+          </div>
+
+          {/* Клієнт */}
+          <div>
+            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Клієнт *</label>
+            <select value={clientId} onChange={(e) => { setClientId(e.target.value); setDeliveryPointId(''); }}
+              className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="">Оберіть клієнта...</option>
+              {(clients as any[])?.filter((c: any) => c.isActive).map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+
+          {/* Точка доставки */}
+          {clientId && (
+            <div>
+              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Точка доставки</label>
+              <select value={deliveryPointId} onChange={(e) => setDeliveryPointId(e.target.value)}
+                className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="">Не вказано</option>
+                {(deliveryPoints as any[]).map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
+          )}
+
+          {/* Водій / Авто */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Водій</label>
+              <select value={driverName} onChange={(e) => setDriverName(e.target.value)}
+                className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="">Оберіть...</option>
+                {(drivers as any[]).filter((d: any) => d.isActive).map((d: any) => <option key={d.id} value={d.name}>🚗 {d.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Авто</label>
+              <select value={carNumber} onChange={(e) => setCarNumber(e.target.value)}
+                className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="">Оберіть...</option>
+                {(cars as any[]).filter((c: any) => c.isActive).map((c: any) => <option key={c.id} value={c.number}>🚛 {c.number}{c.brand ? ` · ${c.brand}` : ''}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {/* Дати */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Дата накладної</label>
+              <input type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)}
+                className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Планова дата</label>
+              <input type="date" value={plannedDate} onChange={(e) => setPlannedDate(e.target.value)}
+                className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+          </div>
+
+          {/* Примітка */}
+          <div>
+            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Примітка</label>
+            <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2}
+              className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+          </div>
+
+          {/* Позиції */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Позиції</label>
+              {totalWeight > 0 && (
+                <span className="text-xs text-gray-400">
+                  Всього: <b className="text-gray-700">{totalWeight.toFixed(3)}</b>
+                  {totalSum > 0 && <b className="text-green-600 ml-2">{(totalSum * 1.2).toFixed(2)} ₴</b>}
+                </span>
+              )}
+            </div>
+            {isDone ? (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 text-xs text-yellow-700">
+                ⚠️ Позиції виконаної заявки не можна змінювати. Поверніть заявку до "В роботі" для редагування позицій.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {items.map((item, idx) => {
+                  const price = getPriceForProduct(item.productId);
+                  const unit = getUnit(item.productId);
+                  const canCalcPrice = item.displayUnit === unit;
+                  const lineSum = canCalcPrice && price && item.plannedWeight ? price * Number(item.plannedWeight) : null;
+                  return (
+                    <div key={idx} className={`rounded-xl border p-3 ${item.productId && item.plannedWeight ? 'border-green-200 bg-green-50/40' : 'border-gray-200 bg-gray-50/50'}`}>
+                      <div className="flex gap-2 items-center">
+                        <div className="w-5 h-5 rounded-full bg-gray-200 text-gray-600 flex items-center justify-center text-[10px] font-bold shrink-0">{idx + 1}</div>
+                        <select value={item.productId}
+                          onChange={(e) => {
+                            const prod = (products as any[])?.find((p: any) => p.id === e.target.value);
+                            setItems((prev) => prev.map((p, i) => i === idx ? { ...p, productId: e.target.value, displayUnit: prod?.unit ?? 'кг' } : p));
+                          }}
+                          className="flex-1 border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+                          <option value="">Оберіть продукт...</option>
+                          {(products as any[])?.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        </select>
+                        <input type="number" step="0.001" min="0" value={item.plannedWeight}
+                          onChange={(e) => setItems((prev) => prev.map((p, i) => i === idx ? { ...p, plannedWeight: e.target.value } : p))}
+                          placeholder="0.000"
+                          className="w-20 border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
+                        <select value={item.displayUnit}
+                          onChange={(e) => setItems((prev) => prev.map((p, i) => i === idx ? { ...p, displayUnit: e.target.value } : p))}
+                          className="border border-gray-300 rounded-lg px-1.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-600 w-14">
+                          <option value="кг">кг</option>
+                          <option value="шт">шт</option>
+                          <option value="уп">уп</option>
+                        </select>
+                        <button onClick={() => setItems((prev) => prev.filter((_, i) => i !== idx))}
+                          className="text-red-400 hover:text-red-600 text-lg leading-none shrink-0 px-1">×</button>
+                      </div>
+                      {item.productId && (
+                        <div className="mt-1.5 pl-7 text-xs flex items-center gap-2 text-gray-500">
+                          {!canCalcPrice && <span className="text-orange-400">— різні одиниці, ціна не рахується</span>}
+                          {canCalcPrice && lineSum && <span>Ціна: <b className="text-green-600">{(lineSum * 1.2).toFixed(2)} ₴</b></span>}
+                          {canCalcPrice && !price && <span className="text-orange-500">⚠️ Ціна не встановлена</span>}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                <button onClick={() => setItems((prev) => [...prev, { productId: '', plannedWeight: '', actualWeight: '', displayUnit: 'кг' }])}
+                  className="w-full border border-dashed border-gray-300 text-gray-500 text-sm py-2.5 rounded-xl hover:border-blue-400 hover:text-blue-600 transition-colors">
+                  + Додати позицію
+                </button>
+              </div>
+            )}
+          </div>
+
+          {error && <div className="text-red-500 text-sm bg-red-50 px-3 py-2 rounded-lg">{error}</div>}
+        </div>
+        <div className="px-5 pb-5 pt-4 border-t flex gap-2 shrink-0">
+          <button onClick={onClose} className="flex-1 border border-gray-200 text-gray-600 text-sm px-4 py-2.5 rounded-xl hover:bg-gray-50">Скасувати</button>
+          <button onClick={handleSave} disabled={loading}
+            className="flex-1 bg-blue-600 text-white text-sm px-4 py-2.5 rounded-xl hover:bg-blue-700 disabled:opacity-50 font-bold">
+            {loading ? 'Збереження...' : '✓ Зберегти'}
+          </button>
         </div>
       </div>
     </div>
@@ -1045,11 +1339,12 @@ function OrderCardContent({ order, userRole }: { order: Order; userRole: string 
 }
 
 // ─── DraggableOrderCard ────────────────────────────────────────────────────────
-function DraggableOrderCard({ order, onStatusChange, onUpdateWeights, onOpenDetails, userRole }: {
+function DraggableOrderCard({ order, onStatusChange, onUpdateWeights, onOpenDetails, onEdit, userRole }: {
   order: Order;
   onStatusChange: (id: string, status: OrderStatus) => void;
   onUpdateWeights: (order: Order) => void;
   onOpenDetails: (order: Order) => void;
+  onEdit: (order: Order) => void;
   userRole: string;
 }) {
   const isDraft = order.status === 'DRAFT';
@@ -1148,7 +1443,12 @@ function DraggableOrderCard({ order, onStatusChange, onUpdateWeights, onOpenDeta
                 className="bg-gray-100 text-gray-600 text-xs px-2.5 py-1.5 rounded-lg hover:bg-gray-200 font-semibold">↩</button>
             </div>
           )}
-          
+          {userRole === 'ADMIN' && (
+            <button onClick={() => onEdit(order)}
+              className="w-full border border-gray-200 text-gray-500 text-xs py-1.5 rounded-lg hover:bg-gray-50 hover:text-blue-600 hover:border-blue-200 transition-colors font-semibold">
+              ✏️ Редагувати заявку
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -1156,12 +1456,13 @@ function DraggableOrderCard({ order, onStatusChange, onUpdateWeights, onOpenDeta
 }
 
 // ─── DroppableColumn ──────────────────────────────────────────────────────────
-function DroppableColumn({ id, title, icon, color, orders, onStatusChange, onUpdateWeights, onOpenDetails, userRole }: {
+function DroppableColumn({ id, title, icon, color, orders, onStatusChange, onUpdateWeights, onOpenDetails, onEdit, userRole }: {
   id: string; title: string; icon: string; color: string;
   orders: Order[];
   onStatusChange: (id: string, status: OrderStatus) => void;
   onUpdateWeights: (order: Order) => void;
   onOpenDetails: (order: Order) => void;
+  onEdit: (order: Order) => void;
   userRole: string;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id });
@@ -1192,6 +1493,7 @@ function DroppableColumn({ id, title, icon, color, orders, onStatusChange, onUpd
             onStatusChange={onStatusChange}
             onUpdateWeights={onUpdateWeights}
             onOpenDetails={onOpenDetails}
+            onEdit={onEdit}
             userRole={userRole}
           />
         ))}
@@ -1208,6 +1510,7 @@ export default function OrdersPage() {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [detailsOrder, setDetailsOrder] = useState<Order | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [activeOrder, setActiveOrder] = useState<Order | null>(null);
   const [shortageData, setShortageData] = useState<{
     orderId: string; targetStatus: OrderStatus;
@@ -1341,6 +1644,7 @@ export default function OrdersPage() {
               onStatusChange={(id, status) => statusMutation.mutate({ id, status })}
               onUpdateWeights={setSelectedOrder}
               onOpenDetails={setDetailsOrder}
+              onEdit={setEditingOrder}
               userRole={user?.role || ''}
             />
           ))}
@@ -1369,7 +1673,12 @@ export default function OrdersPage() {
         <OrderDetailsModal order={detailsOrder} onClose={() => setDetailsOrder(null)}
           onStatusChange={(id, status) => { statusMutation.mutate({ id, status }); setDetailsOrder(null); }}
           onUpdateWeights={(order) => { setSelectedOrder(order); setDetailsOrder(null); }}
+          onEdit={() => { setEditingOrder(detailsOrder); setDetailsOrder(null); }}
           userRole={user?.role || ''} />
+      )}
+      {editingOrder && (
+        <EditOrderModal order={editingOrder} onClose={() => setEditingOrder(null)}
+          onSaved={() => queryClient.invalidateQueries({ queryKey: ['orders'] })} />
       )}
       {shortageData && (
         <ShortageModal data={shortageData} userRole={user?.role || ''}

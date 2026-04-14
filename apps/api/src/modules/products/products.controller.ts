@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Body,
   Param,
   UseGuards,
@@ -20,39 +21,56 @@ import { UserRole } from '@prisma/client';
 export class ProductsController {
   constructor(private productsService: ProductsService) {}
 
-  // GET /api/products — всі продукти (для панелі адміна)
   @Get()
   findAll() {
     return this.productsService.findAll();
   }
 
-  // GET /api/products/active — тільки активні (для форм і випадаючих списків)
   @Get('active')
   findActive() {
     return this.productsService.findActive();
   }
 
-  // GET /api/products/:id — один продукт
+  @Get('groups')
+  findAllGroups() {
+    return this.productsService.findAllGroups();
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.productsService.findOne(id);
   }
 
-  // POST /api/products — створити (тільки ADMIN)
   @Roles(UserRole.ADMIN)
   @Post()
   create(@Body() dto: CreateProductDto) {
     return this.productsService.create(dto);
   }
 
-  // PATCH /api/products/:id — оновити (тільки ADMIN)
+  @Roles(UserRole.ADMIN)
+  @Post('groups')
+  createGroup(@Body('name') name: string) {
+    return this.productsService.createGroup(name);
+  }
+
+  @Roles(UserRole.ADMIN)
+  @Patch('groups/:id')
+  updateGroup(@Param('id') id: string, @Body('name') name: string) {
+    return this.productsService.updateGroup(id, name);
+  }
+
+  @Roles(UserRole.ADMIN)
+  @Delete('groups/:id')
+  deleteGroup(@Param('id') id: string) {
+    return this.productsService.deleteGroup(id);
+  }
+
   @Roles(UserRole.ADMIN)
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: UpdateProductDto) {
     return this.productsService.update(id, dto);
   }
 
-  // PATCH /api/products/:id/toggle — активувати/деактивувати (тільки ADMIN)
   @Roles(UserRole.ADMIN)
   @Patch(':id/toggle')
   toggle(@Param('id') id: string) {

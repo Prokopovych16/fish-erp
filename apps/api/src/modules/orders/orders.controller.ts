@@ -14,6 +14,7 @@ import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateStatusDto } from './dto/update-status.dto';
 import { UpdateItemsDto } from './dto/update-items.dto';
+import { UpdateOrderDto } from './dto/update-order.dto';
 import { GetOrdersDto } from './dto/get-orders.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -63,6 +64,16 @@ export class OrdersController {
   @Post()
   create(@Body() dto: CreateOrderDto, @Request() req) {
     return this.ordersService.create(dto, req.user.id);
+  }
+
+  @Roles(UserRole.ADMIN)
+  @Patch(':id')
+  updateOrder(
+    @Param('id') id: string,
+    @Body() dto: UpdateOrderDto,
+    @Request() req,
+  ) {
+    return this.ordersService.updateOrder(id, dto, req.user.id, req.user.role);
   }
 
   @Patch(':id/status')

@@ -25,4 +25,12 @@ export class UpdateProductDto {
   @IsOptional()
   @IsString()
   storageStandard?: string;
+
+  @IsOptional()
+  @IsString()
+  packagingType?: string;
+
+  @IsOptional()
+  @IsString()
+  groupId?: string | null;
 }

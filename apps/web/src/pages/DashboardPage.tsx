@@ -9,45 +9,37 @@ import { useAuthStore } from '@/store/auth';
 function WorkerDashboard() {
   const { user } = useAuthStore();
 
-  const { data: orders = [] } = useQuery({
+  const { data: orders = [], isLoading } = useQuery({
     queryKey: ['orders-worker'],
     queryFn: () => api.get('/orders').then((r) => r.data),
+    refetchInterval: 30000,
   });
 
-  const myActive = orders.filter(
-    (o: any) => o.assignedToId === user?.id && o.status === 'IN_PROGRESS'
+  const activeOrders: any[] = orders.filter((o: any) => o.status === 'IN_PROGRESS');
+  const pendingOrders: any[] = orders.filter((o: any) => o.status === 'PENDING');
+  const todayDone: any[] = orders.filter(
+    (o: any) => o.status === 'DONE' && new Date(o.completedAt).toDateString() === new Date().toDateString()
   );
-  const myPending = orders.filter(
-    (o: any) => o.assignedToId === user?.id && o.status === 'PENDING'
-  );
-  const myDone = orders.filter(
-    (o: any) => o.assignedToId === user?.id && o.status === 'DONE'
-  );
-  const todayDone = myDone.filter((o: any) => {
-    return new Date(o.completedAt).toDateString() === new Date().toDateString();
-  });
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Доброго ранку' : hour < 17 ? 'Добрий день' : 'Добрий вечір';
 
   return (
-    <div className="space-y-5 pb-8">
+    <div className="space-y-4 pb-8 max-w-lg mx-auto">
       {/* Шапка */}
-      <div className="relative bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 rounded-2xl p-6 overflow-hidden">
-        {/* Декоративні кола */}
+      <div className="relative bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 rounded-2xl p-5 overflow-hidden">
         <div className="absolute -top-8 -right-8 w-40 h-40 bg-white/5 rounded-full" />
         <div className="absolute -bottom-12 -right-4 w-56 h-56 bg-white/5 rounded-full" />
-        <div className="absolute top-4 right-20 w-16 h-16 bg-white/5 rounded-full" />
 
         <div className="relative">
-          <div className="text-blue-200 text-sm mb-1">{greeting} 👋</div>
-          <div className="text-white text-2xl font-bold mb-4">{user?.name}</div>
+          <div className="text-blue-200 text-sm mb-0.5">{greeting} 👋</div>
+          <div className="text-white text-xl font-bold mb-4">{user?.name}</div>
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-3 gap-2">
             {[
-              { icon: '⚡', label: 'В роботі', value: myActive.length, highlight: myActive.length > 0 },
+              { icon: '⚡', label: 'В роботі', value: activeOrders.length, highlight: activeOrders.length > 0 },
+              { icon: '🕐', label: 'Очікують', value: pendingOrders.length, highlight: false },
               { icon: '✅', label: 'Сьогодні', value: todayDone.length, highlight: false },
-              { icon: '📦', label: 'Всього', value: myDone.length, highlight: false },
             ].map((s) => (
               <div
                 key={s.label}
@@ -55,7 +47,7 @@ function WorkerDashboard() {
                   s.highlight ? 'bg-yellow-400/20 border border-yellow-300/30' : 'bg-white/10'
                 }`}
               >
-                <div className="text-xl mb-1">{s.icon}</div>
+                <div className="text-lg mb-0.5">{s.icon}</div>
                 <div className="text-white text-2xl font-bold leading-none">{s.value}</div>
                 <div className="text-blue-200 text-xs mt-1">{s.label}</div>
               </div>
@@ -64,65 +56,68 @@ function WorkerDashboard() {
         </div>
       </div>
 
+      {isLoading && (
+        <div className="text-center py-10 text-gray-400 text-sm">Завантаження...</div>
+      )}
+
       {/* В роботі */}
-      {myActive.length > 0 && (
+      {activeOrders.length > 0 && (
         <div>
-          <div className="flex items-center gap-2 mb-3">
+          <div className="flex items-center gap-2 mb-2">
             <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse" />
-            <span className="text-sm font-semibold text-gray-700">В роботі зараз</span>
+            <span className="text-sm font-semibold text-gray-700">В роботі зараз ({activeOrders.length})</span>
           </div>
           <div className="space-y-3">
-            {myActive.map((order: any) => {
-              const totalWeight = order.items.reduce(
-                (s: number, i: any) => s + Number(i.plannedWeight), 0
-              );
+            {activeOrders.map((order: any) => {
+              const totalWeight = order.items.reduce((s: number, i: any) => s + Number(i.plannedWeight), 0);
               return (
-                <div
-                  key={order.id}
-                  className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm"
-                >
+                <div key={order.id} className="bg-white border-2 border-yellow-200 rounded-2xl p-4 shadow-sm">
                   <div className="flex items-start justify-between mb-3">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-gray-800 text-lg">
-                          №{(order as any).numberForm ?? order.number}
-                        </span>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-bold text-gray-800 text-lg">№{order.numberForm ?? order.number}</span>
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                          order.form === 'FORM_1'
-                            ? 'bg-blue-100 text-blue-700'
-                            : 'bg-orange-100 text-orange-700'
+                          order.form === 'FORM_1' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'
                         }`}>
                           {order.form === 'FORM_1' ? 'Ф1' : 'Ф2'}
                         </span>
                       </div>
-                      <div className="text-gray-500 text-sm mt-0.5">{order.client.name}</div>
+                      <div className="text-gray-600 text-sm mt-0.5 font-medium truncate">{order.client.name}</div>
+                      {order.deliveryPoint && (
+                        <div className="text-xs text-gray-400 mt-0.5">📍 {order.deliveryPoint.name}</div>
+                      )}
                     </div>
-                    <div className="bg-yellow-50 border border-yellow-200 rounded-xl px-3 py-1.5 text-center">
-                      <div className="text-yellow-700 font-bold text-lg leading-none">
-                        {totalWeight.toFixed(1)}
-                      </div>
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-xl px-3 py-2 text-center shrink-0 ml-3">
+                      <div className="text-yellow-700 font-bold text-xl leading-none">{totalWeight.toFixed(1)}</div>
                       <div className="text-yellow-500 text-[10px]">кг</div>
                     </div>
                   </div>
 
-                  <div className="space-y-1.5">
-                    {order.items.map((item: any, idx: number) => (
-                      <div
-                        key={item.id}
-                        className="flex items-center justify-between text-xs"
-                      >
-                        <div className="flex items-center gap-2">
-                          <div className="w-5 h-5 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center text-[10px] font-medium shrink-0">
-                            {idx + 1}
+                  <div className="space-y-2 border-t border-yellow-100 pt-3">
+                    {order.items.map((item: any, idx: number) => {
+                      const du = item.displayUnit || item.product.unit;
+                      const planned = Number(item.plannedWeight);
+                      return (
+                        <div key={item.id} className="flex items-center justify-between">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="w-5 h-5 rounded-full bg-yellow-100 text-yellow-700 flex items-center justify-center text-[10px] font-bold shrink-0">
+                              {idx + 1}
+                            </div>
+                            <span className="text-sm text-gray-700 truncate">{item.product.name}</span>
                           </div>
-                          <span className="text-gray-600">{item.product.name}</span>
+                          <span className="font-bold text-gray-800 text-sm shrink-0 ml-2">
+                            {planned.toFixed(du === 'шт' ? 0 : 3)} {du}
+                          </span>
                         </div>
-                        <span className="font-semibold text-gray-700">
-                          {Number(item.plannedWeight).toFixed(3)} кг
-                        </span>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
+
+                  {order.note && (
+                    <div className="mt-3 bg-yellow-50 border border-yellow-100 rounded-xl px-3 py-2 text-xs text-gray-600">
+                      💬 {order.note}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -131,39 +126,39 @@ function WorkerDashboard() {
       )}
 
       {/* Очікують */}
-      {myPending.length > 0 && (
+      {pendingOrders.length > 0 && (
         <div>
-          <div className="flex items-center gap-2 mb-3">
+          <div className="flex items-center gap-2 mb-2">
             <div className="w-2 h-2 bg-gray-400 rounded-full" />
-            <span className="text-sm font-semibold text-gray-700">
-              Очікують ({myPending.length})
-            </span>
+            <span className="text-sm font-semibold text-gray-700">Очікують виконання ({pendingOrders.length})</span>
           </div>
           <div className="space-y-2">
-            {myPending.map((order: any) => (
-              <div
-                key={order.id}
-                className="bg-white border border-gray-200 rounded-xl px-4 py-3 flex items-center justify-between"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-gray-500 text-xs font-bold">
-                    №{(order as any).numberForm ?? order.number}
+            {pendingOrders.map((order: any) => {
+              const totalWeight = order.items.reduce((s: number, i: any) => s + Number(i.plannedWeight), 0);
+              return (
+                <div key={order.id} className="bg-white border border-gray-200 rounded-xl px-4 py-3 flex items-center justify-between">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center text-gray-600 text-xs font-bold shrink-0">
+                      №{order.numberForm ?? order.number}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-gray-700 truncate">{order.client.name}</div>
+                      <div className="text-xs text-gray-400">{order.items.length} поз · {totalWeight.toFixed(1)} кг</div>
+                    </div>
                   </div>
-                  <div>
-                    <div className="text-sm font-medium text-gray-700">{order.client.name}</div>
-                    <div className="text-xs text-gray-400">{order.items.length} позицій</div>
-                  </div>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ml-2 ${
+                    order.form === 'FORM_1' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'
+                  }`}>
+                    {order.form === 'FORM_1' ? 'Ф1' : 'Ф2'}
+                  </span>
                 </div>
-                <div className="text-xs text-gray-400 bg-gray-50 px-2 py-1 rounded-lg">
-                  🕐 Очікує
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
 
-      {myActive.length === 0 && myPending.length === 0 && (
+      {!isLoading && activeOrders.length === 0 && pendingOrders.length === 0 && (
         <div className="text-center py-16">
           <div className="text-5xl mb-4">🎉</div>
           <div className="font-semibold text-gray-700 text-lg">Все виконано!</div>
@@ -178,6 +173,8 @@ function WorkerDashboard() {
 // Admin Dashboard
 // ============================================================
 function AdminDashboard() {
+  const { user } = useAuthStore();
+  const isInspector = user?.role === 'INSPECTOR';
   const [period, setPeriod] = useState<'today' | 'week' | 'month'>('month');
 
   const getDateRange = () => {
@@ -190,17 +187,18 @@ function AdminDashboard() {
   };
 
   const { from, to } = getDateRange();
+  const formParam = isInspector ? { form: 'FORM_1' } : {};
 
   const { data: dashboard, isLoading } = useQuery({
-    queryKey: ['dashboard', period],
+    queryKey: ['dashboard', period, isInspector],
     queryFn: () =>
-      api.get('/statistics/dashboard', { params: { from, to } }).then((r) => r.data),
+      api.get('/statistics/dashboard', { params: { from, to, ...formParam } }).then((r) => r.data),
   });
 
   const { data: ordersStats } = useQuery({
-    queryKey: ['orders-stats', period],
+    queryKey: ['orders-stats', period, isInspector],
     queryFn: () =>
-      api.get('/statistics/orders', { params: { from, to } }).then((r) => r.data),
+      api.get('/statistics/orders', { params: { from, to, ...formParam } }).then((r) => r.data),
   });
 
   const revenue = dashboard?.revenueByForm;
@@ -265,45 +263,48 @@ function AdminDashboard() {
                 Виручка {periodLabel}
               </div>
               <div className="text-white text-5xl font-bold mb-1">
-                {totalRevenue >= 1000
-                  ? `${(totalRevenue / 1000).toFixed(1)}k`
-                  : totalRevenue.toFixed(0)}
+                {(totalRevenue * 1.2) >= 1000
+                  ? `${((totalRevenue * 1.2) / 1000).toFixed(1)}k`
+                  : (totalRevenue * 1.2).toFixed(0)}
                 <span className="text-2xl font-normal text-slate-400 ml-2">₴</span>
               </div>
+              <div className="text-slate-500 text-xs">з ПДВ · без ПДВ: {totalRevenue.toFixed(0)} ₴</div>
 
               {/* Поділ на форми */}
-              <div className="mt-5 space-y-3">
-                {/* Прогрес бар */}
-                <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden flex">
-                  <div
-                    className="h-full bg-blue-400 transition-all rounded-l-full"
-                    style={{ width: `${f1Pct}%` }}
-                  />
-                  <div
-                    className="h-full bg-orange-400 transition-all rounded-r-full"
-                    style={{ width: `${100 - f1Pct}%` }}
-                  />
-                </div>
+              {!isInspector && (
+                <div className="mt-5 space-y-3">
+                  {/* Прогрес бар */}
+                  <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden flex">
+                    <div
+                      className="h-full bg-blue-400 transition-all rounded-l-full"
+                      style={{ width: `${f1Pct}%` }}
+                    />
+                    <div
+                      className="h-full bg-orange-400 transition-all rounded-r-full"
+                      style={{ width: `${100 - f1Pct}%` }}
+                    />
+                  </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-white/5 rounded-xl p-3">
-                    <div className="flex items-center gap-2 mb-1">
-                      <div className="w-2.5 h-2.5 rounded-full bg-blue-400 shrink-0" />
-                      <span className="text-slate-400 text-xs">Форма 1 · безнал</span>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-white/5 rounded-xl p-3">
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className="w-2.5 h-2.5 rounded-full bg-blue-400 shrink-0" />
+                        <span className="text-slate-400 text-xs">Форма 1 · безнал</span>
+                      </div>
+                      <div className="text-white font-bold text-lg">{(f1 * 1.2).toFixed(0)} ₴</div>
+                      <div className="text-slate-500 text-xs">{f1Pct.toFixed(0)}% · з ПДВ</div>
                     </div>
-                    <div className="text-white font-bold text-lg">{f1.toFixed(0)} ₴</div>
-                    <div className="text-slate-500 text-xs">{f1Pct.toFixed(0)}% від загального</div>
-                  </div>
-                  <div className="bg-white/5 rounded-xl p-3">
-                    <div className="flex items-center gap-2 mb-1">
-                      <div className="w-2.5 h-2.5 rounded-full bg-orange-400 shrink-0" />
-                      <span className="text-slate-400 text-xs">Форма 2 · готівка</span>
+                    <div className="bg-white/5 rounded-xl p-3">
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className="w-2.5 h-2.5 rounded-full bg-orange-400 shrink-0" />
+                        <span className="text-slate-400 text-xs">Форма 2 · готівка</span>
+                      </div>
+                      <div className="text-white font-bold text-lg">{(f2 * 1.2).toFixed(0)} ₴</div>
+                      <div className="text-slate-500 text-xs">{(100 - f1Pct).toFixed(0)}% · з ПДВ</div>
                     </div>
-                    <div className="text-white font-bold text-lg">{f2.toFixed(0)} ₴</div>
-                    <div className="text-slate-500 text-xs">{(100 - f1Pct).toFixed(0)}% від загального</div>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
 
@@ -387,7 +388,7 @@ function AdminDashboard() {
                               </span>
                             </div>
                             <span className="text-sm font-bold text-gray-800 shrink-0 ml-2">
-                              {Number(client.revenue).toFixed(0)} ₴
+                              {(Number(client.revenue) * 1.2).toFixed(0)} ₴
                             </span>
                           </div>
                           <div className="w-full bg-gray-100 rounded-full h-1.5">
@@ -402,7 +403,7 @@ function AdminDashboard() {
                             />
                           </div>
                           <div className="text-xs text-gray-400 mt-1">
-                            {client.ordersCount} заявок · {Number(client.totalWeight).toFixed(1)} кг
+                            {client.ordersCount} заявок{Number(client.totalWeightKg) > 0 ? ` · ${Number(client.totalWeightKg).toFixed(1)} кг` : ''}{Number(client.totalPcs) > 0 ? ` · ${Math.round(Number(client.totalPcs))} шт` : ''}
                           </div>
                         </div>
                       );
@@ -427,9 +428,8 @@ function AdminDashboard() {
                       const items = (warehouse.stockItems || []).filter(
                         (i: any) => Number(i.quantity) > 0
                       );
-                      const totalQty = items.reduce(
-                        (s: number, i: any) => s + Number(i.quantity), 0
-                      );
+                      const totalKg = items.filter((i: any) => i.product.unit === 'кг').reduce((s: number, i: any) => s + Number(i.quantity), 0);
+                      const totalPcs = items.filter((i: any) => i.product.unit === 'шт').reduce((s: number, i: any) => s + Number(i.quantity), 0);
 
                       return (
                         <div
@@ -444,7 +444,7 @@ function AdminDashboard() {
                               </span>
                             </div>
                             <span className="text-xs text-gray-400 bg-gray-50 px-2 py-0.5 rounded-full">
-                              {totalQty.toFixed(1)} кг
+                              {[totalKg > 0 ? `${totalKg.toFixed(1)} кг` : '', totalPcs > 0 ? `${Math.round(totalPcs)} шт` : ''].filter(Boolean).join(' + ') || '0'}
                             </span>
                           </div>
 
@@ -496,55 +496,81 @@ function AdminDashboard() {
             {!dashboard?.lastOrders?.length ? (
               <div className="text-gray-400 text-sm text-center py-8">Немає виконаних заявок</div>
             ) : (
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50/80">
-                  <tr className="text-left text-xs text-gray-400">
-                    <th className="px-5 py-3 font-medium">Заявка</th>
-                    <th className="px-5 py-3 font-medium">Клієнт</th>
-                    <th className="px-5 py-3 font-medium">Форма</th>
-                    <th className="px-5 py-3 font-medium text-right">Сума</th>
-                    <th className="px-5 py-3 font-medium text-right">Дата</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
+              <>
+                {/* Мобільний вид */}
+                <div className="sm:hidden divide-y divide-gray-100">
                   {dashboard.lastOrders.map((order: any) => {
-                    const total = order.items.reduce(
-                      (s: number, i: any) =>
-                        s + Number(i.actualWeight ?? i.plannedWeight) * Number(i.pricePerKg ?? 0),
-                      0,
-                    );
-                    const displayNumber = (order as any).numberForm ?? order.number;
+                    const total = order.items.reduce((s: number, i: any) => {
+                      if (i.product?.unit === 'шт' && !i.actualWeight) return s;
+                      return s + Number(i.actualWeight ?? i.plannedWeight) * Number(i.pricePerKg ?? 0);
+                    }, 0);
+                    const displayNumber = order.numberForm ?? order.number;
                     return (
-                      <tr
-                        key={order.id}
-                        className="hover:bg-gray-50/50 transition-colors"
-                      >
-                        <td className="px-5 py-3">
-                          <span className="font-bold text-gray-800">№{displayNumber}</span>
-                        </td>
-                        <td className="px-5 py-3 text-gray-600 max-w-[140px] truncate">
-                          {order.client.name}
-                        </td>
-                        <td className="px-5 py-3">
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                            order.form === 'FORM_1'
-                              ? 'bg-blue-100 text-blue-700'
-                              : 'bg-orange-100 text-orange-700'
-                          }`}>
-                            {order.form === 'FORM_1' ? 'Ф1' : 'Ф2'}
-                          </span>
-                        </td>
-                        <td className="px-5 py-3 text-right font-bold text-emerald-600">
-                          {total.toFixed(0)} ₴
-                        </td>
-                        <td className="px-5 py-3 text-right text-gray-400 text-xs">
-                          {new Date(order.completedAt).toLocaleDateString('uk-UA')}
-                        </td>
-                      </tr>
+                      <div key={order.id} className="px-5 py-3.5">
+                        <div className="flex items-center justify-between mb-0.5">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-gray-800">№{displayNumber}</span>
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                              order.form === 'FORM_1' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'
+                            }`}>
+                              {order.form === 'FORM_1' ? 'Ф1' : 'Ф2'}
+                            </span>
+                          </div>
+                          <span className="font-bold text-emerald-600">{total > 0 ? `${(total * 1.2).toFixed(0)} ₴` : '—'}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-gray-600 truncate max-w-[60%]">{order.client.name}</span>
+                          <span className="text-xs text-gray-400">{new Date(order.completedAt).toLocaleDateString('uk-UA')}</span>
+                        </div>
+                      </div>
                     );
                   })}
-                </tbody>
-              </table>
+                </div>
+                {/* Десктопний вид */}
+                <table className="hidden sm:table w-full text-sm">
+                  <thead className="bg-gray-50/80">
+                    <tr className="text-left text-xs text-gray-400">
+                      <th className="px-5 py-3 font-medium">Заявка</th>
+                      <th className="px-5 py-3 font-medium">Клієнт</th>
+                      <th className="px-5 py-3 font-medium">Форма</th>
+                      <th className="px-5 py-3 font-medium text-right">Сума</th>
+                      <th className="px-5 py-3 font-medium text-right">Дата</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {dashboard.lastOrders.map((order: any) => {
+                      const total = order.items.reduce((s: number, i: any) => {
+                        if (i.product?.unit === 'шт' && !i.actualWeight) return s;
+                        return s + Number(i.actualWeight ?? i.plannedWeight) * Number(i.pricePerKg ?? 0);
+                      }, 0);
+                      const displayNumber = order.numberForm ?? order.number;
+                      return (
+                        <tr key={order.id} className="hover:bg-gray-50/50 transition-colors">
+                          <td className="px-5 py-3">
+                            <span className="font-bold text-gray-800">№{displayNumber}</span>
+                          </td>
+                          <td className="px-5 py-3 text-gray-600 max-w-[140px] truncate">
+                            {order.client.name}
+                          </td>
+                          <td className="px-5 py-3">
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                              order.form === 'FORM_1' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'
+                            }`}>
+                              {order.form === 'FORM_1' ? 'Ф1' : 'Ф2'}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3 text-right font-bold text-emerald-600">
+                            {total > 0 ? `${(total * 1.2).toFixed(0)} ₴` : '—'}
+                          </td>
+                          <td className="px-5 py-3 text-right text-gray-400 text-xs">
+                            {new Date(order.completedAt).toLocaleDateString('uk-UA')}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </>
             )}
           </div>
         </>

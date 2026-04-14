@@ -340,6 +340,8 @@ function ClientDetailsModal({ client, onClose, onEdit, isAdmin, allClients }: {
   client: Client; onClose: () => void; onEdit: () => void;
   isAdmin: boolean; allClients: Client[];
 }) {
+  const { user: currentUser } = useAuthStore();
+  const isInspector = currentUser?.role === 'INSPECTOR';
   const [form, setForm] = useState<Form>('FORM_1');
   const [prices, setPrices] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
@@ -456,14 +458,16 @@ function ClientDetailsModal({ client, onClose, onEdit, isAdmin, allClients }: {
               </div>
 
               {/* Перемикач форми */}
-              <div className="flex rounded-lg border border-gray-200 overflow-hidden text-sm mb-4">
-                {(['FORM_1', 'FORM_2'] as Form[]).map((f) => (
-                  <button key={f} onClick={() => setForm(f)}
-                    className={`flex-1 py-1.5 transition-colors ${form === f ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
-                    {f === 'FORM_1' ? '🏦 Форма 1 (безнал)' : '💵 Форма 2 (готівка)'}
-                  </button>
-                ))}
-              </div>
+              {!isInspector && (
+                <div className="flex rounded-lg border border-gray-200 overflow-hidden text-sm mb-4">
+                  {(['FORM_1', 'FORM_2'] as Form[]).map((f) => (
+                    <button key={f} onClick={() => setForm(f)}
+                      className={`flex-1 py-1.5 transition-colors ${form === f ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+                      {f === 'FORM_1' ? '🏦 Форма 1 (безнал)' : '💵 Форма 2 (готівка)'}
+                    </button>
+                  ))}
+                </div>
+              )}
 
               {pricesLoading ? (
                 <div className="text-center text-gray-400 py-6">Завантаження...</div>
@@ -479,18 +483,31 @@ function ClientDetailsModal({ client, onClose, onEdit, isAdmin, allClients }: {
                           <div className="text-xs text-gray-400">/{product.unit}</div>
                         </div>
                         {isAdmin ? (
-                          <div className="flex items-center gap-1 shrink-0">
-                            <input type="number" step="0.01" min="0"
-                              value={prices[product.id] || ''}
-                              onChange={(e) => setPrices(prev => ({ ...prev, [product.id]: e.target.value }))}
-                              placeholder="0.00"
-                              className="w-24 border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
-                            <span className="text-xs text-gray-500">₴</span>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <div className="flex items-center gap-1">
+                              <input type="number" step="0.01" min="0"
+                                value={prices[product.id] || ''}
+                                onChange={(e) => setPrices(prev => ({ ...prev, [product.id]: e.target.value }))}
+                                placeholder="0.00"
+                                className="w-24 border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
+                              <span className="text-xs text-gray-500">₴</span>
+                            </div>
+                            {price > 0 && (
+                              <div className="text-right">
+                                <div className="text-xs text-gray-400 leading-none">з ПДВ</div>
+                                <div className="text-xs font-semibold text-blue-600">{(price * 1.2).toFixed(2)} ₴</div>
+                              </div>
+                            )}
                           </div>
                         ) : (
-                          <span className="text-sm font-semibold text-gray-700 shrink-0">
-                            {price > 0 ? `${price.toFixed(2)} ₴` : '—'}
-                          </span>
+                          <div className="text-right shrink-0">
+                            <div className="text-sm font-semibold text-gray-700">
+                              {price > 0 ? `${price.toFixed(2)} ₴` : '—'}
+                            </div>
+                            {price > 0 && (
+                              <div className="text-xs text-gray-400">з ПДВ: <span className="text-blue-600 font-semibold">{(price * 1.2).toFixed(2)} ₴</span></div>
+                            )}
+                          </div>
                         )}
                       </div>
                     );

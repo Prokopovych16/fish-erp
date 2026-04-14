@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/api/axios';
+import { useAuthStore } from '@/store/auth';
 import {
   BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend,
@@ -55,6 +56,8 @@ function CustomTooltip({ active, payload, label }: any) {
 type TabType = 'overview' | 'finance' | 'orders' | 'clients' | 'products' | 'workers' | 'production';
 
 export default function StatisticsPage() {
+  const { user } = useAuthStore();
+  const isInspector = user?.role === 'INSPECTOR';
   const [period, setPeriod] = useState<'week' | 'month' | 'quarter' | 'year' | 'custom'>('month');
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [customFrom, setCustomFrom] = useState('');
@@ -83,9 +86,10 @@ export default function StatisticsPage() {
   };
 
   const { from, to, prevFrom, prevTo } = getDateRange();
-  const params = { from, to };
-  const prevParams = { from: prevFrom, to: prevTo };
-  const queryKey = [period, customFrom, customTo];
+  const formParam = isInspector ? { form: 'FORM_1' } : {};
+  const params = { from, to, ...formParam };
+  const prevParams = { from: prevFrom, to: prevTo, ...formParam };
+  const queryKey = [period, customFrom, customTo, isInspector];
   const enabled = period !== 'custom' || (!!customFrom && !!customTo);
 
   const { data: finance } = useQuery({ queryKey: ['stat-finance', ...queryKey], queryFn: () => api.get('/statistics/finance', { params }).then(r => r.data), enabled });
@@ -194,10 +198,10 @@ export default function StatisticsPage() {
       </div>
 
       {/* Таби */}
-      <div className="flex gap-1 overflow-x-auto pb-1">
+      <div className="flex gap-1 overflow-x-auto pb-1 -mx-1 px-1">
         {tabs.map((tab) => (
           <button key={tab.value} onClick={() => setActiveTab(tab.value)}
-            className={`px-3 py-2 rounded-lg text-sm whitespace-nowrap transition-colors ${activeTab === tab.value ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
+            className={`px-3 py-2 rounded-lg text-xs sm:text-sm whitespace-nowrap transition-colors flex-shrink-0 ${activeTab === tab.value ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
             {tab.label}
           </button>
         ))}
@@ -208,10 +212,10 @@ export default function StatisticsPage() {
           {/* ── ОГЛЯД ── */}
           {activeTab === 'overview' && (
             <div className="space-y-6">
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <StatCard label="Загальна виручка" value={`${Number(finance?.total || 0).toFixed(0)} ₴`} trend={revenueTrend} color="blue" icon="💰" />
-                <StatCard label="Ф1 (безнал)" value={`${Number(finance?.FORM_1 || 0).toFixed(0)} ₴`} trend={f1Trend} color="green" icon="🏦" />
-                <StatCard label="Ф2 (готівка)" value={`${Number(finance?.FORM_2 || 0).toFixed(0)} ₴`} trend={f2Trend} color="orange" icon="💵" />
+              <div className={`grid grid-cols-2 gap-3 ${isInspector ? 'sm:grid-cols-3' : 'sm:grid-cols-4'}`}>
+                <StatCard label="Загальна виручка (з ПДВ)" value={`${(Number(finance?.total || 0) * 1.2).toFixed(0)} ₴`} sub={`без ПДВ: ${Number(finance?.total || 0).toFixed(0)} ₴`} trend={revenueTrend} color="blue" icon="💰" />
+                <StatCard label="Ф1 безнал (з ПДВ)" value={`${(Number(finance?.FORM_1 || 0) * 1.2).toFixed(0)} ₴`} trend={f1Trend} color="green" icon="🏦" />
+                {!isInspector && <StatCard label="Ф2 готівка (з ПДВ)" value={`${(Number(finance?.FORM_2 || 0) * 1.2).toFixed(0)} ₴`} trend={f2Trend} color="orange" icon="💵" />}
                 <StatCard label="Виконано заявок" value={ordersStats?.done || 0} sub={`Скасовано: ${ordersStats?.cancelled || 0}`} color="purple" icon="✅" />
               </div>
 
@@ -289,10 +293,10 @@ export default function StatisticsPage() {
           {/* ── ФІНАНСИ ── */}
           {activeTab === 'finance' && (
             <div className="space-y-6">
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                <StatCard label="Загальна виручка" value={`${Number(finance?.total || 0).toFixed(2)} ₴`} color="blue" icon="💰" trend={revenueTrend} />
-                <StatCard label="Форма 1 (безнал)" value={`${Number(finance?.FORM_1 || 0).toFixed(2)} ₴`} color="green" icon="🏦" trend={f1Trend} />
-                <StatCard label="Форма 2 (готівка)" value={`${Number(finance?.FORM_2 || 0).toFixed(2)} ₴`} color="orange" icon="💵" trend={f2Trend} />
+              <div className={`grid grid-cols-2 gap-3 ${isInspector ? 'sm:grid-cols-2' : 'sm:grid-cols-3'}`}>
+                <StatCard label="Загальна виручка (з ПДВ)" value={`${(Number(finance?.total || 0) * 1.2).toFixed(2)} ₴`} sub={`без ПДВ: ${Number(finance?.total || 0).toFixed(2)} ₴`} color="blue" icon="💰" trend={revenueTrend} />
+                <StatCard label="Форма 1 безнал (з ПДВ)" value={`${(Number(finance?.FORM_1 || 0) * 1.2).toFixed(2)} ₴`} color="green" icon="🏦" trend={f1Trend} />
+                {!isInspector && <StatCard label="Форма 2 готівка (з ПДВ)" value={`${(Number(finance?.FORM_2 || 0) * 1.2).toFixed(2)} ₴`} color="orange" icon="💵" trend={f2Trend} />}
               </div>
 
               {chart && chart.length > 0 && (
@@ -311,41 +315,43 @@ export default function StatisticsPage() {
                 </div>
               )}
 
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                <div className="bg-white rounded-xl border border-gray-200 p-4">
-                  <h3 className="text-sm font-semibold text-gray-700 mb-3">Ф1 vs Ф2</h3>
-                  {formPieData.some(d => d.value > 0) ? (
-                    <ResponsiveContainer width="100%" height={220}>
-                      <PieChart>
-                        <Pie data={formPieData} cx="50%" cy="50%" outerRadius={90} dataKey="value"
-                          label={({ name, percent }) => `${name.split(' ')[0]} ${(percent * 100).toFixed(0)}%`} labelLine={false}>
-                          <Cell fill="#3b82f6" /><Cell fill="#f97316" />
-                        </Pie>
-                        <Tooltip formatter={(v: any) => [`${Number(v).toFixed(2)} ₴`]} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  ) : <div className="text-center text-gray-400 py-8 text-sm">Немає даних</div>}
-                </div>
+              <div className={`grid grid-cols-1 gap-4 ${isInspector ? '' : 'lg:grid-cols-2'}`}>
+                {!isInspector && (
+                  <div className="bg-white rounded-xl border border-gray-200 p-4">
+                    <h3 className="text-sm font-semibold text-gray-700 mb-3">Ф1 vs Ф2</h3>
+                    {formPieData.some(d => d.value > 0) ? (
+                      <ResponsiveContainer width="100%" height={220}>
+                        <PieChart>
+                          <Pie data={formPieData} cx="50%" cy="50%" outerRadius={90} dataKey="value"
+                            label={({ name, percent }) => `${name.split(' ')[0]} ${(percent * 100).toFixed(0)}%`} labelLine={false}>
+                            <Cell fill="#3b82f6" /><Cell fill="#f97316" />
+                          </Pie>
+                          <Tooltip formatter={(v: any) => [`${Number(v).toFixed(2)} ₴`]} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    ) : <div className="text-center text-gray-400 py-8 text-sm">Немає даних</div>}
+                  </div>
+                )}
 
                 <div className="bg-white rounded-xl border border-gray-200 p-4">
                   <h3 className="text-sm font-semibold text-gray-700 mb-3">Деталізація</h3>
                   <div className="space-y-3">
                     {[
-                      { label: 'Загальна виручка', value: finance?.total, color: 'text-blue-600' },
-                      { label: 'Форма 1 (безнал)', value: finance?.FORM_1, color: 'text-green-600' },
-                      { label: 'Форма 2 (готівка)', value: finance?.FORM_2, color: 'text-orange-500' },
+                      { label: 'Загальна виручка (з ПДВ)', value: finance?.total, color: 'text-blue-600' },
+                      { label: 'Форма 1 безнал (з ПДВ)', value: finance?.FORM_1, color: 'text-green-600' },
+                      ...(!isInspector ? [{ label: 'Форма 2 готівка (з ПДВ)', value: finance?.FORM_2, color: 'text-orange-500' }] : []),
                     ].map((row) => (
                       <div key={row.label} className="flex justify-between items-center py-2 border-b border-gray-100 last:border-0">
                         <span className="text-sm text-gray-600">{row.label}</span>
-                        <span className={`font-bold text-base ${row.color}`}>{Number(row.value || 0).toFixed(2)} ₴</span>
+                        <span className={`font-bold text-base ${row.color}`}>{(Number(row.value || 0) * 1.2).toFixed(2)} ₴</span>
                       </div>
                     ))}
                     {prevFinance && period !== 'custom' && (
                       <div className="pt-2 border-t">
                         <div className="text-xs text-gray-400 mb-2">Попередній період</div>
                         <div className="flex justify-between text-sm">
-                          <span className="text-gray-500">Виручка</span>
-                          <span className="font-medium">{Number(prevFinance.total || 0).toFixed(2)} ₴</span>
+                          <span className="text-gray-500">Виручка (з ПДВ)</span>
+                          <span className="font-medium">{(Number(prevFinance.total || 0) * 1.2).toFixed(2)} ₴</span>
                         </div>
                         {revenueTrend !== undefined && (
                           <div className={`text-xs mt-1 font-medium ${revenueTrend > 0 ? 'text-green-600' : revenueTrend < 0 ? 'text-red-500' : 'text-gray-400'}`}>
@@ -367,7 +373,7 @@ export default function StatisticsPage() {
                 <StatCard label="Виконано" value={ordersStats?.done || 0} color="green" icon="✅" />
                 <StatCard label="Скасовано" value={ordersStats?.cancelled || 0} color="red" icon="❌" />
                 <StatCard label="В роботі" value={ordersStats?.inProgress || 0} color="orange" icon="⚡" />
-                <StatCard label="Середній час" value={`${Number(ordersStats?.avgCompletionHours || 0).toFixed(1)} год`} color="purple" icon="⏱️" />
+                <StatCard label="Середній час" value={`${Number(ordersStats?.avgCompletionTimeHours || 0).toFixed(1)} год`} color="purple" icon="⏱️" />
               </div>
 
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -411,7 +417,7 @@ export default function StatisticsPage() {
                     { label: '% скасованих', value: `${Number(ordersStats?.cancelledPercent || 0).toFixed(1)}%`, unit: '' },
                     { label: 'В роботі зараз', value: ordersStats?.inProgress || 0, unit: 'заявок' },
                     { label: 'Очікують', value: ordersStats?.pending || 0, unit: 'заявок' },
-                    { label: 'Середній час', value: `${Number(ordersStats?.avgCompletionHours || 0).toFixed(1)}`, unit: 'год' },
+                    { label: 'Середній час', value: `${Number(ordersStats?.avgCompletionTimeHours || 0).toFixed(1)}`, unit: 'год' },
                   ].map((row) => (
                     <div key={row.label} className="bg-gray-50 rounded-lg p-3">
                       <div className="text-xs text-gray-500 mb-1">{row.label}</div>
@@ -444,14 +450,39 @@ export default function StatisticsPage() {
               </div>
 
               <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                <table className="w-full text-sm">
+                {/* Мобільний вид */}
+                <div className="sm:hidden divide-y divide-gray-100">
+                  {clients?.map((client: any, idx: number) => {
+                    const totalRevenue = clients.reduce((s: number, c: any) => s + Number(c.revenue), 0);
+                    const share = totalRevenue > 0 ? (Number(client.revenue) / totalRevenue * 100) : 0;
+                    return (
+                      <div key={client.clientId} className="p-4">
+                        <div className="flex items-center gap-3 mb-2">
+                          <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0" style={{ background: COLORS[idx % COLORS.length] }}>{idx + 1}</div>
+                          <span className="font-semibold text-gray-800 flex-1 truncate">{client.clientName}</span>
+                          <span className="font-bold text-green-600 shrink-0">{(Number(client.revenue) * 1.2).toFixed(0)} ₴</span>
+                        </div>
+                        <div className="flex items-center gap-3 text-xs text-gray-400 pl-10">
+                          <span>{client.ordersCount} заявок</span>
+                          {Number(client.totalWeightKg) > 0 && <span>{Number(client.totalWeightKg).toFixed(1)} кг</span>}
+                          <span className="ml-auto">{share.toFixed(1)}%</span>
+                        </div>
+                        <div className="mt-2 pl-10 w-full bg-gray-100 rounded-full h-1.5">
+                          <div className="h-1.5 rounded-full bg-blue-500" style={{ width: `${share}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                {/* Десктопний вид */}
+                <table className="hidden sm:table w-full text-sm">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr className="text-left text-xs text-gray-500">
                       <th className="px-4 py-3 font-medium">#</th>
                       <th className="px-4 py-3 font-medium">Клієнт</th>
                       <th className="px-4 py-3 font-medium text-right">Заявок</th>
-                      <th className="px-4 py-3 font-medium text-right">Вага (кг)</th>
-                      <th className="px-4 py-3 font-medium text-right">Виручка</th>
+                      <th className="px-4 py-3 font-medium text-right">Обсяг</th>
+                      <th className="px-4 py-3 font-medium text-right">Виручка (з ПДВ)</th>
                       <th className="px-4 py-3 font-medium text-right">Частка</th>
                     </tr>
                   </thead>
@@ -466,8 +497,8 @@ export default function StatisticsPage() {
                           </td>
                           <td className="px-4 py-3 font-medium text-gray-800">{client.clientName}</td>
                           <td className="px-4 py-3 text-right text-gray-600">{client.ordersCount}</td>
-                          <td className="px-4 py-3 text-right text-gray-600">{Number(client.totalWeight).toFixed(1)}</td>
-                          <td className="px-4 py-3 text-right font-semibold text-green-600">{Number(client.revenue).toFixed(2)} ₴</td>
+                          <td className="px-4 py-3 text-right text-gray-600 text-xs">{Number(client.totalWeightKg) > 0 ? `${Number(client.totalWeightKg).toFixed(1)} кг` : ''}{Number(client.totalWeightKg) > 0 && Number(client.totalPcs) > 0 ? ' · ' : ''}{Number(client.totalPcs) > 0 ? `${Math.round(Number(client.totalPcs))} шт` : ''}</td>
+                          <td className="px-4 py-3 text-right font-semibold text-green-600">{(Number(client.revenue) * 1.2).toFixed(2)} ₴</td>
                           <td className="px-4 py-3 text-right">
                             <div className="flex items-center justify-end gap-2">
                               <div className="w-16 bg-gray-100 rounded-full h-1.5"><div className="h-1.5 rounded-full bg-blue-500" style={{ width: `${share}%` }} /></div>
@@ -495,8 +526,8 @@ export default function StatisticsPage() {
                       <XAxis dataKey="productName" tick={{ fontSize: 10 }} />
                       <YAxis tick={{ fontSize: 10 }} />
                       <Tooltip /><Legend />
-                      <Bar dataKey="totalPlanned" name="План (кг)" fill="#93c5fd" radius={[4, 4, 0, 0]} />
-                      <Bar dataKey="totalActual" name="Факт (кг)" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="totalPlannedWeight" name="План" fill="#93c5fd" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="totalActualWeight" name="Факт" fill="#3b82f6" radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 ) : <div className="text-center text-gray-400 py-8 text-sm">Немає даних</div>}
@@ -504,7 +535,29 @@ export default function StatisticsPage() {
 
               <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
                 <div className="p-4 border-b border-gray-200"><h3 className="text-sm font-semibold text-gray-700">Відхилення факт від плану</h3></div>
-                <div className="overflow-x-auto">
+                {/* Мобільний вид */}
+                <div className="sm:hidden divide-y divide-gray-100">
+                  {products?.map((p: any) => {
+                    const diff = Number(p.weightAccuracy || 0);
+                    return (
+                      <div key={p.productId} className="p-4">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="font-semibold text-gray-800 text-sm">{p.productName}</span>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${Math.abs(diff) < 2 ? 'bg-green-100 text-green-700' : Math.abs(diff) < 5 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>
+                            {diff > 0 ? '+' : ''}{diff.toFixed(1)}%
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-4 text-xs text-gray-500">
+                          <span>План: <b>{Number(p.totalPlannedWeight).toFixed(1)}</b> {p.productUnit}</span>
+                          <span>Факт: <b className="text-gray-700">{Number(p.totalActualWeight).toFixed(1)}</b> {p.productUnit}</span>
+                          <span className="ml-auto font-semibold text-green-600">{(Number(p.revenue || 0) * 1.2).toFixed(0)} ₴</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                {/* Десктопний вид */}
+                <div className="hidden sm:block overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50">
                       <tr className="text-left text-xs text-gray-500">
@@ -517,18 +570,18 @@ export default function StatisticsPage() {
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                       {products?.map((p: any) => {
-                        const diff = Number(p.deviationPercent || 0);
+                        const diff = Number(p.weightAccuracy || 0);
                         return (
                           <tr key={p.productId} className="hover:bg-gray-50">
                             <td className="px-4 py-3 font-medium text-gray-800">{p.productName}</td>
-                            <td className="px-4 py-3 text-right text-gray-500">{Number(p.totalPlanned).toFixed(1)}</td>
-                            <td className="px-4 py-3 text-right text-gray-700 font-medium">{Number(p.totalActual).toFixed(1)}</td>
+                            <td className="px-4 py-3 text-right text-gray-500">{Number(p.totalPlannedWeight).toFixed(1)} {p.productUnit}</td>
+                            <td className="px-4 py-3 text-right text-gray-700 font-medium">{Number(p.totalActualWeight).toFixed(1)} {p.productUnit}</td>
                             <td className="px-4 py-3 text-right">
                               <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${Math.abs(diff) < 2 ? 'bg-green-100 text-green-700' : Math.abs(diff) < 5 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>
                                 {diff > 0 ? '+' : ''}{diff.toFixed(1)}%
                               </span>
                             </td>
-                            <td className="px-4 py-3 text-right font-semibold text-green-600">{Number(p.revenue || 0).toFixed(2)} ₴</td>
+                            <td className="px-4 py-3 text-right font-semibold text-green-600">{(Number(p.revenue || 0) * 1.2).toFixed(2)} ₴</td>
                           </tr>
                         );
                       })}
@@ -572,10 +625,10 @@ export default function StatisticsPage() {
                   <ResponsiveContainer width="100%" height={220}>
                     <BarChart data={workers}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                      <XAxis dataKey="userName" tick={{ fontSize: 10 }} />
+                      <XAxis dataKey="workerName" tick={{ fontSize: 10 }} />
                       <YAxis tick={{ fontSize: 10 }} />
                       <Tooltip />
-                      <Bar dataKey="ordersCompleted" name="Заявок" fill="#8b5cf6" radius={[4, 4, 0, 0]}>
+                      <Bar dataKey="ordersCount" name="Заявок" fill="#8b5cf6" radius={[4, 4, 0, 0]}>
                         {workers.map((_: any, i: number) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                       </Bar>
                     </BarChart>
@@ -588,18 +641,18 @@ export default function StatisticsPage() {
                     <div key={worker.userId} className="bg-white rounded-xl border border-gray-200 p-4">
                       <div className="flex items-center gap-3 mb-3">
                         <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0" style={{ background: COLORS[idx % COLORS.length] }}>
-                          {worker.userName?.charAt(0).toUpperCase()}
+                          {worker.workerName?.charAt(0).toUpperCase()}
                         </div>
                         <div>
-                          <div className="font-semibold text-gray-800 text-sm">{worker.userName}</div>
+                          <div className="font-semibold text-gray-800 text-sm">{worker.workerName}</div>
                           <div className="text-xs text-gray-400">Працівник</div>
                         </div>
                       </div>
                       <div className="space-y-2">
                         {[
-                          { label: 'Виконано заявок', value: worker.ordersCompleted, color: 'text-gray-800' },
-                          { label: 'Загальна вага', value: `${Number(worker.totalWeight || 0).toFixed(1)} кг`, color: 'text-blue-600' },
-                          { label: 'Середній час', value: `${Number(worker.avgCompletionHours || 0).toFixed(1)} год`, color: 'text-purple-600' },
+                          { label: 'Виконано заявок', value: worker.ordersCount, color: 'text-gray-800' },
+                          { label: 'Вага (кг)', value: `${Number(worker.totalWeightKg || 0).toFixed(1)} кг`, color: 'text-blue-600' },
+                          ...(Number(worker.totalPcs) > 0 ? [{ label: 'Штучні (шт)', value: `${Math.round(Number(worker.totalPcs))} шт`, color: 'text-indigo-600' }] : []),
                         ].map(r => (
                           <div key={r.label} className="flex justify-between text-sm">
                             <span className="text-gray-500">{r.label}</span>
@@ -612,7 +665,7 @@ export default function StatisticsPage() {
                           <div className="text-xs text-gray-400 mb-1">Відносна продуктивність</div>
                           <div className="w-full bg-gray-100 rounded-full h-2">
                             <div className="h-2 rounded-full transition-all" style={{
-                              width: `${(worker.ordersCompleted / Math.max(...workers.map((w: any) => w.ordersCompleted))) * 100}%`,
+                              width: `${(worker.ordersCount / Math.max(...workers.map((w: any) => w.ordersCount))) * 100}%`,
                               background: COLORS[idx % COLORS.length],
                             }} />
                           </div>

@@ -34,6 +34,13 @@ export interface Product {
   name: string;
   unit: string;
   isActive: boolean;
+  category?: 'FISH' | 'SUPPLY';
+  groupId?: string | null;
+  storageTemp?: string;
+  storageDays?: number;
+  storageHumidity?: string;
+  storageStandard?: string;
+  packagingType?: string;
 }
 
 export interface ClientPrice {

@@ -8,6 +8,7 @@ import { PrismaService } from '../../prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateStatusDto } from './dto/update-status.dto';
 import { UpdateItemsDto } from './dto/update-items.dto';
+import { UpdateOrderDto } from './dto/update-order.dto';
 import { GetOrdersDto } from './dto/get-orders.dto';
 import { OrderStatus, UserRole, Form } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
@@ -149,11 +150,34 @@ export class OrdersService {
       }
       finalNumberForm = dto.numberForm;
     } else {
+      // Беремо max тільки серед не-скасованих заявок
       const lastOrder = await this.prisma.order.findFirst({
-        where: { form: dto.form, deletedAt: null },
+        where: {
+          form: dto.form,
+          deletedAt: null,
+          status: { not: OrderStatus.CANCELLED },
+        },
         orderBy: { numberForm: 'desc' },
       });
       finalNumberForm = (lastOrder?.numberForm ?? 0) + 1;
+      // Якщо цей номер вже зайнятий скасованою заявкою — пропускаємо далі
+      let conflict = await this.prisma.order.findFirst({
+        where: {
+          form: dto.form,
+          numberForm: finalNumberForm,
+          deletedAt: null,
+        },
+      });
+      while (conflict) {
+        finalNumberForm++;
+        conflict = await this.prisma.order.findFirst({
+          where: {
+            form: dto.form,
+            numberForm: finalNumberForm,
+            deletedAt: null,
+          },
+        });
+      }
     }
 
     // Визначаємо статус — чернетка або звичайна
@@ -334,6 +358,44 @@ export class OrdersService {
         );
       }
 
+      // Допоміжна функція: повертає партії продукту + взаємозамінних продуктів групи
+      const getBatchesForItem = async (productId: string) => {
+        const product = await this.prisma.product.findUnique({
+          where: { id: productId },
+          include: {
+            group: {
+              include: {
+                products: {
+                  where: { isActive: true },
+                  select: { id: true, name: true },
+                },
+              },
+            },
+          },
+        });
+
+        // Збираємо productId-и для пошуку: сам продукт + інші з тієї ж групи
+        const productIds = [productId];
+        if (product?.group) {
+          for (const p of product.group.products) {
+            if (p.id !== productId) productIds.push(p.id);
+          }
+        }
+
+        const batches = await this.prisma.stockItem.findMany({
+          where: {
+            warehouseId: finishedWarehouse.id,
+            productId: { in: productIds },
+            form: order.form,
+            quantity: { gt: 0 },
+          },
+          include: { product: true },
+          orderBy: { arrivedAt: 'asc' },
+        });
+
+        return { product, batches, productIds };
+      };
+
       const shortages: {
         productName: string;
         needed: number;
@@ -344,28 +406,15 @@ export class OrdersService {
         const weight = Number(item.actualWeight ?? item.plannedWeight);
         if (weight <= 0) continue;
 
-        const batches = await this.prisma.stockItem.findMany({
-          where: {
-            warehouseId: finishedWarehouse.id,
-            productId: item.productId,
-            form: order.form,
-            quantity: { gt: 0 },
-          },
-          include: { product: true },
-          orderBy: { arrivedAt: 'asc' },
-        });
-
+        const { product, batches } = await getBatchesForItem(item.productId);
         const available = batches.reduce((s, b) => s + Number(b.quantity), 0);
 
         if (available < weight) {
-          let productName = batches[0]?.product?.name;
-          if (!productName) {
-            const product = await this.prisma.product.findUnique({
-              where: { id: item.productId },
-            });
-            productName = product?.name ?? item.productId;
-          }
-          shortages.push({ productName, needed: weight, available });
+          shortages.push({
+            productName: product?.name ?? item.productId,
+            needed: weight,
+            available,
+          });
         }
       }
 
@@ -384,17 +433,13 @@ export class OrdersService {
         const weight = Number(item.actualWeight ?? item.plannedWeight);
         if (weight <= 0) continue;
 
-        const batches = await this.prisma.stockItem.findMany({
-          where: {
-            warehouseId: finishedWarehouse.id,
-            productId: item.productId,
-            form: order.form,
-            quantity: { gt: 0 },
-          },
-          orderBy: { arrivedAt: 'asc' },
-        });
+        const { batches } = await getBatchesForItem(item.productId);
 
+        // Списуємо FIFO по батчах (може бути кілька продуктів однієї групи)
+        // Відстежуємо скільки списано з кожного продукту для StockMovement
+        const deductedByProduct: Map<string, number> = new Map();
         let remaining = weight;
+
         for (const batch of batches) {
           if (remaining <= 0) break;
           const deduct = Math.min(Number(batch.quantity), remaining);
@@ -402,20 +447,28 @@ export class OrdersService {
             where: { id: batch.id },
             data: { quantity: { decrement: deduct } },
           });
+          const prev = deductedByProduct.get(batch.productId) ?? 0;
+          deductedByProduct.set(batch.productId, prev + deduct);
           remaining -= deduct;
         }
 
-        await this.prisma.stockMovement.create({
-          data: {
-            type: 'OUT',
-            warehouseId: finishedWarehouse.id,
-            productId: item.productId,
-            quantity: weight,
-            form: order.form,
-            note: `Списано по заявці №${order.numberForm ?? order.number}`,
-            orderId: order.id,
-          },
-        });
+        // Створюємо StockMovement для кожного реально списаного продукту
+        for (const [deductedProductId, deductedQty] of deductedByProduct.entries()) {
+          const isSubstitute = deductedProductId !== item.productId;
+          await this.prisma.stockMovement.create({
+            data: {
+              type: 'OUT',
+              warehouseId: finishedWarehouse.id,
+              productId: deductedProductId,
+              quantity: deductedQty,
+              form: order.form,
+              note: isSubstitute
+                ? `Списано (замість ${item.productId}) по заявці №${order.numberForm ?? order.number}`
+                : `Списано по заявці №${order.numberForm ?? order.number}`,
+              orderId: order.id,
+            },
+          });
+        }
       }
     }
 
@@ -487,6 +540,113 @@ export class OrdersService {
     return this.findOne(id, userRole);
   }
 
+  async updateOrder(
+    id: string,
+    dto: UpdateOrderDto,
+    userId: string,
+    userRole: UserRole,
+  ) {
+    const order = await this.findOne(id, userRole);
+
+    // numberForm — перевірка дублікату (виключаємо поточну заявку)
+    if (dto.numberForm !== undefined && dto.numberForm !== order.numberForm) {
+      const duplicate = await this.prisma.order.findFirst({
+        where: {
+          form: order.form,
+          numberForm: dto.numberForm,
+          deletedAt: null,
+          id: { not: id },
+        },
+      });
+      if (duplicate) {
+        throw new BadRequestException(
+          JSON.stringify({
+            type: 'DUPLICATE_NUMBER',
+            message: `Накладна №${dto.numberForm} вже існує для ${order.form === 'FORM_1' ? 'Ф1' : 'Ф2'}`,
+            numberForm: dto.numberForm,
+            existingOrderId: duplicate.id,
+          }),
+        );
+      }
+    }
+
+    // Позиції — тільки якщо заявка не DONE
+    if (dto.items !== undefined) {
+      if (order.status === OrderStatus.DONE) {
+        throw new BadRequestException(
+          'Не можна змінити позиції у виконаній заявці. Поверніть заявку до "В роботі" спочатку.',
+        );
+      }
+
+      const clientId = dto.clientId ?? order.clientId;
+      const clientPrices = await this.prisma.clientPrice.findMany({
+        where: { clientId, form: order.form },
+      });
+      const priceMap = new Map(clientPrices.map((p) => [p.productId, p.price]));
+
+      await this.prisma.orderItem.deleteMany({ where: { orderId: id } });
+      await this.prisma.orderItem.createMany({
+        data: dto.items.map((item) => ({
+          orderId: id,
+          productId: item.productId,
+          plannedWeight: item.plannedWeight,
+          actualWeight: item.actualWeight ?? null,
+          pricePerKg: priceMap.get(item.productId) ?? null,
+          displayUnit: item.displayUnit ?? null,
+        })),
+      });
+    }
+
+    const updated = await this.prisma.order.update({
+      where: { id },
+      data: {
+        ...(dto.clientId && { clientId: dto.clientId }),
+        ...(dto.numberForm !== undefined && { numberForm: dto.numberForm }),
+        ...(dto.driverName !== undefined && {
+          driverName: dto.driverName || null,
+        }),
+        ...(dto.carNumber !== undefined && {
+          carNumber: dto.carNumber || null,
+        }),
+        ...(dto.deliveryAddress !== undefined && {
+          deliveryAddress: dto.deliveryAddress || null,
+        }),
+        ...(dto.deliveryPointId !== undefined && {
+          deliveryPointId: dto.deliveryPointId || null,
+        }),
+        ...(dto.note !== undefined && { note: dto.note || null }),
+        ...(dto.plannedDate !== undefined && {
+          plannedDate: dto.plannedDate ? new Date(dto.plannedDate) : null,
+        }),
+        ...(dto.invoiceDate !== undefined && {
+          invoiceDate: dto.invoiceDate ? new Date(dto.invoiceDate) : null,
+        }),
+      },
+      include: {
+        client: true,
+        deliveryPoint: true,
+        items: { include: { product: true } },
+        createdBy: { select: { id: true, name: true } },
+        assignedTo: { select: { id: true, name: true } },
+      },
+    });
+
+    await this.audit.log({
+      userId,
+      action: 'ORDER_UPDATED',
+      entityId: id,
+      oldValue: {
+        numberForm: order.numberForm,
+        clientId: order.clientId,
+        driverName: order.driverName,
+        carNumber: order.carNumber,
+      },
+      newValue: dto,
+    });
+
+    return updated;
+  }
+
   async remove(id: string, userRole: UserRole, userId: string) {
     const order = await this.findOne(id, userRole);
 
@@ -550,19 +710,26 @@ export class OrdersService {
         client: { select: { name: true } },
         deliveryPoint: { select: { name: true } },
         items: {
-          select: { actualWeight: true, plannedWeight: true, pricePerKg: true },
+          select: {
+            actualWeight: true,
+            plannedWeight: true,
+            pricePerKg: true,
+            product: { select: { unit: true } },
+          },
         },
       },
       orderBy: { completedAt: 'asc' },
     });
 
     const rows = orders.map((o) => {
-      const total = o.items.reduce(
-        (s, i) =>
+      const total = o.items.reduce((s, i) => {
+        // шт-товар без фактичної ваги — не рахуємо
+        if (i.product.unit === 'шт' && !i.actualWeight) return s;
+        return (
           s +
-          Number(i.actualWeight ?? i.plannedWeight) * Number(i.pricePerKg ?? 0),
-        0,
-      );
+          Number(i.actualWeight ?? i.plannedWeight) * Number(i.pricePerKg ?? 0)
+        );
+      }, 0);
       return {
         number: (o as any).numberForm ?? o.number,
         client: o.client.name,
