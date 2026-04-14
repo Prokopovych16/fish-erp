@@ -203,11 +203,12 @@ function ShortageModal({ data, onClose, onTransferred, userRole }: {
 }
 
 // ─── OrderDetailsModal ────────────────────────────────────────────────────────
-function OrderDetailsModal({ order, onClose, onStatusChange, onUpdateWeights, onEdit, userRole }: {
+function OrderDetailsModal({ order, onClose, onStatusChange, onUpdateWeights, onEdit, onDelete, userRole }: {
   order: Order; onClose: () => void;
   onStatusChange: (id: string, status: OrderStatus) => void;
   onUpdateWeights: (order: Order) => void;
   onEdit?: () => void;
+  onDelete?: (id: string) => void;
   userRole: string;
 }) {
   const queryClient = useQueryClient();
@@ -453,6 +454,10 @@ const handleProcessReturn = async (retId: string) => {
           {userRole === 'ADMIN' && ['PENDING', 'IN_PROGRESS'].includes(order.status) && (
             <button onClick={() => { onStatusChange(order.id, 'CANCELLED'); onClose(); }}
               className="w-full border border-red-200 text-red-500 text-sm px-4 py-2.5 rounded-xl hover:bg-red-50 font-semibold">Скасувати заявку</button>
+          )}
+          {userRole === 'ADMIN' && onDelete && (
+            <button onClick={() => onDelete(order.id)}
+              className="w-full border border-red-300 text-red-600 text-sm px-4 py-2.5 rounded-xl hover:bg-red-50 font-semibold">🗑 Видалити заявку</button>
           )}
           <button onClick={onClose} className="w-full border border-gray-200 text-gray-600 text-sm px-4 py-2.5 rounded-xl hover:bg-gray-50">Закрити</button>
         </div>
@@ -1339,12 +1344,13 @@ function OrderCardContent({ order, userRole }: { order: Order; userRole: string 
 }
 
 // ─── DraggableOrderCard ────────────────────────────────────────────────────────
-function DraggableOrderCard({ order, onStatusChange, onUpdateWeights, onOpenDetails, onEdit, userRole }: {
+function DraggableOrderCard({ order, onStatusChange, onUpdateWeights, onOpenDetails, onEdit, onDelete, userRole }: {
   order: Order;
   onStatusChange: (id: string, status: OrderStatus) => void;
   onUpdateWeights: (order: Order) => void;
   onOpenDetails: (order: Order) => void;
   onEdit: (order: Order) => void;
+  onDelete: (id: string) => void;
   userRole: string;
 }) {
   const isDraft = order.status === 'DRAFT';
@@ -1444,10 +1450,16 @@ function DraggableOrderCard({ order, onStatusChange, onUpdateWeights, onOpenDeta
             </div>
           )}
           {userRole === 'ADMIN' && (
-            <button onClick={() => onEdit(order)}
-              className="w-full border border-gray-200 text-gray-500 text-xs py-1.5 rounded-lg hover:bg-gray-50 hover:text-blue-600 hover:border-blue-200 transition-colors font-semibold">
-              ✏️ Редагувати заявку
-            </button>
+            <div className="flex gap-2 w-full">
+              <button onClick={() => onEdit(order)}
+                className="flex-1 border border-gray-200 text-gray-500 text-xs py-1.5 rounded-lg hover:bg-gray-50 hover:text-blue-600 hover:border-blue-200 transition-colors font-semibold">
+                ✏️ Редагувати
+              </button>
+              <button onClick={() => onDelete(order.id)}
+                className="border border-red-200 text-red-400 text-xs px-2.5 py-1.5 rounded-lg hover:bg-red-50 hover:text-red-600 transition-colors">
+                🗑
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -1456,13 +1468,14 @@ function DraggableOrderCard({ order, onStatusChange, onUpdateWeights, onOpenDeta
 }
 
 // ─── DroppableColumn ──────────────────────────────────────────────────────────
-function DroppableColumn({ id, title, icon, color, orders, onStatusChange, onUpdateWeights, onOpenDetails, onEdit, userRole }: {
+function DroppableColumn({ id, title, icon, color, orders, onStatusChange, onUpdateWeights, onOpenDetails, onEdit, onDelete, userRole }: {
   id: string; title: string; icon: string; color: string;
   orders: Order[];
   onStatusChange: (id: string, status: OrderStatus) => void;
   onUpdateWeights: (order: Order) => void;
   onOpenDetails: (order: Order) => void;
   onEdit: (order: Order) => void;
+  onDelete: (id: string) => void;
   userRole: string;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id });
@@ -1494,6 +1507,7 @@ function DroppableColumn({ id, title, icon, color, orders, onStatusChange, onUpd
             onUpdateWeights={onUpdateWeights}
             onOpenDetails={onOpenDetails}
             onEdit={onEdit}
+            onDelete={onDelete}
             userRole={userRole}
           />
         ))}
@@ -1551,6 +1565,12 @@ export default function OrdersPage() {
   const weightsMutation = useMutation({
     mutationFn: ({ id, items }: { id: string; items: any[] }) => api.patch(`/orders/${id}/items`, { items }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['orders'] }); setSelectedOrder(null); },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/orders/${id}`),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['orders'] }); setDetailsOrder(null); },
+    onError: (error: any) => { alert(error.response?.data?.message || 'Помилка видалення'); },
   });
 
   // Колонки
@@ -1645,6 +1665,7 @@ export default function OrdersPage() {
               onUpdateWeights={setSelectedOrder}
               onOpenDetails={setDetailsOrder}
               onEdit={setEditingOrder}
+              onDelete={(id) => { if (window.confirm('Видалити заявку? Це незворотно.')) deleteMutation.mutate(id); }}
               userRole={user?.role || ''}
             />
           ))}
@@ -1674,6 +1695,7 @@ export default function OrdersPage() {
           onStatusChange={(id, status) => { statusMutation.mutate({ id, status }); setDetailsOrder(null); }}
           onUpdateWeights={(order) => { setSelectedOrder(order); setDetailsOrder(null); }}
           onEdit={() => { setEditingOrder(detailsOrder); setDetailsOrder(null); }}
+          onDelete={(id) => { if (window.confirm('Видалити заявку? Це незворотно.')) deleteMutation.mutate(id); }}
           userRole={user?.role || ''} />
       )}
       {editingOrder && (

@@ -393,6 +393,8 @@ export class OrdersService {
           orderBy: { arrivedAt: 'asc' },
         });
 
+        console.log(`[STOCK_DEBUG] productId=${productId} group=${product?.group?.name ?? 'none'} productIds=${JSON.stringify(productIds)} orderForm=${order.form} warehouseId=${finishedWarehouse.id} batchesFound=${batches.length} batches=${JSON.stringify(batches.map(b => ({ id: b.id, productId: b.productId, productName: b.product.name, form: b.form, qty: b.quantity })))}`);
+
         return { product, batches, productIds };
       };
 
@@ -411,7 +413,7 @@ export class OrdersService {
 
         if (available < weight) {
           shortages.push({
-            productName: product?.name ?? item.productId,
+            productName: item.product?.name ?? product?.name ?? item.productId,
             needed: weight,
             available,
           });
@@ -649,12 +651,6 @@ export class OrdersService {
 
   async remove(id: string, userRole: UserRole, userId: string) {
     const order = await this.findOne(id, userRole);
-
-    if (order.status !== OrderStatus.PENDING) {
-      throw new BadRequestException(
-        'Можна видалити тільки заявку зі статусом "Очікує"',
-      );
-    }
 
     const deleted = await this.prisma.order.update({
       where: { id },

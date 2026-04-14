@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/api/axios';
 import { useAuthStore } from '@/store/auth';
 import { Order, Form } from '@/types';
@@ -127,8 +127,8 @@ function WeightsEditModal({ order, onClose, onSaved }: {
 }
 
 // ─── OrderDetailsModal ────────────────────────────────────────────────────────
-function OrderDetailsModal({ order, onClose, onEditWeights, onEdit, userRole }: {
-  order: Order; onClose: () => void; onEditWeights: (order: Order) => void; onEdit: (order: Order) => void; userRole: string;
+function OrderDetailsModal({ order, onClose, onEditWeights, onEdit, onDelete, userRole }: {
+  order: Order; onClose: () => void; onEditWeights: (order: Order) => void; onEdit: (order: Order) => void; onDelete?: (id: string) => void; userRole: string;
 }) {
   const queryClient = useQueryClient();
   const [printed, setPrinted] = useState(!!(order as any).printedAt);
@@ -271,6 +271,10 @@ function OrderDetailsModal({ order, onClose, onEditWeights, onEdit, userRole }: 
                 ⚖️ Редагувати фактичну вагу
               </button>
             </>
+          )}
+          {userRole === 'ADMIN' && onDelete && (
+            <button onClick={() => onDelete(order.id)}
+              className="w-full border border-red-300 text-red-600 text-sm px-4 py-2.5 rounded-xl hover:bg-red-50 font-semibold">🗑 Видалити заявку</button>
           )}
           <button onClick={onClose} className="w-full border border-gray-200 text-gray-600 text-sm px-4 py-2.5 rounded-xl hover:bg-gray-50">Закрити</button>
         </div>
@@ -646,6 +650,14 @@ export default function ArchivePage() {
     queryFn: () => api.get('/clients').then((r) => r.data),
   });
 
+  const queryClient = useQueryClient();
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/orders/${id}`),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['archive'] }); setSelectedOrder(null); },
+    onError: (error: { response?: { data?: { message?: string } } }) => { alert(error.response?.data?.message || 'Помилка видалення'); },
+  });
+
   const orders: Order[] = data?.data || [];
   const totalPages = data?.totalPages || 1;
   const total = data?.total || 0;
@@ -874,6 +886,7 @@ export default function ArchivePage() {
         <OrderDetailsModal order={selectedOrder} onClose={() => setSelectedOrder(null)}
           onEditWeights={(order) => setEditingOrder(order)}
           onEdit={(order) => { setEditingFullOrder(order); setSelectedOrder(null); }}
+          onDelete={(id) => { if (window.confirm('Видалити заявку? Це незворотно.')) deleteMutation.mutate(id); }}
           userRole={user?.role || ''} />
       )}
       {editingOrder && (
