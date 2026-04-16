@@ -30,7 +30,7 @@ function CopyPriceModal({ targetClient, form, allClients, onClose }: {
     setLoading(true);
     try {
       await api.patch(`/clients/${targetClient.id}/prices`, {
-        prices: sourcePrices.map((p: any) => ({ productId: p.productId, price: p.price, form })),
+        prices: sourcePrices.map((p: any) => ({ productId: p.productId, price: Number(p.price), form })),
       });
       queryClient.invalidateQueries({ queryKey: ['client-prices', targetClient.id] });
       onClose();
