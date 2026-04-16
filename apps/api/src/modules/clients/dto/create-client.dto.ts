@@ -15,4 +15,8 @@ export class CreateClientDto {
   @IsOptional()
   @IsString()
   contact?: string; // телефон або email контактної особи
+
+  @IsOptional()
+  @IsString()
+  bankAccount?: string; // р/р клієнта для накладних
 }

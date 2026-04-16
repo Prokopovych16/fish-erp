@@ -16,4 +16,8 @@ export class UpdateClientDto {
   @IsOptional()
   @IsString()
   contact?: string;
+
+  @IsOptional()
+  @IsString()
+  bankAccount?: string;
 }

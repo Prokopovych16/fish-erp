@@ -107,6 +107,7 @@ model Client {
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   contractNumber String?
+  bankAccount    String? // р/р для накладних
 
   deliveryPoints DeliveryPoint[]
   prices         ClientPrice[]

@@ -467,10 +467,70 @@ function SimpleListSection({
 }
 
 // ============================================================
+// Перевізник
+// ============================================================
+function CarrierSettings() {
+  const queryClient = useQueryClient();
+  const [saved, setSaved] = useState(false);
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(false);
+
+  const { data } = useQuery({
+    queryKey: ['settings'],
+    queryFn: () => api.get('/settings').then((r) => r.data),
+  });
+  useEffect(() => { if (data) setValues(data); }, [data]);
+
+  const fields = [
+    { key: 'carrierName', label: 'Назва перевізника', placeholder: 'ФОП Іваненко Іван Іванович', icon: '🚚' },
+    { key: 'carrierEdrpou', label: 'ЄДРПОУ / ДРФО перевізника', placeholder: '12345678', icon: '📋' },
+  ];
+
+  const handleSave = async () => {
+    setLoading(true);
+    try {
+      await api.put('/settings', values);
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } finally { setLoading(false); }
+  };
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="p-4 border-b">
+        <h2 className="font-semibold text-gray-800">🚚 Автомобільний перевізник</h2>
+        <p className="text-xs text-gray-400 mt-0.5">Підставляється в ТТН як "Автомобільний перевізник". Водій вказується окремо в заявці.</p>
+      </div>
+      <div className="p-4 space-y-3">
+        {fields.map((f) => (
+          <div key={f.key} className="flex items-center gap-3">
+            <span className="text-lg shrink-0 w-7 text-center">{f.icon}</span>
+            <div className="flex-1">
+              <label className="block text-xs font-medium text-gray-500 mb-1">{f.label}</label>
+              <input value={values[f.key] || ''}
+                onChange={(e) => setValues(prev => ({ ...prev, [f.key]: e.target.value }))}
+                placeholder={f.placeholder}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="px-4 pb-4">
+        <button onClick={handleSave} disabled={loading}
+          className={`w-full text-sm px-4 py-2 rounded-lg font-semibold transition-colors ${saved ? 'bg-green-500 text-white' : 'bg-blue-600 text-white hover:bg-blue-700'} disabled:opacity-50`}>
+          {saved ? '✓ Збережено' : loading ? 'Збереження...' : 'Зберегти'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
 // Головна сторінка налаштувань
 // ============================================================
 export default function SettingsPage() {
-  const [activeTab, setActiveTab] = useState<'company' | 'users' | 'suppliers' | 'drivers' | 'cars'>('company');
+  const [activeTab, setActiveTab] = useState<'company' | 'users' | 'suppliers' | 'drivers' | 'cars' | 'carrier'>('company');
 
   const tabs = [
     { value: 'company',   label: '🏢 Реквізити' },
@@ -478,6 +538,7 @@ export default function SettingsPage() {
     { value: 'suppliers', label: '🏭 Постачальники' },
     { value: 'drivers',   label: '🚗 Водії' },
     { value: 'cars',      label: '🚛 Авто' },
+    { value: 'carrier',   label: '🚚 Перевізник' },
   ];
 
   return (
@@ -610,6 +671,8 @@ export default function SettingsPage() {
           )}
         />
       )}
+
+      {activeTab === 'carrier' && <CarrierSettings />}
     </div>
   );
 }

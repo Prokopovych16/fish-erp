@@ -281,6 +281,7 @@ function ClientModal({ client, onClose }: { client?: Client; onClose: () => void
   const [address, setAddress] = useState(client?.address || '');
   const [contact, setContact] = useState(client?.contact || '');
   const [contractNumber, setContractNumber] = useState((client as any)?.contractNumber || '');
+  const [bankAccount, setBankAccount] = useState((client as { bankAccount?: string })?.bankAccount || '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -289,9 +290,9 @@ function ClientModal({ client, onClose }: { client?: Client; onClose: () => void
     setLoading(true); setError('');
     try {
       if (client) {
-        await api.patch(`/clients/${client.id}`, { name, edrpou, address, contact, contractNumber });
+        await api.patch(`/clients/${client.id}`, { name, edrpou, address, contact, contractNumber, bankAccount });
       } else {
-        await api.post('/clients', { name, edrpou, address, contact, contractNumber });
+        await api.post('/clients', { name, edrpou, address, contact, contractNumber, bankAccount });
       }
       queryClient.invalidateQueries({ queryKey: ['clients'] });
       onClose();
@@ -313,6 +314,7 @@ function ClientModal({ client, onClose }: { client?: Client; onClose: () => void
             { label: 'Адреса', value: address, onChange: setAddress, placeholder: 'м. Київ, вул. Хрещатик 1' },
             { label: 'Контакт', value: contact, onChange: setContact, placeholder: '+380 99 999 9999' },
             { label: 'Номер договору / замовлення', value: contractNumber, onChange: setContractNumber, placeholder: 'Без замовлення' },
+            { label: 'Розрахунковий рахунок (р/р)', value: bankAccount, onChange: setBankAccount, placeholder: 'UA12 3456 7890 0000 0000 0000 0000' },
           ].map((f) => (
             <div key={f.label}>
               <label className="block text-xs font-medium text-gray-600 mb-1">{f.label}</label>

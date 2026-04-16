@@ -54,11 +54,14 @@ export class DocumentsService {
       ) => {
         // шт-товар без фактичної ваги — ціну не рахуємо
         if (item.product?.unit === 'шт' && !item.actualWeight) return sum;
-        return (
-          sum +
-          Number(item.actualWeight ?? item.plannedWeight) *
-            Number(item.pricePerKg ?? 0)
-        );
+        // Округлюємо кожен рядок до 2 знаків (як 1С) перед додаванням
+        const rowTotal =
+          Math.round(
+            Number(item.actualWeight ?? item.plannedWeight) *
+              Number(item.pricePerKg ?? 0) *
+              100,
+          ) / 100;
+        return sum + rowTotal;
       },
       0,
     );
@@ -220,7 +223,7 @@ export class DocumentsService {
       .map((item, index) => {
         const weight = Number(item.actualWeight ?? item.plannedWeight);
         const price = Number(item.pricePerKg ?? 0);
-        const sumWithoutVat = weight * price;
+        const sumWithoutVat = Math.round(weight * price * 100) / 100;
         return `
         <tr>
           <td>${index + 1}</td>
@@ -276,7 +279,7 @@ export class DocumentsService {
           </div>
           ${company.edrpou ? `<div class="header-sub">ЄДРПОУ ${company.edrpou}${company.ipn ? ', ІПН ' + company.ipn : ''}${company.phone ? ', тел. ' + company.phone : ''}</div>` : ''}
           ${company.address ? `<div class="header-sub">Адреса: ${company.address}</div>` : ''}
-          ${company.iban ? `<div class="header-sub">р/р ${company.iban}</div>` : ''}
+          ${(order.client as { bankAccount?: string | null }).bankAccount ? `<div class="header-sub">р/р ${(order.client as { bankAccount?: string | null }).bankAccount}</div>` : company.iban ? `<div class="header-sub">р/р ${company.iban}</div>` : ''}
 
           <div class="divider"></div>
 
@@ -293,7 +296,7 @@ export class DocumentsService {
           <div class="header-row"><span class="header-label">Умова продажу:</span><span class="header-value">Безготівковий розрахунок</span></div>
         </div>
 
-        <h2>Видаткова накладна № РН-00${displayNumber}</h2>
+        <h2>Видаткова накладна № ${displayNumber}</h2>
         <p class="subtitle">від ${this.formatDateLong(this.getInvoiceDate(order))}</p>
 
         <table>
@@ -481,14 +484,13 @@ export class DocumentsService {
       .map((item, idx) => {
         const weight = Number(item.actualWeight ?? item.plannedWeight);
         const price = Number(item.pricePerKg ?? 0);
-        const sumWithVat = weight * price * 1.2;
+        const sumWithVat = (Math.round(weight * price * 100) / 100) * 1.2;
         const p = item.product as {
           storageTemp?: string;
           packagingType?: string;
         };
         const vidUpak =
           p.packagingType || (item.product.unit === 'шт' ? 'баночка' : 'в/у');
-        const storageTemp = p.storageTemp || '-18';
         const masaBrutto =
           item.product.unit === 'кг' ? (weight / 1000).toFixed(3) : '—';
         return `
@@ -497,13 +499,12 @@ export class DocumentsService {
           <td style="text-align:left; padding-left:3px">${item.product.name}</td>
           <td></td>
           <td>авто</td>
-          <td>${storageTemp}</td>
           <td>${item.product.unit}</td>
           <td>1</td>
           <td>${price > 0 ? price.toFixed(2) : '—'}</td>
           <td>${price > 0 ? sumWithVat.toFixed(2) : '—'}</td>
           <td>${vidUpak}</td>
-          <td style="font-size:8px">накладна № РН-00${displayNumber} від ${this.formatDate(invoiceDate)}</td>
+          <td style="font-size:8px">накладна № ${displayNumber} від ${this.formatDate(invoiceDate)}</td>
           <td>${masaBrutto}</td>
         </tr>
       `;
@@ -528,8 +529,8 @@ export class DocumentsService {
           .val { font-weight: bold; }
           /* Goods table */
           .gt { width: 100%; border-collapse: collapse; margin-top: 2px; }
-          .gt th { background: #f0f0f0; padding: 2px 1px; border: 1px solid #666; text-align: center; font-size: 7.5px; font-weight: bold; line-height: 1.2; }
-          .gt td { padding: 2px 1px; border: 1px solid #666; text-align: center; font-size: 9px; }
+          .gt th { background: #f0f0f0; padding: 1px 1px; border: 1px solid #666; text-align: center; font-size: 7px; font-weight: bold; line-height: 1.1; }
+          .gt td { padding: 1px 1px; border: 1px solid #666; text-align: center; font-size: 8px; line-height: 1.2; }
           .total-row td { font-weight: bold; background: #f5f5f5; }
           /* Section title */
           .sect { font-weight: bold; font-size: 10px; text-align: center; margin: 3px 0 2px; text-transform: uppercase; }
@@ -546,12 +547,12 @@ export class DocumentsService {
       </head>
       <body>
         <div class="top-right">
-          Додаток 7 до Правил перевезення вантажів автомобільним транспортом в Україні&nbsp;&nbsp;&nbsp;&nbsp;Форма № 1-ТН<br>
-          (пункт 11.1 глави 11)
+          Додаток 7 до Правил перевезення вантажів автомобільним транспортом в Україні&nbsp;&nbsp;&nbsp;&nbsp;(пункт 11.1 глави 11)<br><br>
+          Форма № 1-ТН
         </div>
 
         <h2>ТОВАРНО-ТРАНСПОРТНА НАКЛАДНА</h2>
-        <p class="doc-num">№ &nbsp;<b>РН-00${displayNumber}</b>&nbsp;&nbsp;&nbsp; ${this.formatDateLong(invoiceDate)}</p>
+        <p class="doc-num">№ &nbsp;<b>${displayNumber}</b>&nbsp;&nbsp;&nbsp; ${this.formatDateLong(invoiceDate)}</p>
 
         <!-- Рядок 1: місце складання / вид перевезень -->
         <table class="it">
@@ -586,13 +587,13 @@ export class DocumentsService {
           <tr>
             <td style="width:50%">
               <span class="sub">Замовник (платник) (повне найменування, форма власності та організаційно-правова форма юридичної особи, для нерезидентів — назва держави де зареєстровано суб'єкта господарювання):</span>
-              <div class="val">${company.companyName ?? ''}</div>
-              <span class="sub">ЄДРПОУ/ДРФО: ${company.edrpou ?? ''}&nbsp;&nbsp; ІПН: ${company.ipn ?? ''}</span>
+              <div class="val">${order.client.name}</div>
+              <span class="sub">ЄДРПОУ/ДРФО: ${order.client.edrpou ?? ''}</span>
             </td>
             <td>
               <span class="sub">Автомобільний перевізник (повне найменування, форма власності та організаційно-правова форма юридичної особи, прізвище, ім'я, по батькові фізичної особи — суб'єкта підприємницької діяльності):</span>
-              <div class="val">${order.driverName ?? ''}</div>
-              <span class="sub">посвідчення водія № ${order.carNumber ?? ''}</span>
+              <div class="val">${company.carrierName ?? ''}</div>
+              <span class="sub">ЄДРПОУ/ДРФО: ${company.carrierEdrpou ?? ''}</span>
             </td>
           </tr>
         </table>
@@ -698,23 +699,22 @@ export class DocumentsService {
           <thead>
             <tr>
               <th style="width:18px">№ з/п</th>
-              <th>Найменування вантажу (тушкі, напівтушкі, четвертини, відруби, шматки м'яса та/або назва готового виробу; найменування тварини, її ідентифікаційний номер, клас небезпечних речовин)</th>
+              <th>Найменування вантажу</th>
               <th style="width:24px">Ідент. номер тварини</th>
               <th style="width:30px">Вид транспорт.</th>
-              <th style="width:28px">Темпер. режим</th>
               <th style="width:24px">Одиниця виміру</th>
               <th style="width:26px">Кіл-ть місць</th>
-              <th style="width:42px">Ціна без ПДВ, грн за одиницю, грн</th>
-              <th style="width:48px">Загальна сума з ПДВ, грн</th>
+              <th style="width:42px">Ціна без ПДВ, грн</th>
+              <th style="width:48px">Сума з ПДВ, грн</th>
               <th style="width:34px">Вид пакування</th>
-              <th style="width:52px">Документи з вантажем (накладна №)</th>
+              <th style="width:52px">Накладна №</th>
               <th style="width:34px">Маса брутто, т</th>
             </tr>
           </thead>
           <tbody>
             ${itemsRows}
             <tr class="total-row">
-              <td colspan="6" style="text-align:right; padding-right:4px;">Всього:</td>
+              <td colspan="5" style="text-align:right; padding-right:4px;">Всього:</td>
               <td>${order.items.length}</td>
               <td>—</td>
               <td>${totalWithVat.toFixed(2)}</td>
@@ -858,13 +858,13 @@ export class DocumentsService {
       <body>
         <div class="doc-header">
           <div class="doc-header-left">
-            <div class="doc-title">ДЕКЛАРАЦІЯ ВИРОБНИКА № РН-00${displayNumber}</div>
+            <div class="doc-title">ДЕКЛАРАЦІЯ ВИРОБНИКА № ${displayNumber}</div>
             <div class="doc-subtitle">на готову рибну продукцію</div>
             <div class="fr"><span class="fl">Найменування підприємства - виробника: </span><span class="fv">${company.address ?? ''}</span></div>
             <div class="fr"><span class="fl">Відправник ${company.companyName ?? ''}</span><span class="fv">№ тел. ${company.phone ?? ''}</span></div>
             <div class="fr"><span class="fl">Товароотримувач</span><span class="fv">${order.client.name}${deliveryPoint ? ' — ' + (deliveryPoint as any).name : ''}</span></div>
             <div class="fr"><span class="fl">Дата відвантаження</span><span class="fv">${this.formatDate(invoiceDate)}. Вид і номер транспортного засобу: ${order.carNumber ?? ''}</span></div>
-            <div class="fr"><span class="fl">Накладна(специфікація) №</span><span class="fv">РН-00${displayNumber} від ${this.formatDate(invoiceDate)}. Для реалізації</span></div>
+            <div class="fr"><span class="fl">Накладна(специфікація) №</span><span class="fv">${displayNumber} від ${this.formatDate(invoiceDate)}. Для реалізації</span></div>
           </div>
           <div class="haccp-wrap">
             ${frCode ? `<div class="fr-code">${frCode}</div>` : ''}
@@ -903,19 +903,17 @@ export class DocumentsService {
           1. Номер партії співпадає з датою виробництва.<br>
           2. Виробник гарантує якість виробів при дотриманні температурних режимів під час транспортування та зберігання.<br>
           3. Строк придатності риби вказується на пакувальній одиниці без порушення пакування.<br>
-          4. Експлуатаційний дозвіл № 02-23-27 FR для потужностей (об'єктів) з виробництва, переробки або реалізації харчових продуктів від 04.05.2008 р.
+          4. Експлуатаційний дозвіл № 02-23-27 FR для потужностей (об'єктів) з виробництва, переробки або реалізації харчових продуктів від 04.05.2008 р.<br>
+          5. Експертний висновок №008799 п/25 від 31.12.2025р. виданий Хмільницькою МДЛДСУ з питань безпечності харчових продуктів та захисту споживачів.<br>
+          6. Продукція не містить ГМО.<br>
+          7. Експертний висновок № 003212 п/20 від 01.07.2020р. виданий Вінницькою регіональною державною лабораторією ДСУ з питань безпечності харчових продуктів та захисту споживачів.<br>
         </div>
 
         <div class="sigs">
           <div class="sig">
-            <div>${company.companyName ?? ''}&nbsp;&nbsp; <b>${company.director ?? ''}</b></div>
+            <div><b>${company.director ?? ''}</b></div>
             <div class="sig-line"></div>
             <div class="sig-hint">підпис / печатка</div>
-          </div>
-          <div class="sig" style="text-align:right">
-            <div>Прийняв (відповідальна особа вантажоодержувача):</div>
-            <div class="sig-line"></div>
-            <div class="sig-hint">підпис, П.І.Б., печатка</div>
           </div>
         </div>
       </body>
