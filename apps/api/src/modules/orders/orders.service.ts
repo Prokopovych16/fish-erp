@@ -348,15 +348,41 @@ export class OrdersService {
         );
       }
 
-      const finishedWarehouse = await this.prisma.warehouse.findFirst({
-        where: { type: 'FINISHED_GOODS', isActive: true },
+      // Якщо склад відключений — просто завершуємо без списання
+      const bypassSetting = await this.prisma.systemSettings.findUnique({
+        where: { key: 'bypassStock' },
+      });
+      if (bypassSetting?.value === 'true') {
+        const updated = await this.prisma.order.update({
+          where: { id },
+          data: { status: OrderStatus.DONE, completedAt: new Date() },
+          include: {
+            client: true,
+            deliveryPoint: true,
+            items: { include: { product: true } },
+          },
+        });
+        await this.audit.log({
+          userId,
+          action: 'ORDER_STATUS_CHANGED',
+          entityId: id,
+          oldValue: { status: order.status },
+          newValue: { status: OrderStatus.DONE, bypassStock: true },
+        });
+        return updated;
+      }
+
+      const shipWarehouses = await this.prisma.warehouse.findMany({
+        where: { type: { in: ['FINISHED_GOODS', 'FRIDGE'] }, isActive: true },
       });
 
-      if (!finishedWarehouse) {
+      if (shipWarehouses.length === 0) {
         throw new BadRequestException(
           'Не знайдено склад готової продукції. Створіть склад типу FINISHED_GOODS.',
         );
       }
+
+      const shipWarehouseIds = shipWarehouses.map((w) => w.id);
 
       // Допоміжна функція: повертає партії продукту + взаємозамінних продуктів групи
       const getBatchesForItem = async (productId: string) => {
@@ -366,7 +392,6 @@ export class OrdersService {
             group: {
               include: {
                 products: {
-                  where: { isActive: true },
                   select: { id: true, name: true },
                 },
               },
@@ -384,16 +409,13 @@ export class OrdersService {
 
         const batches = await this.prisma.stockItem.findMany({
           where: {
-            warehouseId: finishedWarehouse.id,
+            warehouseId: { in: shipWarehouseIds },
             productId: { in: productIds },
-            form: order.form,
             quantity: { gt: 0 },
           },
           include: { product: true },
           orderBy: { arrivedAt: 'asc' },
         });
-
-        console.log(`[STOCK_DEBUG] productId=${productId} group=${product?.group?.name ?? 'none'} productIds=${JSON.stringify(productIds)} orderForm=${order.form} warehouseId=${finishedWarehouse.id} batchesFound=${batches.length} batches=${JSON.stringify(batches.map(b => ({ id: b.id, productId: b.productId, productName: b.product.name, form: b.form, qty: b.quantity })))}`);
 
         return { product, batches, productIds };
       };
@@ -426,7 +448,7 @@ export class OrdersService {
             type: 'STOCK_SHORTAGE',
             message: 'Недостатньо товару на складі готової продукції',
             shortages,
-            warehouseId: finishedWarehouse.id,
+            warehouseIds: shipWarehouseIds,
           }),
         );
       }
@@ -437,9 +459,9 @@ export class OrdersService {
 
         const { batches } = await getBatchesForItem(item.productId);
 
-        // Списуємо FIFO по батчах (може бути кілька продуктів однієї групи)
-        // Відстежуємо скільки списано з кожного продукту для StockMovement
-        const deductedByProduct: Map<string, number> = new Map();
+        // Списуємо FIFO по батчах (може бути кілька продуктів/складів групи)
+        // Відстежуємо скільки списано з кожного (продукт + склад) для StockMovement
+        const deductedByKey: Map<string, { productId: string; warehouseId: string; qty: number }> = new Map();
         let remaining = weight;
 
         for (const batch of batches) {
@@ -449,18 +471,19 @@ export class OrdersService {
             where: { id: batch.id },
             data: { quantity: { decrement: deduct } },
           });
-          const prev = deductedByProduct.get(batch.productId) ?? 0;
-          deductedByProduct.set(batch.productId, prev + deduct);
+          const key = `${batch.productId}:${batch.warehouseId}`;
+          const prev = deductedByKey.get(key);
+          deductedByKey.set(key, { productId: batch.productId, warehouseId: batch.warehouseId, qty: (prev?.qty ?? 0) + deduct });
           remaining -= deduct;
         }
 
-        // Створюємо StockMovement для кожного реально списаного продукту
-        for (const [deductedProductId, deductedQty] of deductedByProduct.entries()) {
+        // Створюємо StockMovement для кожного реально списаного продукту/складу
+        for (const { productId: deductedProductId, warehouseId: deductedWarehouseId, qty: deductedQty } of deductedByKey.values()) {
           const isSubstitute = deductedProductId !== item.productId;
           await this.prisma.stockMovement.create({
             data: {
               type: 'OUT',
-              warehouseId: finishedWarehouse.id,
+              warehouseId: deductedWarehouseId,
               productId: deductedProductId,
               quantity: deductedQty,
               form: order.form,

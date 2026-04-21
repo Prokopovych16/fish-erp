@@ -515,7 +515,7 @@ function WeightsModal({ order, onClose, onSave, userRole }: {
           {order.items.map((item) => {
             const displayUnit = (item as any).displayUnit || 'кг';
             const unit = displayUnit; // показуємо обрану одиницю
-            const unitMode = displayUnit === 'шт' || displayUnit === 'уп';
+            const unitMode = item.product.unit === 'шт'; // режим штук лише якщо продукт справді штучний
             const planned = Number(item.plannedWeight);
             const actual = Number(weights[item.id]) || 0;
             const diff = actual - planned;
@@ -546,8 +546,7 @@ function WeightsModal({ order, onClose, onSave, userRole }: {
                   <div className="flex-1">
                     <div className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide mb-1">Планова</div>
                     <div className="bg-white/80 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-600 text-right font-medium">
-                      {planned.toFixed(3)} {displayUnit !== 'кг' ? `кг (${displayUnit})` : 'кг'}
-
+                      {planned.toFixed(3)} {unit}
                     </div>
                   </div>
                   <div className="text-gray-300 text-lg shrink-0 mt-4">→</div>
@@ -558,9 +557,7 @@ function WeightsModal({ order, onClose, onSave, userRole }: {
                       onChange={(e) => setWeights((prev) => ({ ...prev, [item.id]: e.target.value }))}
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
                   </div>
-                 <div className="text-xs text-gray-400 shrink-0 mt-5">
-                    {unitMode ? `${unit} (кг)` : 'кг'}
-                  </div>
+                  <div className="text-xs text-gray-400 shrink-0 mt-5">{item.product.unit}</div>
                 </div>
                 {!unitMode && hasValue && actual > 0 && (
                   <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-white/60">
@@ -898,32 +895,31 @@ function CreateOrderModal({ onClose, onCreated }: { onClose: () => void; onCreat
                 const lineSum = canCalcPrice && price && item.plannedWeight ? price * Number(item.plannedWeight) : null;
                 return (
                   <div key={idx} className={`rounded-xl border p-3 ${item.productId && item.plannedWeight ? 'border-green-200 bg-green-50/40' : 'border-gray-200 bg-gray-50/50'}`}>
-                    <div className="flex gap-2 items-center">
-                      <div className="w-5 h-5 rounded-full bg-gray-200 text-gray-600 flex items-center justify-center text-[10px] font-bold shrink-0">{idx + 1}</div>
-                      <select value={item.productId}
-                        onChange={(e) => {
-                        const selectedProduct = (products as any[])?.find((pr: any) => pr.id === e.target.value);
-                        setItems((prev) => prev.map((p, i) => i === idx ? {
-                          ...p,
-                          productId: e.target.value,
-                          displayUnit: selectedProduct?.unit ?? 'кг', // ← береться з продукту
-                        } : p));
-                      }}
-                        className="flex-1 border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
-                        <option value="">Оберіть продукт...</option>
-                        {products?.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                      </select>
-                      <div className="flex items-center gap-1 shrink-0">
+                    <div className="space-y-2">
+                      <div className="flex gap-2 items-center">
+                        <div className="w-5 h-5 rounded-full bg-gray-200 text-gray-600 flex items-center justify-center text-[10px] font-bold shrink-0">{idx + 1}</div>
+                        <select value={item.productId}
+                          onChange={(e) => {
+                          const selectedProduct = (products as any[])?.find((pr: any) => pr.id === e.target.value);
+                          setItems((prev) => prev.map((p, i) => i === idx ? {
+                            ...p,
+                            productId: e.target.value,
+                            displayUnit: selectedProduct?.unit ?? 'кг',
+                          } : p));
+                        }}
+                          className="flex-1 min-w-0 border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+                          <option value="">Оберіть продукт...</option>
+                          {products?.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        </select>
+                      </div>
+                      <div className="flex items-center gap-1 pl-7">
                         <input
-                          type="number"
-                          step="0.001"
-                          min="0"
+                          type="number" step="0.001" min="0"
                           value={item.plannedWeight}
                           onChange={(e) => setItems((prev) => prev.map((p, i) => i === idx ? { ...p, plannedWeight: e.target.value } : p))}
                           placeholder="0.000"
-                          className="w-20 border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                          className="flex-1 sm:flex-none sm:w-20 border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                         />
-                        {/* Вибір одиниці відображення */}
                         <select
                           value={item.displayUnit}
                           onChange={(e) => setItems((prev) => prev.map((p, i) => i === idx ? { ...p, displayUnit: e.target.value } : p))}
@@ -933,8 +929,8 @@ function CreateOrderModal({ onClose, onCreated }: { onClose: () => void; onCreat
                           <option value="шт">шт</option>
                           <option value="уп">уп</option>
                         </select>
+                        {items.length > 1 && <button onClick={() => setItems((prev) => prev.filter((_, i) => i !== idx))} className="text-red-400 hover:text-red-600 text-xl leading-none shrink-0 px-1">×</button>}
                       </div>
-                      {items.length > 1 && <button onClick={() => setItems((prev) => prev.filter((_, i) => i !== idx))} className="text-red-400 hover:text-red-600 text-xl leading-none shrink-0">×</button>}
                     </div>
                     {item.productId && (
                       <div className="mt-1.5 pl-7 text-xs flex items-center gap-2">
@@ -957,7 +953,7 @@ function CreateOrderModal({ onClose, onCreated }: { onClose: () => void; onCreat
           </div>
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
   <div className="text-xs font-bold text-amber-700">✏️ Номер та дати накладної</div>
-  <div className="grid grid-cols-2 gap-3">
+  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
     <div>
       <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
         Номер накладної
@@ -1195,7 +1191,7 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
           </div>
 
           {/* Дати */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Дата накладної</label>
               <input type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)}
@@ -1239,30 +1235,34 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
                   const lineSum = canCalcPrice && price && item.plannedWeight ? price * Number(item.plannedWeight) : null;
                   return (
                     <div key={idx} className={`rounded-xl border p-3 ${item.productId && item.plannedWeight ? 'border-green-200 bg-green-50/40' : 'border-gray-200 bg-gray-50/50'}`}>
-                      <div className="flex gap-2 items-center">
-                        <div className="w-5 h-5 rounded-full bg-gray-200 text-gray-600 flex items-center justify-center text-[10px] font-bold shrink-0">{idx + 1}</div>
-                        <select value={item.productId}
-                          onChange={(e) => {
-                            const prod = (products as any[])?.find((p: any) => p.id === e.target.value);
-                            setItems((prev) => prev.map((p, i) => i === idx ? { ...p, productId: e.target.value, displayUnit: prod?.unit ?? 'кг' } : p));
-                          }}
-                          className="flex-1 border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
-                          <option value="">Оберіть продукт...</option>
-                          {(products as any[])?.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                        </select>
-                        <input type="number" step="0.001" min="0" value={item.plannedWeight}
-                          onChange={(e) => setItems((prev) => prev.map((p, i) => i === idx ? { ...p, plannedWeight: e.target.value } : p))}
-                          placeholder="0.000"
-                          className="w-20 border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
-                        <select value={item.displayUnit}
-                          onChange={(e) => setItems((prev) => prev.map((p, i) => i === idx ? { ...p, displayUnit: e.target.value } : p))}
-                          className="border border-gray-300 rounded-lg px-1.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-600 w-14">
-                          <option value="кг">кг</option>
-                          <option value="шт">шт</option>
-                          <option value="уп">уп</option>
-                        </select>
-                        <button onClick={() => setItems((prev) => prev.filter((_, i) => i !== idx))}
-                          className="text-red-400 hover:text-red-600 text-lg leading-none shrink-0 px-1">×</button>
+                      <div className="space-y-2">
+                        <div className="flex gap-2 items-center">
+                          <div className="w-5 h-5 rounded-full bg-gray-200 text-gray-600 flex items-center justify-center text-[10px] font-bold shrink-0">{idx + 1}</div>
+                          <select value={item.productId}
+                            onChange={(e) => {
+                              const prod = (products as any[])?.find((p: any) => p.id === e.target.value);
+                              setItems((prev) => prev.map((p, i) => i === idx ? { ...p, productId: e.target.value, displayUnit: prod?.unit ?? 'кг' } : p));
+                            }}
+                            className="flex-1 min-w-0 border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+                            <option value="">Оберіть продукт...</option>
+                            {(products as any[])?.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                          </select>
+                        </div>
+                        <div className="flex items-center gap-1 pl-7">
+                          <input type="number" step="0.001" min="0" value={item.plannedWeight}
+                            onChange={(e) => setItems((prev) => prev.map((p, i) => i === idx ? { ...p, plannedWeight: e.target.value } : p))}
+                            placeholder="0.000"
+                            className="flex-1 sm:flex-none sm:w-20 border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
+                          <select value={item.displayUnit}
+                            onChange={(e) => setItems((prev) => prev.map((p, i) => i === idx ? { ...p, displayUnit: e.target.value } : p))}
+                            className="border border-gray-300 rounded-lg px-1.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-600 w-14">
+                            <option value="кг">кг</option>
+                            <option value="шт">шт</option>
+                            <option value="уп">уп</option>
+                          </select>
+                          <button onClick={() => setItems((prev) => prev.filter((_, i) => i !== idx))}
+                            className="text-red-400 hover:text-red-600 text-lg leading-none shrink-0 px-1">×</button>
+                        </div>
                       </div>
                       {item.productId && (
                         <div className="mt-1.5 pl-7 text-xs flex items-center gap-2 text-gray-500">

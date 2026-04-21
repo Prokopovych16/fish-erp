@@ -1096,4 +1096,92 @@ export class DocumentsService {
 
     return this.generatePdf(html);
   }
+
+  async generatePriceList(clientId: string, form: string): Promise<Buffer> {
+    const client = await this.prisma.client.findUnique({
+      where: { id: clientId },
+      include: {
+        prices: {
+          where: {
+            form: form as 'FORM_1' | 'FORM_2',
+            ...({ price: { gt: 0 } } as object),
+          },
+          include: { product: true },
+          orderBy: { product: { name: 'asc' } },
+        },
+      },
+    });
+    if (!client) throw new NotFoundException('Клієнта не знайдено');
+
+    const company = await this.settings.getAll();
+    const date = new Date().toLocaleDateString('uk-UA', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    });
+    const formLabel =
+      form === 'FORM_1' ? 'Форма 1 (безготівковий)' : 'Форма 2 (готівка)';
+
+    const rows = client.prices
+      .filter((p) => Number(p.price) > 0)
+      .map((p, i) => {
+        const priceWithVat = (
+          Math.round(Number(p.price) * 1.2 * 100) / 100
+        ).toFixed(2);
+        return `
+        <tr>
+          <td class="n">${i + 1}</td>
+          <td class="name">${p.product.name}</td>
+          <td class="unit">${p.product.unit}</td>
+          <td class="price">${Number(p.price).toFixed(2)}</td>
+          <td class="price">${priceWithVat}</td>
+        </tr>`;
+      })
+      .join('');
+
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body { font-family: Arial, sans-serif; font-size: 11px; color: #000; padding: 20px; }
+      .header { text-align: center; margin-bottom: 16px; }
+      .header h1 { font-size: 15px; font-weight: bold; margin-bottom: 4px; }
+      .header .sub { font-size: 10px; color: #555; }
+      .meta { display: flex; justify-content: space-between; margin-bottom: 12px; font-size: 10px; color: #444; }
+      table { width: 100%; border-collapse: collapse; }
+      th { background: #2563eb; color: #fff; padding: 6px 8px; text-align: left; font-size: 10px; font-weight: bold; }
+      td { padding: 5px 8px; border-bottom: 1px solid #e5e7eb; font-size: 11px; }
+      tr:nth-child(even) td { background: #f8fafc; }
+      .n { width: 28px; text-align: center; color: #9ca3af; }
+      .name { }
+      .unit { width: 50px; text-align: center; color: #6b7280; }
+      .price { width: 90px; text-align: right; font-weight: 600; }
+      .footer { margin-top: 14px; font-size: 9px; color: #9ca3af; text-align: right; }
+    </style>
+    </head><body>
+    <div class="header">
+      <h1>Прайс-лист</h1>
+      <div class="sub">${company.companyName ?? ''}</div>
+    </div>
+    <div class="meta">
+      <span><b>Клієнт:</b> ${client.name}${client.edrpou ? ` (ЄДРПОУ ${client.edrpou})` : ''}</span>
+      <span><b>Форма:</b> ${formLabel}</span>
+      <span><b>Дата:</b> ${date}</span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th class="n">№</th>
+          <th class="name">Найменування</th>
+          <th class="unit">Од.</th>
+          <th class="price">Ціна без ПДВ, ₴</th>
+          <th class="price">Ціна з ПДВ, ₴</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div class="footer">Сформовано: ${date}</div>
+    </body></html>`;
+
+    return this.generatePdf(html);
+  }
 }

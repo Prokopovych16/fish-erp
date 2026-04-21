@@ -27,6 +27,7 @@ function WeightsEditModal({ order, onClose, onSaved }: {
   const displayNumber = (order as any).numberForm ?? order.number;
   const totalPlanned = order.items.reduce((s, i) => s + Number(i.plannedWeight), 0);
   const totalActual = order.items.reduce((s, i) => s + (Number(weights[i.id]) || 0), 0);
+  const totalUnit = order.items.length > 0 && order.items.every(i => i.product.unit === order.items[0].product.unit) ? order.items[0].product.unit : 'кг';
   const totalSum = order.items.reduce((s, i) => {
     if (i.product.unit === 'шт' && !weights[i.id]) return s;
     return s + (Number(weights[i.id]) || 0) * Number(i.pricePerKg ?? 0);
@@ -96,7 +97,7 @@ function WeightsEditModal({ order, onClose, onSaved }: {
                   <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-white/60">
                     <span className="text-xs text-gray-500">Відхилення:</span>
                     <span className={`text-xs font-bold ${Math.abs(diffPct) <= 2 ? 'text-green-600' : Math.abs(diffPct) <= 5 ? 'text-yellow-600' : 'text-red-600'}`}>
-                      {diff > 0 ? '+' : ''}{diff.toFixed(3)} кг ({diffPct > 0 ? '+' : ''}{diffPct.toFixed(1)}%)
+                      {diff > 0 ? '+' : ''}{diff.toFixed(3)} {item.product.unit} ({diffPct > 0 ? '+' : ''}{diffPct.toFixed(1)}%)
                     </span>
                   </div>
                 )}
@@ -107,8 +108,8 @@ function WeightsEditModal({ order, onClose, onSaved }: {
         </div>
         <div className="px-5 pt-3 pb-2 shrink-0">
           <div className="bg-gray-50 border border-gray-100 rounded-xl p-3 grid grid-cols-2 gap-3 text-center">
-            <div><div className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">План</div><div className="font-bold text-sm text-gray-700">{totalPlanned.toFixed(3)} кг</div></div>
-            <div><div className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">Факт</div><div className={`font-bold text-sm ${totalActual > 0 ? 'text-blue-600' : 'text-gray-400'}`}>{totalActual.toFixed(3)} кг</div></div>
+            <div><div className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">План</div><div className="font-bold text-sm text-gray-700">{totalPlanned.toFixed(3)} {totalUnit}</div></div>
+            <div><div className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">Факт</div><div className={`font-bold text-sm ${totalActual > 0 ? 'text-blue-600' : 'text-gray-400'}`}>{totalActual.toFixed(3)} {totalUnit}</div></div>
           </div>
           {totalSum > 0 && <div className="mt-2 text-right text-sm"><span className="text-gray-500">Сума (з ПДВ): </span><span className="font-bold text-green-600">{(totalSum * 1.2).toFixed(2)} ₴</span></div>}
         </div>
@@ -194,7 +195,7 @@ function OrderDetailsModal({ order, onClose, onEditWeights, onEdit, onDelete, us
                     <th className="px-3 py-2.5 font-semibold">Товар</th>
                     <th className="px-3 py-2.5 font-semibold text-right">План</th>
                     <th className="px-3 py-2.5 font-semibold text-right">Факт</th>
-                    <th className="px-3 py-2.5 font-semibold text-right">Ціна</th>
+                    <th className="hidden sm:table-cell px-3 py-2.5 font-semibold text-right">Ціна</th>
                     <th className="px-3 py-2.5 font-semibold text-right">Сума</th>
                   </tr>
                 </thead>
@@ -208,12 +209,12 @@ function OrderDetailsModal({ order, onClose, onEditWeights, onEdit, onDelete, us
                     const diffPct = diff !== null && planned > 0 ? (diff / planned) * 100 : null;
                     return (
                       <tr key={item.id} className="hover:bg-gray-50/50">
-                        <td className="px-3 py-2.5 font-semibold text-gray-800">{item.product.name}</td>
+                        <td className="px-3 py-2.5 font-semibold text-gray-800 text-xs sm:text-sm">{item.product.name}</td>
                         <td className="px-3 py-2.5 text-right text-gray-400 text-xs">{planned.toFixed(3)}</td>
                         <td className="px-3 py-2.5 text-right">
                           {item.actualWeight ? (
                             <div>
-                              <span className="font-semibold text-gray-800">{Number(item.actualWeight).toFixed(3)}</span>
+                              <span className="font-semibold text-gray-800 text-xs sm:text-sm">{Number(item.actualWeight).toFixed(3)}</span>
                               {diffPct !== null && (
                                 <span className={`ml-1 text-xs ${Math.abs(diffPct) <= 2 ? 'text-green-500' : Math.abs(diffPct) <= 5 ? 'text-yellow-500' : 'text-red-500'}`}>
                                   ({diffPct > 0 ? '+' : ''}{diffPct.toFixed(1)}%)
@@ -222,8 +223,8 @@ function OrderDetailsModal({ order, onClose, onEditWeights, onEdit, onDelete, us
                             </div>
                           ) : <span className="text-gray-400">—</span>}
                         </td>
-                        <td className="px-3 py-2.5 text-right text-gray-500 text-xs">{canCalcPrice && price > 0 ? `${(price * 1.2).toFixed(2)} ₴` : '—'}</td>
-                        <td className="px-3 py-2.5 text-right font-bold text-gray-800">{canCalcPrice && weight * price > 0 ? `${(weight * price * 1.2).toFixed(2)} ₴` : '—'}</td>
+                        <td className="hidden sm:table-cell px-3 py-2.5 text-right text-gray-500 text-xs">{canCalcPrice && price > 0 ? `${(price * 1.2).toFixed(2)} ₴` : '—'}</td>
+                        <td className="px-3 py-2.5 text-right font-bold text-gray-800 text-xs sm:text-sm">{canCalcPrice && weight * price > 0 ? `${(weight * price * 1.2).toFixed(2)} ₴` : '—'}</td>
                       </tr>
                     );
                   })}
@@ -233,7 +234,7 @@ function OrderDetailsModal({ order, onClose, onEditWeights, onEdit, onDelete, us
                     <td className="px-3 py-2.5">Всього</td>
                     <td className="px-3 py-2.5 text-right text-gray-400 text-xs font-normal">{totalPlanned.toFixed(3)}</td>
                     <td className="px-3 py-2.5 text-right">{totalWeight.toFixed(3)}</td>
-                    <td className="px-3 py-2.5 text-right">—</td>
+                    <td className="hidden sm:table-cell px-3 py-2.5 text-right">—</td>
                     <td className="px-3 py-2.5 text-right text-green-600">{(total * 1.2).toFixed(2)} ₴</td>
                   </tr>
                 </tfoot>
@@ -553,7 +554,7 @@ function EditArchiveOrderModal({ order, onClose, onSaved }: { order: Order; onCl
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Дата накладної</label>
               <input type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)}

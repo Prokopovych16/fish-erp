@@ -451,12 +451,25 @@ function ClientDetailsModal({ client, onClose, onEdit, isAdmin, allClients }: {
                   Прайс-лист
                   {pricesCount > 0 && <span className="ml-2 bg-green-100 text-green-600 px-1.5 py-0.5 rounded font-normal normal-case">{pricesCount} цін</span>}
                 </div>
-                {isAdmin && (
-                  <button onClick={() => setShowCopyModal(true)}
-                    className="text-xs text-blue-500 hover:text-blue-700 font-semibold flex items-center gap-1 border border-blue-200 px-2 py-1 rounded-lg hover:bg-blue-50 transition-colors">
-                    📋 Скопіювати від...
-                  </button>
-                )}
+                <div className="flex items-center gap-2">
+                  {pricesCount > 0 && (
+                    <button onClick={async () => {
+                      const r = await api.get(`/documents/client/${client.id}/pricelist`, { params: { form }, responseType: 'blob' });
+                      const url = window.URL.createObjectURL(new Blob([r.data], { type: 'application/pdf' }));
+                      window.open(url, '_blank');
+                      setTimeout(() => window.URL.revokeObjectURL(url), 60000);
+                    }}
+                      className="text-xs text-gray-500 hover:text-gray-700 font-semibold flex items-center gap-1 border border-gray-200 px-2 py-1 rounded-lg hover:bg-gray-50 transition-colors">
+                      🖨 PDF
+                    </button>
+                  )}
+                  {isAdmin && (
+                    <button onClick={() => setShowCopyModal(true)}
+                      className="text-xs text-blue-500 hover:text-blue-700 font-semibold flex items-center gap-1 border border-blue-200 px-2 py-1 rounded-lg hover:bg-blue-50 transition-colors">
+                      📋 Скопіювати від...
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Перемикач форми */}

@@ -128,8 +128,10 @@ function LogDetails({ log }: { log: any }) {
               return (
                 <div className="pt-2 border-t border-gray-200 flex justify-between text-xs font-medium">
                   <span className="text-gray-500">
-                    План: {totalPlanned.toFixed(3)} кг →
-                    Факт: {totalActual.toFixed(3)} кг
+                    {(() => {
+                      const unit = order?.items?.length > 0 && order.items.every((i: any) => i.product?.unit === order.items[0].product?.unit) ? order.items[0].product?.unit ?? 'кг' : 'кг';
+                      return `План: ${totalPlanned.toFixed(3)} ${unit} → Факт: ${totalActual.toFixed(3)} ${unit}`;
+                    })()}
                   </span>
                   {totalSum > 0 && (
                     <span className="text-green-600">{totalSum.toFixed(2)} ₴</span>
@@ -194,6 +196,9 @@ function OrderInfo({ order, showItems = false }: { order: any; showItems?: boole
     (s: number, i: any) => s + Number(i.actualWeight ?? i.plannedWeight),
     0,
   ) ?? 0;
+  const totalUnit = order.items?.length > 0 && order.items.every((i: any) => i.product?.unit === order.items[0].product?.unit)
+    ? order.items[0].product?.unit ?? 'кг'
+    : 'кг';
 
   return (
     <div className="bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 space-y-1.5">
@@ -236,7 +241,7 @@ function OrderInfo({ order, showItems = false }: { order: any; showItems?: boole
           {totalWeight > 0 && (
             <div className="pt-1 border-t border-blue-100 flex justify-between text-xs font-medium text-blue-700">
               <span>Загалом</span>
-              <span>{totalWeight.toFixed(3)} кг</span>
+              <span>{totalWeight.toFixed(3)} {totalUnit}</span>
             </div>
           )}
         </div>

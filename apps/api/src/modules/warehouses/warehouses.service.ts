@@ -276,6 +276,7 @@ export class WarehousesService {
       productId: string;
       quantity: number;
       form: string;
+      stockItemId?: string;
     }[];
     outputs: {
       productId: string;
@@ -297,51 +298,70 @@ export class WarehousesService {
 
     // Перевіряємо наявність сировини
     for (const input of dto.inputs) {
-      const batches = await this.prisma.stockItem.findMany({
-        where: {
-          warehouseId: input.warehouseId,
-          productId: input.productId,
-          form: input.form as any,
-          quantity: { gt: 0 },
-        },
-        orderBy: { arrivedAt: 'asc' },
-        include: { product: true },
-      });
+      if (input.stockItemId) {
+        const item = await this.prisma.stockItem.findUnique({
+          where: { id: input.stockItemId },
+          include: { product: true },
+        });
+        if (!item || Number(item.quantity) < input.quantity) {
+          throw new BadRequestException(
+            `Недостатньо "${item?.product?.name ?? input.productId}": є ${Number(item?.quantity ?? 0).toFixed(3)} кг, треба ${input.quantity.toFixed(3)} кг`,
+          );
+        }
+      } else {
+        const batches = await this.prisma.stockItem.findMany({
+          where: {
+            warehouseId: input.warehouseId,
+            productId: input.productId,
+            form: input.form as any,
+            quantity: { gt: 0 },
+          },
+          orderBy: { arrivedAt: 'asc' },
+          include: { product: true },
+        });
 
-      const available = batches.reduce((s, b) => s + Number(b.quantity), 0);
-      if (available < input.quantity) {
-        const product =
-          batches[0]?.product ??
-          (await this.prisma.product.findUnique({
-            where: { id: input.productId },
-          }));
-        throw new BadRequestException(
-          `Недостатньо "${product?.name ?? input.productId}": є ${available.toFixed(3)} кг, треба ${input.quantity.toFixed(3)} кг`,
-        );
+        const available = batches.reduce((s, b) => s + Number(b.quantity), 0);
+        if (available < input.quantity) {
+          const product =
+            batches[0]?.product ??
+            (await this.prisma.product.findUnique({ where: { id: input.productId } }));
+          throw new BadRequestException(
+            `Недостатньо "${product?.name ?? input.productId}": є ${available.toFixed(3)} кг, треба ${input.quantity.toFixed(3)} кг`,
+          );
+        }
       }
     }
 
-    // Списуємо сировину по FIFO
+    // Списуємо сировину
     for (const input of dto.inputs) {
-      const batches = await this.prisma.stockItem.findMany({
-        where: {
-          warehouseId: input.warehouseId,
-          productId: input.productId,
-          form: input.form as any,
-          quantity: { gt: 0 },
-        },
-        orderBy: { arrivedAt: 'asc' },
-      });
-
-      let remaining = input.quantity;
-      for (const batch of batches) {
-        if (remaining <= 0) break;
-        const deduct = Math.min(Number(batch.quantity), remaining);
+      if (input.stockItemId) {
+        // Списуємо з конкретної партії
         await this.prisma.stockItem.update({
-          where: { id: batch.id },
-          data: { quantity: { decrement: deduct } },
+          where: { id: input.stockItemId },
+          data: { quantity: { decrement: input.quantity } },
         });
-        remaining -= deduct;
+      } else {
+        // FIFO по всіх партіях
+        const batches = await this.prisma.stockItem.findMany({
+          where: {
+            warehouseId: input.warehouseId,
+            productId: input.productId,
+            form: input.form as any,
+            quantity: { gt: 0 },
+          },
+          orderBy: { arrivedAt: 'asc' },
+        });
+
+        let remaining = input.quantity;
+        for (const batch of batches) {
+          if (remaining <= 0) break;
+          const deduct = Math.min(Number(batch.quantity), remaining);
+          await this.prisma.stockItem.update({
+            where: { id: batch.id },
+            data: { quantity: { decrement: deduct } },
+          });
+          remaining -= deduct;
+        }
       }
 
       await this.prisma.stockMovement.create({

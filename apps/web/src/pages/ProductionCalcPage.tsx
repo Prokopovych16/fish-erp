@@ -61,15 +61,15 @@ function OutputRow({ output, costPerKg }: { output: CalcOutput; costPerKg: numbe
   const marginBg = marginPct >= 20 ? 'bg-green-50 border-green-200' : marginPct >= 10 ? 'bg-yellow-50 border-yellow-200' : 'bg-red-50 border-red-200';
 
   return (
-    <div className="grid grid-cols-12 gap-3 items-center py-3 border-b border-gray-100 last:border-0">
+    <div className="py-3 border-b border-gray-100 last:border-0 space-y-2">
       {/* Назва продукту */}
-      <div className="col-span-4 flex items-center gap-2">
+      <div className="flex items-center gap-2">
         <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold shrink-0 ${
           output.form === 'FORM_1' ? 'bg-blue-100 text-blue-600' : 'bg-orange-100 text-orange-600'
         }`}>
           {output.form === 'FORM_1' ? 'Ф1' : 'Ф2'}
         </span>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="font-semibold text-gray-800 text-sm truncate">{output.productName}</div>
           <div className="text-[10px] text-gray-400">
             {Number(output.quantity).toFixed(3)} кг · собів. {costPerKg.toFixed(2)} ₴/кг
@@ -77,8 +77,9 @@ function OutputRow({ output, costPerKg }: { output: CalcOutput; costPerKg: numbe
         </div>
       </div>
 
-      {/* Націнка % */}
-      <div className="col-span-2">
+      {/* Метрики + дія */}
+      <div className="grid grid-cols-4 gap-2 items-center">
+        {/* Націнка % */}
         <div className="flex items-center gap-1">
           <input
             type="number" step="0.1" min="0"
@@ -90,35 +91,33 @@ function OutputRow({ output, costPerKg }: { output: CalcOutput; costPerKg: numbe
           />
           <span className="text-xs text-gray-400 shrink-0">%</span>
         </div>
-      </div>
 
-      {/* Ціна продажу */}
-      <div className="col-span-2 text-right">
-        <div className="font-bold text-purple-700 text-sm">{salePrice.toFixed(2)} ₴/кг</div>
-        <div className="text-[10px] text-gray-400">ціна продажу</div>
-      </div>
-
-      {/* Маржа */}
-      <div className="col-span-2">
-        <div className={`rounded-lg border px-2.5 py-1.5 text-center ${marginBg}`}>
-          <div className={`font-bold text-sm ${marginColor}`}>{marginPct.toFixed(1)}%</div>
-          <div className="text-[10px] text-gray-500">{marginPerKg.toFixed(2)} ₴/кг</div>
+        {/* Ціна продажу */}
+        <div className="text-center">
+          <div className="font-bold text-purple-700 text-sm">{salePrice.toFixed(2)} ₴</div>
+          <div className="text-[10px] text-gray-400">ціна/кг</div>
         </div>
-      </div>
 
-      {/* Загальна маржа або кнопка зберегти */}
-      <div className="col-span-2">
-        {isDirty ? (
-          <button onClick={handleSave} disabled={saving}
-            className="w-full bg-purple-600 text-white text-xs px-3 py-2 rounded-lg hover:bg-purple-700 disabled:opacity-50 transition-colors font-bold">
-            {saving ? '...' : 'Зберегти'}
-          </button>
-        ) : (
-          <div className="text-right">
-            <div className={`font-bold text-sm ${marginColor}`}>{marginTotal.toFixed(2)} ₴</div>
-            <div className="text-[10px] text-gray-400">маржа всього</div>
-          </div>
-        )}
+        {/* Маржа */}
+        <div className={`rounded-lg border px-1.5 py-1 text-center ${marginBg}`}>
+          <div className={`font-bold text-sm ${marginColor}`}>{marginPct.toFixed(1)}%</div>
+          <div className="text-[10px] text-gray-500">{marginPerKg.toFixed(2)} ₴</div>
+        </div>
+
+        {/* Загальна маржа або кнопка зберегти */}
+        <div>
+          {isDirty ? (
+            <button onClick={handleSave} disabled={saving}
+              className="w-full bg-purple-600 text-white text-xs px-2 py-2 rounded-lg hover:bg-purple-700 disabled:opacity-50 transition-colors font-bold">
+              {saving ? '...' : 'Зберегти'}
+            </button>
+          ) : (
+            <div className="text-right">
+              <div className={`font-bold text-sm ${marginColor}`}>{marginTotal.toFixed(2)} ₴</div>
+              <div className="text-[10px] text-gray-400">маржа</div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -172,7 +171,7 @@ function CalcCard({ calc, onDelete }: { calc: ProductionCalc; onDelete: (id: str
               <span key={inp.id} className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                 expanded ? 'bg-purple-500 text-white' : 'bg-gray-200 text-gray-600'
               }`}>
-                {inp.productName} {Number(inp.quantity).toFixed(1)} кг
+                {inp.productName} {Number(inp.quantity).toFixed(1)} кг{inp.supplierName ? ` · ${inp.supplierName}` : ''}
               </span>
             ))}
             <span className={`text-xs ${expanded ? 'text-purple-300' : 'text-gray-300'}`}>→</span>

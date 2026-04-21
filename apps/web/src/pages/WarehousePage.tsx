@@ -695,6 +695,17 @@ export default function WarehousePage() {
     queryFn: () => api.get('/warehouses/stock/all').then((r) => r.data),
   });
 
+  const { data: settings, refetch: refetchSettings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: () => api.get('/settings').then((r) => r.data),
+  });
+  const bypassStock = settings?.bypassStock === 'true';
+
+  const toggleBypass = async () => {
+    await api.put('/settings', { bypassStock: bypassStock ? 'false' : 'true' });
+    refetchSettings();
+  };
+
   const { data: movements = [], isLoading: movementsLoading } = useQuery({
     queryKey: ['movements'],
     queryFn: () => api.get('/warehouses/movements').then((r) => r.data),
@@ -721,6 +732,10 @@ export default function WarehousePage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <button onClick={toggleBypass}
+            className={`text-xs sm:text-sm px-3 sm:px-4 py-2 rounded-xl transition-colors font-medium flex items-center gap-1.5 border ${bypassStock ? 'bg-red-50 border-red-300 text-red-700 hover:bg-red-100' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+            {bypassStock ? '🔴 Склад відключено' : '🟢 Склад активний'}
+          </button>
           <button onClick={() => setShowReturn(true)}
             className="bg-orange-500 text-white text-xs sm:text-sm px-3 sm:px-4 py-2 rounded-xl hover:bg-orange-600 transition-colors font-medium flex items-center gap-1.5">
             ↩ <span className="hidden xs:inline">Повернення</span><span className="xs:hidden">Повернення</span>

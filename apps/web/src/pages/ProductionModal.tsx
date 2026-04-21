@@ -19,7 +19,7 @@ export function ProductionModal({ onClose }: { onClose: () => void }) {
   const queryClient = useQueryClient();
 
   const [inputs, setInputs] = useState([
-    { warehouseId: '', productId: '', quantity: '' },
+    { warehouseId: '', stockItemId: '', quantity: '' },
   ]);
   const [outputs, setOutputs] = useState([
     { productId: '', quantity: '' },
@@ -40,25 +40,21 @@ export function ProductionModal({ onClose }: { onClose: () => void }) {
 
   const activeWarehouses = stock.filter((w: any) => w.isActive);
 
-  // Отримуємо партії для продукту на складі (для автоматичної форми і ціни)
-  const getStockInfo = (warehouseId: string, productId: string) => {
-    if (!warehouseId || !productId) return null;
+  // Батчі (партії) для вибраного складу
+  const getBatches = (warehouseId: string) => {
+    if (!warehouseId) return [];
     const wh = activeWarehouses.find((w: any) => w.id === warehouseId);
-    if (!wh) return null;
-    const items = (wh.stockItems || []).filter(
-      (i: any) => i.productId === productId && Number(i.quantity) > 0
-    );
-    if (!items.length) return null;
-    const totalQty = items.reduce((s: number, i: any) => s + Number(i.quantity), 0);
-    // Середньозважена ціна
-    const avgPrice = items.reduce((s: number, i: any) => s + Number(i.quantity) * Number(i.pricePerKg ?? 0), 0) / totalQty;
-    // Перша форма (FIFO)
-    const form = items[0].form as FormType;
-    return { totalQty, avgPrice, form };
+    return ((wh?.stockItems || []) as any[]).filter((i: any) => Number(i.quantity) > 0);
+  };
+
+  // Конкретна партія
+  const getBatch = (warehouseId: string, stockItemId: string) => {
+    if (!stockItemId) return null;
+    return getBatches(warehouseId).find((i: any) => i.id === stockItemId) ?? null;
   };
 
   // Рядки сировини
-  const addInput = () => setInputs(prev => [...prev, { warehouseId: '', productId: '', quantity: '' }]);
+  const addInput = () => setInputs(prev => [...prev, { warehouseId: '', stockItemId: '', quantity: '' }]);
   const removeInput = (idx: number) => setInputs(prev => prev.filter((_, i) => i !== idx));
   const updateInput = (idx: number, key: string, val: string) =>
     setInputs(prev => prev.map((r, i) => i === idx ? { ...r, [key]: val } : r));
@@ -71,8 +67,8 @@ export function ProductionModal({ onClose }: { onClose: () => void }) {
 
   // Підсумки
   const totalInputCost = inputs.reduce((s, r) => {
-    const info = getStockInfo(r.warehouseId, r.productId);
-    return s + (Number(r.quantity) || 0) * (info?.avgPrice || 0);
+    const batch = getBatch(r.warehouseId, r.stockItemId);
+    return s + (Number(r.quantity) || 0) * Number(batch?.pricePerKg ?? 0);
   }, 0);
   const totalInputQty = inputs.reduce((s, r) => s + (Number(r.quantity) || 0), 0);
   const totalOutputQty = outputs.reduce((s, r) => s + (Number(r.quantity) || 0), 0);
@@ -80,7 +76,7 @@ export function ProductionModal({ onClose }: { onClose: () => void }) {
   const yieldPct = totalInputQty > 0 ? (totalOutputQty / totalInputQty) * 100 : 0;
 
   const handleSave = async () => {
-    if (inputs.some(r => !r.warehouseId || !r.productId || !r.quantity)) return setError('Заповніть всі рядки сировини');
+    if (inputs.some(r => !r.warehouseId || !r.stockItemId || !r.quantity)) return setError('Оберіть склад, партію і кількість для кожного рядка сировини');
     if (outputs.some(r => !r.productId || !r.quantity)) return setError('Заповніть всі рядки готової продукції');
     setLoading(true);
     setError('');
@@ -88,23 +84,21 @@ export function ProductionModal({ onClose }: { onClose: () => void }) {
       // 1. Проводимо виробництво на складі
       await api.post('/warehouses/production', {
         inputs: inputs.map(r => {
-          const info = getStockInfo(r.warehouseId, r.productId);
+          const batch = getBatch(r.warehouseId, r.stockItemId);
           return {
             warehouseId: r.warehouseId,
-            productId: r.productId,
+            productId: batch?.productId ?? '',
             quantity: Number(r.quantity),
-            form: info?.form ?? 'FORM_1',
+            form: batch?.form ?? 'FORM_1',
+            stockItemId: r.stockItemId,
           };
         }),
-        outputs: outputs.map(r => {
-          const prod = (products as any[]).find((p: any) => p.id === r.productId);
-          return {
-            productId: r.productId,
-            quantity: Number(r.quantity),
-            form: 'FORM_1', // готова продукція завжди Ф1 за замовчуванням
-            pricePerKg: costPerKg, // собівартість як ціна партії
-          };
-        }),
+        outputs: outputs.map(r => ({
+          productId: r.productId,
+          quantity: Number(r.quantity),
+          form: 'FORM_1',
+          pricePerKg: costPerKg,
+        })),
         note: note || undefined,
       });
 
@@ -113,18 +107,13 @@ export function ProductionModal({ onClose }: { onClose: () => void }) {
         await api.post('/production-calc', {
           note: note || undefined,
           inputs: inputs.map(r => {
-            const info = getStockInfo(r.warehouseId, r.productId);
-            const wh = activeWarehouses.find((w: any) => w.id === r.warehouseId);
-            const stockItem = (wh?.stockItems || []).find(
-              (i: any) => i.productId === r.productId && Number(i.quantity) > 0
-            );
-            const prod = (products as any[]).find((p: any) => p.id === r.productId);
+            const batch = getBatch(r.warehouseId, r.stockItemId);
             return {
-              productName: prod?.name ?? r.productId,
+              productName: batch?.product?.name ?? r.stockItemId,
               quantity: Number(r.quantity),
-              pricePerKg: info?.avgPrice ?? 0,
-              form: info?.form ?? 'FORM_1',
-              supplierName: stockItem?.supplier?.name ?? null,
+              pricePerKg: Number(batch?.pricePerKg ?? 0),
+              form: batch?.form ?? 'FORM_1',
+              supplierName: batch?.supplier?.name ?? null,
             };
           }),
           outputs: outputs.map(r => {
@@ -177,10 +166,11 @@ export function ProductionModal({ onClose }: { onClose: () => void }) {
             </div>
             <div className="space-y-2">
               {inputs.map((row, idx) => {
-                const info = getStockInfo(row.warehouseId, row.productId);
+                const batches = getBatches(row.warehouseId);
+                const batch = getBatch(row.warehouseId, row.stockItemId);
                 const qty = Number(row.quantity) || 0;
-                const isOver = info && qty > info.totalQty;
-                const lineCost = qty * (info?.avgPrice || 0);
+                const isOver = batch && qty > Number(batch.quantity);
+                const lineCost = qty * Number(batch?.pricePerKg ?? 0);
 
                 return (
                   <div key={idx} className={`rounded-xl border p-3 transition-all ${isOver ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-gray-50'}`}>
@@ -188,7 +178,8 @@ export function ProductionModal({ onClose }: { onClose: () => void }) {
                       {/* Склад */}
                       <div className="col-span-4">
                         <div className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide mb-1">Склад</div>
-                        <select value={row.warehouseId} onChange={(e) => updateInput(idx, 'warehouseId', e.target.value)}
+                        <select value={row.warehouseId}
+                          onChange={(e) => setInputs(prev => prev.map((r, i) => i === idx ? { ...r, warehouseId: e.target.value, stockItemId: '' } : r))}
                           className="w-full border border-gray-300 rounded-lg px-2 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
                           <option value="">Оберіть...</option>
                           {activeWarehouses.map((w: any) => (
@@ -196,13 +187,18 @@ export function ProductionModal({ onClose }: { onClose: () => void }) {
                           ))}
                         </select>
                       </div>
-                      {/* Продукт */}
+                      {/* Партія */}
                       <div className="col-span-5">
-                        <div className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide mb-1">Продукт</div>
-                        <select value={row.productId} onChange={(e) => updateInput(idx, 'productId', e.target.value)}
-                          className="w-full border border-gray-300 rounded-lg px-2 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
-                          <option value="">Оберіть...</option>
-                          {products.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        <div className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide mb-1">Партія</div>
+                        <select value={row.stockItemId} onChange={(e) => updateInput(idx, 'stockItemId', e.target.value)}
+                          disabled={!row.warehouseId}
+                          className="w-full border border-gray-300 rounded-lg px-2 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white disabled:opacity-50">
+                          <option value="">Оберіть партію...</option>
+                          {batches.map((b: any) => (
+                            <option key={b.id} value={b.id}>
+                              {b.product?.name}{b.supplier?.name ? ` · ${b.supplier.name}` : ''} — {Number(b.pricePerKg ?? 0).toFixed(2)} ₴ ({Number(b.quantity).toFixed(3)} кг)
+                            </option>
+                          ))}
                         </select>
                       </div>
                       {/* Кількість */}
@@ -221,16 +217,21 @@ export function ProductionModal({ onClose }: { onClose: () => void }) {
                       </div>
                     </div>
 
-                    {/* Інфо партії */}
-                    {info && (
-                      <div className="mt-2 flex flex-wrap gap-3 text-xs">
-                        <span className={`${info.form === 'FORM_1' ? 'bg-blue-100 text-blue-600' : 'bg-orange-100 text-orange-600'} px-2 py-0.5 rounded-full font-semibold`}>
-                          {info.form === 'FORM_1' ? 'Ф1' : 'Ф2'} · автоматично
+                    {/* Інфо вибраної партії */}
+                    {batch && (
+                      <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                        <span className={`${batch.form === 'FORM_1' ? 'bg-blue-100 text-blue-600' : 'bg-orange-100 text-orange-600'} px-2 py-0.5 rounded-full font-semibold`}>
+                          {batch.form === 'FORM_1' ? 'Ф1' : 'Ф2'}
                         </span>
-                        <span className="text-gray-500">Є: <b>{info.totalQty.toFixed(3)} кг</b></span>
-                        {info.avgPrice > 0 && <span className="text-gray-500">Ціна: <b>{info.avgPrice.toFixed(2)} ₴/кг</b></span>}
+                        {batch.supplier?.name && (
+                          <span className="bg-purple-50 border border-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-medium">
+                            {batch.supplier.name}
+                          </span>
+                        )}
+                        <span className="text-gray-500">Доступно: <b>{Number(batch.quantity).toFixed(3)} кг</b></span>
+                        {Number(batch.pricePerKg) > 0 && <span className="text-gray-500">Ціна: <b>{Number(batch.pricePerKg).toFixed(2)} ₴/кг</b></span>}
                         {lineCost > 0 && <span className="text-green-600 font-semibold">= {lineCost.toFixed(2)} ₴</span>}
-                        {isOver && <span className="text-red-500 font-semibold">⚠️ не вистачає {(qty - info.totalQty).toFixed(3)} кг</span>}
+                        {isOver && <span className="text-red-500 font-semibold">⚠️ не вистачає {(qty - Number(batch.quantity)).toFixed(3)} кг</span>}
                       </div>
                     )}
                   </div>

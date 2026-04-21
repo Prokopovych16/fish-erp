@@ -60,6 +60,21 @@ export class DocumentsController {
     res.end(pdf);
   }
 
+  @Get('client/:clientId/pricelist')
+  async getPriceList(
+    @Param('clientId') clientId: string,
+    @Query('form') form: string = 'FORM_1',
+    @Res() res: Response,
+  ) {
+    const pdf = await this.documentsService.generatePriceList(clientId, form);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="pricelist-${clientId}.pdf"`,
+      'Content-Length': pdf.length,
+    });
+    res.end(pdf);
+  }
+
   // ← НОВЕ: Реєстр накладних
   @Get('reports/registry')
   async getRegistry(
