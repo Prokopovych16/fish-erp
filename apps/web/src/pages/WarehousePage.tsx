@@ -683,6 +683,8 @@ export default function WarehousePage() {
   const [activeTab, setActiveTab] = useState<'stock' | 'movements' | 'returns'>('stock');
   const [showReturn, setShowReturn] = useState(false);
   const [selectedReturn, setSelectedReturn] = useState<any | null>(null);
+  const [showWriteOffConfirm, setShowWriteOffConfirm] = useState(false);
+  const [writeOffLoading, setWriteOffLoading] = useState(false);
   const { data: returns = [], isLoading: returnsLoading } = useQuery({
     queryKey: ['client-returns'],
     queryFn: () => api.get('/client-returns').then((r) => r.data),
@@ -743,6 +745,10 @@ export default function WarehousePage() {
           <button onClick={() => setShowProduction(true)}
             className="bg-purple-600 text-white text-xs sm:text-sm px-3 sm:px-4 py-2 rounded-xl hover:bg-purple-700 transition-colors font-medium flex items-center gap-1.5">
             ⚙️ Виробництво
+          </button>
+          <button onClick={() => setShowWriteOffConfirm(true)}
+            className="bg-red-600 text-white text-xs sm:text-sm px-3 sm:px-4 py-2 rounded-xl hover:bg-red-700 transition-colors font-medium flex items-center gap-1.5">
+            🗑 Списати сировину
           </button>
           <button onClick={() => setShowMovement(true)}
             className="bg-blue-600 text-white text-xs sm:text-sm px-3 sm:px-4 py-2 rounded-xl hover:bg-blue-700 transition-colors font-medium flex items-center gap-1.5">
@@ -1042,6 +1048,70 @@ export default function WarehousePage() {
           onUpdated={() => queryClient.invalidateQueries({ queryKey: ['client-returns'] })}
         />
       )}
+
+      {showWriteOffConfirm && (() => {
+        type RawStockItem = { id: string; quantity: string; product: { name: string }; supplier: { name: string } | null };
+        type RawWarehouse = { type: string; name: string; stockItems: RawStockItem[] };
+        type RawItem = RawStockItem & { warehouseName: string };
+        const rawItems: RawItem[] = (stock as RawWarehouse[])
+          .filter(w => w.type === 'RAW_MATERIAL' || w.type === 'FRIDGE')
+          .flatMap(w => (w.stockItems ?? []).filter(i => Number(i.quantity) > 0).map(i => ({ ...i, warehouseName: w.name })));
+
+        const handleWriteOff = async () => {
+          setWriteOffLoading(true);
+          try {
+            await api.post('/warehouses/writeoff-all-raw', { note: 'Повне списання сировини' });
+            setShowWriteOffConfirm(false);
+            refetchStock();
+          } finally {
+            setWriteOffLoading(false);
+          }
+        };
+
+        return (
+          <div className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+            <div className="bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl w-full sm:max-w-lg">
+              <div className="px-5 pt-5 pb-4 border-b flex items-start justify-between">
+                <div>
+                  <h2 className="font-bold text-gray-800 text-lg">🗑 Списати всю сировину</h2>
+                  <p className="text-xs text-red-500 font-medium mt-0.5">Спишуться всі залишки з Холодильників та Сировинних складів</p>
+                </div>
+                <button onClick={() => setShowWriteOffConfirm(false)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 text-xl shrink-0">×</button>
+              </div>
+
+              <div className="px-5 py-3 max-h-72 overflow-y-auto">
+                {rawItems.length === 0 ? (
+                  <p className="text-gray-400 text-sm text-center py-6">Сировини на складах немає</p>
+                ) : (
+                  <div className="space-y-1">
+                    {rawItems.map((item) => (
+                      <div key={item.id} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
+                        <div>
+                          <span className="text-sm font-medium text-gray-800">{item.product.name}</span>
+                          <span className="text-xs text-gray-400 ml-2">{item.warehouseName}</span>
+                          {item.supplier && <span className="text-xs text-blue-500 ml-1">· {item.supplier.name}</span>}
+                        </div>
+                        <span className="text-sm font-bold text-red-500 shrink-0 ml-3">−{Number(item.quantity).toFixed(3)} кг</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="px-5 pb-6 pt-3 border-t flex gap-2">
+                <button onClick={() => setShowWriteOffConfirm(false)}
+                  className="flex-1 border border-gray-200 text-gray-600 text-sm py-3 rounded-xl hover:bg-gray-50 font-medium">
+                  Скасувати
+                </button>
+                <button onClick={handleWriteOff} disabled={writeOffLoading || rawItems.length === 0}
+                  className="flex-1 bg-red-600 text-white text-sm py-3 rounded-xl hover:bg-red-700 disabled:opacity-50 font-bold">
+                  {writeOffLoading ? '...' : `Списати ${rawItems.length} позицій`}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

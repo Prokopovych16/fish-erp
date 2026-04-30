@@ -13,10 +13,12 @@ import SettingsPage from '@/pages/SettingsPage';
 import AuditPage from '@/pages/AuditPage';
 import Layout from './components/layout/Layout';
 import ProductionCalcPage from '@/pages/ProductionCalcPage';
+import CashPage from '@/pages/CashPage';
 
 // Компоненти сторінок — відповідність path → компонент
 const PAGE_COMPONENTS: Record<string, React.ReactNode> = {
   '/dashboard':  <DashboardPage />,
+  '/cash':       <CashPage />,
   '/orders':     <OrdersPage />,
   '/archive':    <ArchivePage />,
   '/warehouse':  <WarehousePage />,

@@ -453,3 +453,15 @@ model ClientReturnItem {
   @@index([returnId])
   @@index([productId])
 }
+
+model CashEntry {
+  id        String   @id @default(uuid())
+  date      DateTime
+  amount    Decimal  @db.Decimal(12, 2)
+  type      String
+  note      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([date])
+}

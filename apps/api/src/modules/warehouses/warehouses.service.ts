@@ -405,4 +405,43 @@ export class WarehousesService {
 
     return { success: true };
   }
+
+  async writeOffAllRawMaterials(note: string) {
+    // Знаходимо всі партії в сировинних складах і холодильниках
+    const items = await this.prisma.stockItem.findMany({
+      where: {
+        quantity: { gt: 0 },
+        warehouse: { type: { in: ['RAW_MATERIAL', 'FRIDGE'] }, isActive: true },
+      },
+      include: { product: true, warehouse: true },
+    });
+
+    if (items.length === 0) return { written: 0, items: [] };
+
+    const written: { product: string; warehouse: string; quantity: number }[] = [];
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const item of items) {
+        const qty = Number(item.quantity);
+        await tx.stockMovement.create({
+          data: {
+            warehouseId: item.warehouseId,
+            productId: item.productId,
+            type: 'OUT',
+            quantity: -qty,
+            form: item.form,
+            note,
+            supplierId: item.supplierId ?? null,
+          },
+        });
+        await tx.stockItem.update({
+          where: { id: item.id },
+          data: { quantity: 0 },
+        });
+        written.push({ product: item.product.name, warehouse: item.warehouse.name, quantity: qty });
+      }
+    });
+
+    return { written: written.length, items: written };
+  }
 }

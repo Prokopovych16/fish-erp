@@ -100,7 +100,12 @@ export class WarehousesController {
     return this.warehousesService.toggleSupplier(id);
   }
 
-  // ─── Додай в warehouses.controller.ts ────────────────────────────────────────
+  @Post('writeoff-all-raw')
+  writeOffAllRawMaterials(@Body() body: { note?: string }) {
+    return this.warehousesService.writeOffAllRawMaterials(
+      body.note ?? 'Повне списання сировини',
+    );
+  }
 
   @Post('production')
   createProduction(
