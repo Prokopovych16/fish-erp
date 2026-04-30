@@ -411,7 +411,7 @@ export class WarehousesService {
     const items = await this.prisma.stockItem.findMany({
       where: {
         quantity: { gt: 0 },
-        warehouse: { type: { in: ['RAW_MATERIAL', 'FRIDGE'] }, isActive: true },
+        warehouse: { isActive: true },
       },
       include: { product: true, warehouse: true },
     });

@@ -1074,7 +1074,7 @@ export default function WarehousePage() {
               <div className="px-5 pt-5 pb-4 border-b flex items-start justify-between">
                 <div>
                   <h2 className="font-bold text-gray-800 text-lg">🗑 Списати всю сировину</h2>
-                  <p className="text-xs text-red-500 font-medium mt-0.5">Спишуться всі залишки з Холодильників та Сировинних складів</p>
+                  <p className="text-xs text-red-500 font-medium mt-0.5">Спишуться всі залишки з усіх активних складів</p>
                 </div>
                 <button onClick={() => setShowWriteOffConfirm(false)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 text-xl shrink-0">×</button>
               </div>
