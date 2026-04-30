@@ -1054,7 +1054,6 @@ export default function WarehousePage() {
         type RawWarehouse = { type: string; name: string; stockItems: RawStockItem[] };
         type RawItem = RawStockItem & { warehouseName: string };
         const rawItems: RawItem[] = (stock as RawWarehouse[])
-          .filter(w => w.type === 'RAW_MATERIAL' || w.type === 'FRIDGE')
           .flatMap(w => (w.stockItems ?? []).filter(i => Number(i.quantity) > 0).map(i => ({ ...i, warehouseName: w.name })));
 
         const handleWriteOff = async () => {
