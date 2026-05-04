@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/api/axios';
 import { useAuthStore } from '@/store/auth';
@@ -624,6 +624,10 @@ function CreateOrderModal({ onClose, onCreated }: { onClose: () => void; onCreat
   const [customDate, setCustomDate] = useState(new Date().toISOString().slice(0, 10));
   const [resolvedReturnIds, setResolvedReturnIds] = useState<Set<string>>(new Set());
   const [invoiceDate, setInvoiceDate] = useState('');
+  const [imageLoading, setImageLoading] = useState(false);
+  const [imageError, setImageError] = useState('');
+  const [imageWarnings, setImageWarnings] = useState<string[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { data: pendingReturns = [] } = useQuery({
     queryKey: ['client-returns-pending-point', deliveryPointId],
     queryFn: () => api.get(`/client-returns/pending-by-point/${deliveryPointId}`).then(r => r.data),
@@ -647,6 +651,115 @@ function CreateOrderModal({ onClose, onCreated }: { onClose: () => void; onCreat
 
   const handleClientChange = (id: string) => {
     setClientId(id); setDeliveryPointId(''); setAddingPoint(false); setNewPointName('');
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImageLoading(true); setImageError(''); setImageWarnings([]);
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve((reader.result as string).split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
+      if (!apiKey) { setImageError('VITE_ANTHROPIC_API_KEY не налаштовано'); return; }
+
+      const clientList = (clients as any[])?.filter((c: any) => c.isActive).map((c: any) => `"${c.name}"`).join(', ') ?? '';
+      const productList = (products as any[])?.map((p: any) => `"${p.name}"`).join(', ') ?? '';
+
+      const prompt = `Розпізнай замовлення з цього фото.
+
+Список клієнтів у системі: [${clientList}]
+Список продуктів у системі: [${productList}]
+
+Правила:
+1. Для clientName — вибери ТОЧНУ назву з "Список клієнтів" яка найбільше підходить до того що написано на фото. Якщо схожих немає — порожній рядок.
+2. Для кожного productName — вибери ТОЧНУ назву з "Список продуктів" яка найбільше підходить. Якщо немає схожого — все одно пиши найближчий варіант зі списку.
+3. unit — "кг" або "шт" або "уп".
+4. quantity — число (дробове через крапку).
+
+Поверни ТІЛЬКИ JSON без зайвого тексту:
+{"clientName":"...","items":[{"productName":"...","quantity":0.0,"unit":"кг"}],"note":"..."}`;
+
+      const resp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json', 'anthropic-dangerous-direct-browser-access': 'true' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-5',
+          max_tokens: 1024,
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'image', source: { type: 'base64', media_type: file.type as any, data: base64 } },
+              { type: 'text', text: prompt },
+            ],
+          }],
+        }),
+      });
+      if (!resp.ok) { setImageError(`Помилка API: ${resp.status}`); return; }
+      const data = await resp.json();
+      const text = data.content?.[0]?.text ?? '';
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) { setImageError('Не вдалося розпізнати замовлення'); return; }
+      const parsed = JSON.parse(jsonMatch[0]) as { clientName: string; items: { productName: string; quantity: number; unit: string }[]; note: string };
+      const warnings: string[] = [];
+
+      const wordScore = (a: string, b: string) => {
+        const wa = a.toLowerCase().split(/[\s,./()]+/).filter(w => w.length > 2);
+        const wb = b.toLowerCase().split(/[\s,./()]+/).filter(w => w.length > 2);
+        return wa.filter(w => wb.some(bw => bw.includes(w) || w.includes(bw))).length;
+      };
+      const fuzzyFindClient = (name: string) => {
+        const n = name.trim();
+        return (clients as any[])?.find((c: any) => c.name === n)
+          ?? (clients as any[])?.find((c: any) => c.name.toLowerCase() === n.toLowerCase())
+          ?? (() => {
+            let best: any = null, bestScore = 0;
+            for (const c of (clients as any[]) ?? []) {
+              const s = wordScore(n, c.name);
+              if (s > bestScore) { bestScore = s; best = c; }
+            }
+            return bestScore > 0 ? best : null;
+          })();
+      };
+      const fuzzyFindProduct = (name: string) => {
+        const n = name.trim();
+        return (products as any[])?.find((p: any) => p.name === n)
+          ?? (products as any[])?.find((p: any) => p.name.toLowerCase() === n.toLowerCase())
+          ?? (() => {
+            let best: any = null, bestScore = 0;
+            for (const p of (products as any[]) ?? []) {
+              const s = wordScore(n, p.name);
+              if (s > bestScore) { bestScore = s; best = p; }
+            }
+            return bestScore > 0 ? best : null;
+          })();
+      };
+
+      if (parsed.clientName) {
+        const matched = fuzzyFindClient(parsed.clientName);
+        if (matched) { setClientId(matched.id); setDeliveryPointId(''); }
+        else { warnings.push(`Клієнта "${parsed.clientName}" не знайдено — оберіть вручну`); }
+      }
+      if (parsed.note) setNote(parsed.note);
+
+      const newItems = (parsed.items ?? []).map((ri) => {
+        const matched = fuzzyFindProduct(ri.productName);
+        if (!matched) { warnings.push(`Продукт "${ri.productName}" не розпізнано — перевірте`); return null; }
+        return { productId: matched.id, plannedWeight: String(ri.quantity ?? ''), displayUnit: ri.unit || matched.unit || 'кг' };
+      }).filter(Boolean) as { productId: string; plannedWeight: string; displayUnit: string }[];
+      if (newItems.length > 0) setItems(newItems);
+      else if ((parsed.items ?? []).length > 0) warnings.push('Жоден продукт не вдалося співставити — заповніть вручну');
+      setImageWarnings(warnings);
+    } catch (err: any) {
+      setImageError(err.message || 'Помилка розпізнавання');
+    } finally {
+      setImageLoading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
   };
   const handleResolveReturn = async (retId: string) => {
   try {
@@ -721,8 +834,21 @@ function CreateOrderModal({ onClose, onCreated }: { onClose: () => void; onCreat
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[92vh] flex flex-col overflow-hidden">
         <div className="px-5 py-4 border-b flex items-center justify-between shrink-0">
           <div><h2 className="font-bold text-gray-800 text-lg">Нова заявка</h2><p className="text-xs text-gray-400 mt-0.5">Заповніть дані</p></div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+          <div className="flex items-center gap-2">
+            <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+            <button onClick={() => fileInputRef.current?.click()} disabled={imageLoading}
+              className="text-xs font-semibold text-purple-600 border border-purple-200 bg-purple-50 hover:bg-purple-100 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50">
+              {imageLoading ? '⏳ Розпізнаю...' : '📷 З фото'}
+            </button>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+          </div>
         </div>
+        {(imageError || imageWarnings.length > 0) && (
+          <div className={`px-5 py-3 border-b text-xs space-y-1 ${imageError ? 'bg-red-50 border-red-100' : 'bg-amber-50 border-amber-100'}`}>
+            {imageError && <div className="text-red-600 font-semibold">⚠️ {imageError}</div>}
+            {imageWarnings.map((w, i) => <div key={i} className="text-amber-700">⚠️ {w}</div>)}
+          </div>
+        )}
         <div className="overflow-y-auto flex-1 p-5 space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div>
