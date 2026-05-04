@@ -707,49 +707,39 @@ function CreateOrderModal({ onClose, onCreated }: { onClose: () => void; onCreat
       const parsed = JSON.parse(jsonMatch[0]) as { clientName: string; items: { productName: string; quantity: number; unit: string }[]; note: string };
       const warnings: string[] = [];
 
-      const wordScore = (a: string, b: string) => {
-        const wa = a.toLowerCase().split(/[\s,./()]+/).filter(w => w.length > 2);
-        const wb = b.toLowerCase().split(/[\s,./()]+/).filter(w => w.length > 2);
-        return wa.filter(w => wb.some(bw => bw.includes(w) || w.includes(bw))).length;
+      const toWords = (s: string) => s.toLowerCase().split(/[\s,./()–-]+/).filter(w => w.length > 1);
+      const wordScore = (a: string, b: string): number => {
+        const wa = toWords(a);
+        const wb = toWords(b);
+        if (!wa.length || !wb.length) return 0;
+        const matched = wa.filter(w => wb.some(bw => bw === w || bw.includes(w) || w.includes(bw))).length;
+        return matched / Math.max(wa.length, wb.length);
       };
-      const fuzzyFindClient = (name: string) => {
+      const fuzzyFind = <T,>(name: string, list: T[], key: (x: T) => string, minScore = 0.35): T | null => {
         const n = name.trim();
-        return (clients as any[])?.find((c: any) => c.name === n)
-          ?? (clients as any[])?.find((c: any) => c.name.toLowerCase() === n.toLowerCase())
-          ?? (() => {
-            let best: any = null, bestScore = 0;
-            for (const c of (clients as any[]) ?? []) {
-              const s = wordScore(n, c.name);
-              if (s > bestScore) { bestScore = s; best = c; }
-            }
-            return bestScore > 0 ? best : null;
-          })();
-      };
-      const fuzzyFindProduct = (name: string) => {
-        const n = name.trim();
-        return (products as any[])?.find((p: any) => p.name === n)
-          ?? (products as any[])?.find((p: any) => p.name.toLowerCase() === n.toLowerCase())
-          ?? (() => {
-            let best: any = null, bestScore = 0;
-            for (const p of (products as any[]) ?? []) {
-              const s = wordScore(n, p.name);
-              if (s > bestScore) { bestScore = s; best = p; }
-            }
-            return bestScore > 0 ? best : null;
-          })();
+        const exact = list.find(x => key(x) === n);
+        if (exact) return exact;
+        const ci = list.find(x => key(x).toLowerCase() === n.toLowerCase());
+        if (ci) return ci;
+        let best: T | null = null, bestScore = 0;
+        for (const x of list) {
+          const s = wordScore(n, key(x));
+          if (s > bestScore) { bestScore = s; best = x; }
+        }
+        return bestScore >= minScore ? best : null;
       };
 
       if (parsed.clientName) {
-        const matched = fuzzyFindClient(parsed.clientName);
-        if (matched) { setClientId(matched.id); setDeliveryPointId(''); }
+        const matched = fuzzyFind(parsed.clientName, (clients as any[]) ?? [], (c: any) => c.name, 0.3);
+        if (matched) { setClientId((matched as any).id); setDeliveryPointId(''); }
         else { warnings.push(`Клієнта "${parsed.clientName}" не знайдено — оберіть вручну`); }
       }
       if (parsed.note) setNote(parsed.note);
 
       const newItems = (parsed.items ?? []).map((ri) => {
-        const matched = fuzzyFindProduct(ri.productName);
+        const matched = fuzzyFind(ri.productName, (products as any[]) ?? [], (p: any) => p.name, 0.35);
         if (!matched) { warnings.push(`Продукт "${ri.productName}" не розпізнано — перевірте`); return null; }
-        return { productId: matched.id, plannedWeight: String(ri.quantity ?? ''), displayUnit: ri.unit || matched.unit || 'кг' };
+        return { productId: (matched as any).id, plannedWeight: String(ri.quantity ?? ''), displayUnit: ri.unit || (matched as any).unit || 'кг' };
       }).filter(Boolean) as { productId: string; plannedWeight: string; displayUnit: string }[];
       if (newItems.length > 0) setItems(newItems);
       else if ((parsed.items ?? []).length > 0) warnings.push('Жоден продукт не вдалося співставити — заповніть вручну');
