@@ -28,6 +28,11 @@ class UpdateOrderItemDto {
   @IsOptional()
   @IsString()
   displayUnit?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  pricePerKg?: number;
 }
 
 export class UpdateOrderDto {

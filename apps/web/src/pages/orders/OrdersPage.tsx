@@ -1157,6 +1157,7 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
       plannedWeight: String(i.plannedWeight),
       actualWeight: i.actualWeight != null ? String(i.actualWeight) : '',
       displayUnit: (i as any).displayUnit || i.product?.unit || 'кг',
+      pricePerKg: i.pricePerKg != null ? String(Number(i.pricePerKg)) : '',
     })),
   );
   const [loading, setLoading] = useState(false);
@@ -1215,6 +1216,7 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
               plannedWeight: Number(i.plannedWeight),
               actualWeight: i.actualWeight ? Number(i.actualWeight) : undefined,
               displayUnit: i.displayUnit,
+              pricePerKg: i.pricePerKg && Number(i.pricePerKg) > 0 ? Number(i.pricePerKg) : undefined,
             })),
         }),
       });
@@ -1381,10 +1383,31 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
                         </div>
                       </div>
                       {item.productId && (
-                        <div className="mt-1.5 pl-7 text-xs flex items-center gap-2 text-gray-500">
-                          {!canCalcPrice && <span className="text-orange-400">— різні одиниці, ціна не рахується</span>}
-                          {canCalcPrice && lineSum && <span>Ціна: <b className="text-green-600">{(lineSum * 1.2).toFixed(2)} ₴</b></span>}
-                          {canCalcPrice && !price && <span className="text-orange-500">⚠️ Ціна не встановлена</span>}
+                        <div className="mt-2 pl-7 space-y-1">
+                          <div className="flex items-center gap-2">
+                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide w-16 shrink-0">Ціна/кг</label>
+                            <input
+                              type="number" step="0.01" min="0"
+                              value={item.pricePerKg}
+                              onChange={(e) => setItems((prev) => prev.map((p, i) => i === idx ? { ...p, pricePerKg: e.target.value } : p))}
+                              placeholder={price ? `${price.toFixed(2)} (авто)` : 'не встановлено'}
+                              className="w-28 border border-gray-200 rounded-lg px-2 py-1 text-xs text-right focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+                            />
+                            <span className="text-[10px] text-gray-400">без ПДВ</span>
+                            {item.pricePerKg && Number(item.pricePerKg) > 0 && item.plannedWeight && (
+                              <span className="text-[10px] font-bold text-green-600">
+                                = {(Number(item.pricePerKg) * Number(item.plannedWeight) * 1.2).toFixed(2)} ₴
+                              </span>
+                            )}
+                          </div>
+                          {!item.pricePerKg && price && (
+                            <div className="text-[10px] text-gray-400 pl-[72px]">
+                              Клієнтська ціна: {price.toFixed(2)} ₴/кг
+                            </div>
+                          )}
+                          {!item.pricePerKg && !price && (
+                            <div className="text-[10px] text-orange-500 pl-[72px]">⚠️ Ціна не встановлена</div>
+                          )}
                         </div>
                       )}
                     </div>

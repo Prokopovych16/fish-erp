@@ -616,7 +616,7 @@ export class OrdersService {
           productId: item.productId,
           plannedWeight: item.plannedWeight,
           actualWeight: item.actualWeight ?? null,
-          pricePerKg: priceMap.get(item.productId) ?? null,
+          pricePerKg: item.pricePerKg != null ? item.pricePerKg : (priceMap.get(item.productId) ?? null),
           displayUnit: item.displayUnit ?? null,
         })),
       });
