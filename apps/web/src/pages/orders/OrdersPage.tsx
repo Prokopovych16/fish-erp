@@ -274,9 +274,100 @@ const handleProcessReturn = async (retId: string) => {
     } catch { alert('Помилка генерації'); }
   };
 
+  const totalWithVat = Math.round(total * 1.2 * 100) / 100;
+
+  const buttons = (
+    <>
+      {order.status === 'DRAFT' && userRole === 'ADMIN' && (
+        <button onClick={() => { onStatusChange(order.id, 'PENDING'); onClose(); }}
+          className="w-full bg-slate-600 text-white text-sm px-3 py-2.5 rounded-xl hover:bg-slate-700 font-semibold">
+          → В Очікує
+        </button>
+      )}
+      {order.status === 'PENDING' && (
+        <button onClick={() => { onStatusChange(order.id, 'IN_PROGRESS'); onClose(); }}
+          className="w-full bg-blue-600 text-white text-sm px-3 py-2.5 rounded-xl hover:bg-blue-700 font-semibold">
+          ▶ Взяти в роботу
+        </button>
+      )}
+      {order.status === 'IN_PROGRESS' && (
+        <>
+          <button onClick={() => { onUpdateWeights(order); onClose(); }}
+            className="w-full bg-yellow-500 text-white text-sm px-3 py-2.5 rounded-xl hover:bg-yellow-600 font-semibold">
+            ✏️ Вписати вагу
+          </button>
+          <button onClick={() => { onStatusChange(order.id, 'DONE'); onClose(); }}
+            className="w-full bg-green-600 text-white text-sm px-3 py-2.5 rounded-xl hover:bg-green-700 font-semibold">
+            ✓ Готово
+          </button>
+        </>
+      )}
+      {order.status === 'DONE' && userRole === 'ADMIN' && (
+        <>
+          <button onClick={handlePrintAll}
+            className="w-full bg-green-600 text-white text-sm px-3 py-2.5 rounded-xl hover:bg-green-700 font-bold">
+            🖨️ Все (5 стор.)
+          </button>
+          {[{ type: 'invoice' as const, label: '📄 Накладна', cls: 'bg-blue-600 hover:bg-blue-700' },
+            { type: 'ttn' as const, label: '🚚 ТТН', cls: 'bg-gray-600 hover:bg-gray-700' },
+            { type: 'quality' as const, label: '✅ Якісне', cls: 'bg-gray-600 hover:bg-gray-700' }].map((btn) => (
+            <button key={btn.type} onClick={() => handlePrint(btn.type)}
+              className={`w-full ${btn.cls} text-white text-sm px-3 py-2.5 rounded-xl font-semibold`}>{btn.label}</button>
+          ))}
+        </>
+      )}
+      {userRole === 'ADMIN' && (
+        <>
+          {(order.status === 'DONE' || order.status === 'IN_PROGRESS') && (
+            <button onClick={() => { onUpdateWeights(order); onClose(); }}
+              className="w-full border border-yellow-200 text-yellow-700 text-sm px-3 py-2.5 rounded-xl hover:bg-yellow-50 font-semibold">
+              ⚖️ Редагувати вагу
+            </button>
+          )}
+          {onEdit && (
+            <button onClick={onEdit}
+              className="w-full border border-blue-200 text-blue-700 text-sm px-3 py-2.5 rounded-xl hover:bg-blue-50 font-semibold">
+              ✏️ Редагувати
+            </button>
+          )}
+          {order.status === 'PENDING' && (
+            <button onClick={() => { onStatusChange(order.id, 'DRAFT'); onClose(); }}
+              className="w-full border border-slate-200 text-slate-600 text-sm px-3 py-2.5 rounded-xl hover:bg-slate-50 font-semibold">
+              ← В Чернетки
+            </button>
+          )}
+          {order.status === 'DONE' && (
+            <button onClick={() => { onStatusChange(order.id, 'IN_PROGRESS'); onClose(); }}
+              className="w-full border border-gray-200 text-gray-600 text-sm px-3 py-2.5 rounded-xl hover:bg-gray-50 font-semibold">
+              ↩ Повернути
+            </button>
+          )}
+        </>
+      )}
+      {userRole === 'ADMIN' && <div className="border-t border-gray-200 my-1" />}
+      {userRole === 'ADMIN' && ['PENDING', 'IN_PROGRESS'].includes(order.status) && (
+        <button onClick={() => { onStatusChange(order.id, 'CANCELLED'); onClose(); }}
+          className="w-full border border-red-200 text-red-500 text-sm px-3 py-2.5 rounded-xl hover:bg-red-50 font-semibold">
+          ✕ Скасувати
+        </button>
+      )}
+      {userRole === 'ADMIN' && onDelete && (
+        <button onClick={() => onDelete(order.id)}
+          className="w-full border border-red-300 text-red-600 text-sm px-3 py-2.5 rounded-xl hover:bg-red-50 font-semibold">
+          🗑 Видалити
+        </button>
+      )}
+      <button onClick={onClose} className="w-full border border-gray-200 text-gray-600 text-sm px-3 py-2.5 rounded-xl hover:bg-gray-50">
+        Закрити
+      </button>
+    </>
+  );
+
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden">
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-2 sm:p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[95vh] flex flex-col overflow-hidden">
+
+        {/* Header */}
         <div className="px-5 py-4 border-b flex items-start justify-between gap-2 shrink-0">
           <div>
             <div className="flex items-center gap-2 flex-wrap">
@@ -288,178 +379,127 @@ const handleProcessReturn = async (retId: string) => {
             <div className="text-sm text-gray-600 mt-0.5 font-medium">{order.client.name}</div>
             {deliveryPoint && <DeliveryPointBadge point={deliveryPoint} />}
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            {userRole === 'ADMIN' && onEdit && (
-              <button onClick={onEdit} className="text-xs font-semibold text-blue-600 border border-blue-200 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors">✏️ Редагувати</button>
-            )}
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
-          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none shrink-0">×</button>
         </div>
-        <div className="p-5 overflow-y-auto flex-1 space-y-4">
-          {(order.driverName || order.carNumber) && (
-            <div className="bg-gray-50 border border-gray-100 rounded-xl p-3.5 grid grid-cols-2 gap-2 text-sm">
-              {order.driverName && <div><div className="text-xs text-gray-400 mb-0.5">Водій</div><div className="font-semibold text-gray-700">🚗 {order.driverName}</div></div>}
-              {order.carNumber && <div><div className="text-xs text-gray-400 mb-0.5">Авто</div><div className="font-semibold text-gray-700">🚛 {order.carNumber}</div></div>}
-            </div>
-          )}
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            {[
-              { label: 'Створено', value: new Date(order.createdAt).toLocaleDateString('uk-UA') },
-              order.completedAt && { label: 'Виконано', value: new Date(order.completedAt).toLocaleDateString('uk-UA') },
-              (order as any).invoiceDate && { label: '📄 Дата накладної', value: new Date((order as any).invoiceDate).toLocaleDateString('uk-UA') },
-              order.createdBy && { label: 'Створив', value: order.createdBy.name },
-              order.assignedTo && { label: 'Виконує', value: order.assignedTo.name },
-            ].filter(Boolean).map((item: any) => (
-              <div key={item.label}><div className="text-xs text-gray-400 mb-0.5">{item.label}</div><div className="text-gray-700 font-medium">{item.value}</div></div>
-            ))}
-          </div>
-          <div>
-            <div className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Позиції</div>
-            <div className="border border-gray-200 rounded-xl overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr className="text-left text-xs text-gray-400">
-                    <th className="px-3 py-2.5 font-semibold">Товар</th>
-                    <th className="px-3 py-2.5 font-semibold text-right">План</th>
-                    <th className="px-3 py-2.5 font-semibold text-right">Факт</th>
-                    {userRole !== 'WORKER' && <th className="px-3 py-2.5 font-semibold text-right">Ціна</th>}
-                    {userRole !== 'WORKER' && <th className="px-3 py-2.5 font-semibold text-right">Сума</th>}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {order.items.map((item) => {
-                    const w = Number(item.actualWeight ?? item.plannedWeight);
-                    const p = Number(item.pricePerKg ?? 0);
-                    // шт: ціна тільки якщо є фактична вага
-                    const canCalcPrice = item.product.unit !== 'шт' || !!item.actualWeight;
-                    return (
-                      <tr key={item.id} className="hover:bg-gray-50/50">
-                        <td className="px-3 py-2.5 font-semibold text-gray-800">{item.product.name}</td>
-                        <td className="px-3 py-2.5 text-right text-gray-400">{Number(item.plannedWeight).toFixed(3)}</td>
-                        <td className="px-3 py-2.5 text-right font-semibold text-green-600">{item.actualWeight ? Number(item.actualWeight).toFixed(3) : '—'}</td>
-                        {userRole !== 'WORKER' && <td className="px-3 py-2.5 text-right text-gray-500">{canCalcPrice && p > 0 ? `${(p * 1.2).toFixed(2)} ₴` : '—'}</td>}
-                        {userRole !== 'WORKER' && <td className="px-3 py-2.5 text-right font-bold text-gray-800">{canCalcPrice && w * p > 0 ? `${(w * p * 1.2).toFixed(2)} ₴` : '—'}</td>}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-                <tfoot className="bg-gray-50 border-t border-gray-200">
-                  <tr className="text-sm font-bold text-gray-700">
-                    <td className="px-3 py-2.5">Всього</td>
-                    <td className="px-3 py-2.5 text-right text-gray-400">{totalPlanned.toFixed(3)}</td>
-                    <td className="px-3 py-2.5 text-right text-green-600">{totalActual.toFixed(3)}</td>
-                    {userRole !== 'WORKER' && <td className="px-3 py-2.5 text-right">—</td>}
-                    {userRole !== 'WORKER' && <td className="px-3 py-2.5 text-right text-green-600">{total > 0 ? `${(total * 1.2).toFixed(2)} ₴` : '—'}</td>}
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          </div>
-          {order.note && (
-            <div className="bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm">
-              <span className="text-xs font-bold text-gray-400 uppercase tracking-wide block mb-1">Примітка</span>
-              {order.note}
-            </div>
-          )}
 
-          {(orderReturns as any[]).length > 0 && (
-            <div className="space-y-3">
-              <div className="text-xs font-bold text-gray-500 uppercase tracking-wide">↩ Повернення з цього магазину</div>
-              {(orderReturns as any[]).map((ret: any) => (
-                <div key={ret.id} className="bg-orange-50 border border-orange-200 rounded-xl p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-orange-600">
-                      📅 {new Date(ret.createdAt).toLocaleDateString('uk-UA')}
-                    </span>
-                    {ret.note && <span className="text-xs text-gray-400 italic">{ret.note}</span>}
-                  </div>
-                  <div className="space-y-2">
-                    {ret.items.map((item: any) => (
-                      <div key={item.id} className="bg-white border border-orange-100 rounded-lg p-3">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-sm font-semibold text-gray-800">{item.product.name}</span>
-                          <span className="text-xs text-gray-400">
-                            очікується: <b>{Number(item.goodQty).toFixed(3)} кг</b>
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="number"
-                            step="0.001"
-                            min="0"
-                            value={returnWeights[item.id] ?? ''}
-                            onChange={(e) => setReturnWeights(prev => ({ ...prev, [item.id]: e.target.value }))}
-                            placeholder={Number(item.goodQty).toFixed(3)}
-                            className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-orange-400"
-                          />
-                          <span className="text-xs text-gray-400 shrink-0">кг факт</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <button
-                    onClick={() => handleProcessReturn(ret.id)}
-                    disabled={processingReturn === ret.id}
-                    className="w-full bg-orange-500 text-white text-sm px-4 py-2 rounded-xl hover:bg-orange-600 disabled:opacity-50 font-semibold"
-                  >
-                    {processingReturn === ret.id ? 'Обробляю...' : '✓ Прийняти і списати зі складу'}
-                  </button>
+        {/* Body: two columns on desktop */}
+        <div className="flex flex-col md:flex-row flex-1 overflow-hidden min-h-0">
+
+          {/* Left: order content */}
+          <div className="flex-1 overflow-y-auto p-5 space-y-4">
+            {/* Meta info */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {[
+                order.driverName && { icon: '🚗', label: 'Водій', value: order.driverName },
+                order.carNumber && { icon: '🚛', label: 'Авто', value: order.carNumber },
+                order.createdBy && { icon: '👤', label: 'Створив', value: order.createdBy.name },
+                order.assignedTo && { icon: '⚙️', label: 'Виконує', value: order.assignedTo.name },
+                { icon: '📅', label: 'Створено', value: new Date(order.createdAt).toLocaleDateString('uk-UA') },
+                order.completedAt && { icon: '✅', label: 'Виконано', value: new Date(order.completedAt).toLocaleDateString('uk-UA') },
+                (order as any).invoiceDate && { icon: '📄', label: 'Накладна', value: new Date((order as any).invoiceDate).toLocaleDateString('uk-UA') },
+              ].filter(Boolean).map((item: any) => (
+                <div key={item.label} className="bg-gray-50 border border-gray-100 rounded-xl p-2.5">
+                  <div className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">{item.label}</div>
+                  <div className="text-sm font-semibold text-gray-700 truncate">{item.icon} {item.value}</div>
                 </div>
               ))}
             </div>
-          )}
-        </div>
-        <div className="px-5 pb-5 pt-4 border-t shrink-0 space-y-2">
-          {order.status === 'DRAFT' && userRole === 'ADMIN' && (
-            <button onClick={() => { onStatusChange(order.id, 'PENDING'); onClose(); }}
-              className="w-full bg-slate-600 text-white text-sm px-4 py-2.5 rounded-xl hover:bg-slate-700 font-semibold">→ Перемістити в Очікує</button>
-          )}
-          {order.status === 'PENDING' && (
-            <>
-              <button onClick={() => { onStatusChange(order.id, 'IN_PROGRESS'); onClose(); }}
-                className="w-full bg-blue-600 text-white text-sm px-4 py-2.5 rounded-xl hover:bg-blue-700 font-semibold">Взяти в роботу</button>
-              {userRole === 'ADMIN' && (
-                <button onClick={() => { onStatusChange(order.id, 'DRAFT'); onClose(); }}
-                  className="w-full border border-slate-200 text-slate-600 text-sm px-4 py-2.5 rounded-xl hover:bg-slate-50 font-semibold">← В Чернетки</button>
-              )}
-            </>
-          )}
-          {order.status === 'IN_PROGRESS' && (
-            <div className="flex gap-2">
-              <button onClick={() => { onUpdateWeights(order); onClose(); }}
-                className="flex-1 bg-yellow-500 text-white text-sm px-4 py-2.5 rounded-xl hover:bg-yellow-600 font-semibold">✏️ Вписати вагу</button>
-              <button onClick={() => { onStatusChange(order.id, 'DONE'); onClose(); }}
-                className="flex-1 bg-green-600 text-white text-sm px-4 py-2.5 rounded-xl hover:bg-green-700 font-semibold">✓ Готово</button>
+
+            {/* Items table */}
+            <div>
+              <div className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Позиції</div>
+              <div className="border border-gray-200 rounded-xl overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr className="text-left text-xs text-gray-400">
+                      <th className="px-3 py-2.5 font-semibold">Товар</th>
+                      <th className="px-3 py-2.5 font-semibold text-right">План</th>
+                      <th className="px-3 py-2.5 font-semibold text-right">Факт</th>
+                      {userRole !== 'WORKER' && <th className="px-3 py-2.5 font-semibold text-right">Ціна</th>}
+                      {userRole !== 'WORKER' && <th className="px-3 py-2.5 font-semibold text-right">Сума</th>}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {order.items.map((item) => {
+                      const w = Number(item.actualWeight ?? item.plannedWeight);
+                      const p = Number(item.pricePerKg ?? 0);
+                      const canCalcPrice = item.product.unit !== 'шт' || !!item.actualWeight;
+                      const lineTotal = canCalcPrice && w * p > 0 ? Math.round(w * p * 1.2 * 100) / 100 : null;
+                      return (
+                        <tr key={item.id} className="hover:bg-gray-50/50">
+                          <td className="px-3 py-2.5 font-semibold text-gray-800 text-xs">{item.product.name}</td>
+                          <td className="px-3 py-2.5 text-right text-gray-400 text-xs">{Number(item.plannedWeight).toFixed(3)}</td>
+                          <td className="px-3 py-2.5 text-right text-xs font-semibold text-green-600">{item.actualWeight ? Number(item.actualWeight).toFixed(3) : '—'}</td>
+                          {userRole !== 'WORKER' && <td className="px-3 py-2.5 text-right text-gray-500 text-xs">{canCalcPrice && p > 0 ? `${(p * 1.2).toFixed(2)} ₴` : '—'}</td>}
+                          {userRole !== 'WORKER' && <td className="px-3 py-2.5 text-right font-bold text-gray-800 text-xs">{lineTotal != null ? `${lineTotal.toFixed(2)} ₴` : '—'}</td>}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot className="bg-gray-50 border-t border-gray-200">
+                    <tr className="text-sm font-bold text-gray-700">
+                      <td className="px-3 py-2.5 text-xs">Всього</td>
+                      <td className="px-3 py-2.5 text-right text-gray-400 text-xs font-normal">{totalPlanned.toFixed(3)}</td>
+                      <td className="px-3 py-2.5 text-right text-xs text-green-600">{totalActual.toFixed(3)}</td>
+                      {userRole !== 'WORKER' && <td className="px-3 py-2.5 text-right text-xs">—</td>}
+                      {userRole !== 'WORKER' && <td className="px-3 py-2.5 text-right text-green-600 font-bold">{total > 0 ? `${totalWithVat.toFixed(2)} ₴` : '—'}</td>}
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
             </div>
-          )}
-          {order.status === 'DONE' && userRole === 'ADMIN' && (
-            <div className="space-y-2">
-              <button onClick={handlePrintAll} className="w-full bg-green-600 text-white text-sm px-4 py-2.5 rounded-xl hover:bg-green-700 font-bold">🖨️ Роздрукувати все (5 сторінок)</button>
-              <div className="grid grid-cols-3 gap-2">
-                {[{ type: 'invoice' as const, label: '📄 Накладна', cls: 'bg-blue-600 hover:bg-blue-700' },
-                  { type: 'ttn' as const, label: '🚚 ТТН', cls: 'bg-gray-600 hover:bg-gray-700' },
-                  { type: 'quality' as const, label: '✅ Якісне', cls: 'bg-gray-600 hover:bg-gray-700' }].map((btn) => (
-                  <button key={btn.type} onClick={() => handlePrint(btn.type)}
-                    className={`${btn.cls} text-white text-xs px-3 py-2 rounded-xl font-semibold`}>{btn.label}</button>
+
+            {order.note && (
+              <div className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">
+                <div className="text-xs font-bold text-amber-500 uppercase tracking-wide mb-0.5">Примітка</div>
+                <div className="text-sm text-gray-700">{order.note}</div>
+              </div>
+            )}
+
+            {/* Returns */}
+            {(orderReturns as any[]).length > 0 && (
+              <div className="space-y-3">
+                <div className="text-xs font-bold text-gray-500 uppercase tracking-wide">↩ Повернення з цього магазину</div>
+                {(orderReturns as any[]).map((ret: any) => (
+                  <div key={ret.id} className="bg-orange-50 border border-orange-200 rounded-xl p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-orange-600">📅 {new Date(ret.createdAt).toLocaleDateString('uk-UA')}</span>
+                      {ret.note && <span className="text-xs text-gray-400 italic">{ret.note}</span>}
+                    </div>
+                    <div className="space-y-2">
+                      {ret.items.map((item: any) => (
+                        <div key={item.id} className="bg-white border border-orange-100 rounded-lg p-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-sm font-semibold text-gray-800">{item.product.name}</span>
+                            <span className="text-xs text-gray-400">очікується: <b>{Number(item.goodQty).toFixed(3)} кг</b></span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <input type="number" step="0.001" min="0" value={returnWeights[item.id] ?? ''}
+                              onChange={(e) => setReturnWeights(prev => ({ ...prev, [item.id]: e.target.value }))}
+                              placeholder={Number(item.goodQty).toFixed(3)}
+                              className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-orange-400" />
+                            <span className="text-xs text-gray-400 shrink-0">кг факт</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <button onClick={() => handleProcessReturn(ret.id)} disabled={processingReturn === ret.id}
+                      className="w-full bg-orange-500 text-white text-sm px-4 py-2 rounded-xl hover:bg-orange-600 disabled:opacity-50 font-semibold">
+                      {processingReturn === ret.id ? 'Обробляю...' : '✓ Прийняти і списати зі складу'}
+                    </button>
+                  </div>
                 ))}
               </div>
-              <div className="flex gap-2 pt-1">
-                <button onClick={() => { onUpdateWeights(order); onClose(); }}
-                  className="flex-1 border border-yellow-200 text-yellow-700 text-sm px-4 py-2.5 rounded-xl hover:bg-yellow-50 font-semibold">✏️ Редагувати вагу</button>
-                <button onClick={() => { onStatusChange(order.id, 'IN_PROGRESS'); onClose(); }}
-                  className="flex-1 border border-gray-200 text-gray-600 text-sm px-4 py-2.5 rounded-xl hover:bg-gray-50 font-semibold">↩ Повернути</button>
-              </div>
+            )}
+            <div className="md:hidden pt-4 border-t space-y-2">
+              {buttons}
             </div>
-          )}
-          {userRole === 'ADMIN' && ['PENDING', 'IN_PROGRESS'].includes(order.status) && (
-            <button onClick={() => { onStatusChange(order.id, 'CANCELLED'); onClose(); }}
-              className="w-full border border-red-200 text-red-500 text-sm px-4 py-2.5 rounded-xl hover:bg-red-50 font-semibold">Скасувати заявку</button>
-          )}
-          {userRole === 'ADMIN' && onDelete && (
-            <button onClick={() => onDelete(order.id)}
-              className="w-full border border-red-300 text-red-600 text-sm px-4 py-2.5 rounded-xl hover:bg-red-50 font-semibold">🗑 Видалити заявку</button>
-          )}
-          <button onClick={onClose} className="w-full border border-gray-200 text-gray-600 text-sm px-4 py-2.5 rounded-xl hover:bg-gray-50">Закрити</button>
+          </div>
+
+          {/* Right: action buttons */}
+          <div className="hidden md:flex md:flex-col md:w-52 shrink-0 md:border-l border-gray-200 p-4 gap-2 bg-gray-50/50">
+            {buttons}
+          </div>
         </div>
       </div>
     </div>
@@ -658,12 +698,28 @@ function CreateOrderModal({ onClose, onCreated }: { onClose: () => void; onCreat
     if (!file) return;
     setImageLoading(true); setImageError(''); setImageWarnings([]);
     try {
-      const base64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve((reader.result as string).split(',')[1]);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
+      // Конвертуємо будь-який формат (включно з HEIC/iOS) у JPEG через canvas
+      const { base64, mediaType } = await new Promise<{ base64: string; mediaType: string }>((resolve, reject) => {
+        const img = new Image();
+        const url = URL.createObjectURL(file);
+        img.onload = () => {
+          URL.revokeObjectURL(url);
+          const MAX = 1920;
+          let { width, height } = img;
+          if (width > MAX || height > MAX) {
+            if (width > height) { height = Math.round(height * MAX / width); width = MAX; }
+            else { width = Math.round(width * MAX / height); height = MAX; }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width; canvas.height = height;
+          canvas.getContext('2d')!.drawImage(img, 0, 0, width, height);
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
+          resolve({ base64: dataUrl.split(',')[1], mediaType: 'image/jpeg' });
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Не вдалося прочитати зображення')); };
+        img.src = url;
       });
+
       const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
       if (!apiKey) { setImageError('VITE_ANTHROPIC_API_KEY не налаштовано'); return; }
 
@@ -678,10 +734,11 @@ function CreateOrderModal({ onClose, onCreated }: { onClose: () => void; onCreat
 Правила:
 1. Для clientName — вибери ТОЧНУ назву з "Список клієнтів" яка найбільше підходить до того що написано на фото. Якщо схожих немає — порожній рядок.
 2. Для кожного productName — вибери ТОЧНУ назву з "Список продуктів" яка найбільше підходить. Якщо немає схожого — все одно пиши найближчий варіант зі списку.
-3. unit — "кг" або "шт" або "уп".
-4. quantity — число (дробове через крапку).
+3. КРИТИЧНО: назви продуктів в системі містять тип упаковки (наприклад "в/у" = вакуумна упаковка, "упак." = упаковка, "вагова" = вагова). Якщо на фото є "в/у", "упак.", "уп" — обирай продукт з відповідним позначенням. "вагова" — тільки якщо явно написано. Не плутай упаковані та вагові позиції!
+4. unit — "кг" або "шт" або "уп".
+5. quantity — число (дробове через крапку).
 
-Поверни ТІЛЬКИ JSON без зайвого тексту:
+Поверни ТІЛЬКИ валідний JSON без зайвого тексту:
 {"clientName":"...","items":[{"productName":"...","quantity":0.0,"unit":"кг"}],"note":"..."}`;
 
       const resp = await fetch('https://api.anthropic.com/v1/messages', {
@@ -693,18 +750,28 @@ function CreateOrderModal({ onClose, onCreated }: { onClose: () => void; onCreat
           messages: [{
             role: 'user',
             content: [
-              { type: 'image', source: { type: 'base64', media_type: file.type as any, data: base64 } },
+              { type: 'image', source: { type: 'base64', media_type: mediaType as any, data: base64 } },
               { type: 'text', text: prompt },
             ],
           }],
         }),
       });
-      if (!resp.ok) { setImageError(`Помилка API: ${resp.status}`); return; }
+      if (!resp.ok) {
+        const errText = await resp.text().catch(() => '');
+        setImageError(`Помилка API: ${resp.status}${errText ? ` — ${errText.slice(0, 120)}` : ''}`);
+        return;
+      }
       const data = await resp.json();
       const text = data.content?.[0]?.text ?? '';
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (!jsonMatch) { setImageError('Не вдалося розпізнати замовлення'); return; }
-      const parsed = JSON.parse(jsonMatch[0]) as { clientName: string; items: { productName: string; quantity: number; unit: string }[]; note: string };
+      let parsed: { clientName: string; items: { productName: string; quantity: number; unit: string }[]; note: string };
+      try {
+        parsed = JSON.parse(jsonMatch[0]);
+      } catch {
+        setImageError('Помилка парсингу відповіді — спробуйте ще раз');
+        return;
+      }
       const warnings: string[] = [];
 
       const toWords = (s: string) => s.toLowerCase().split(/[\s,./()–-]+/).filter(w => w.length > 1);
@@ -1720,12 +1787,12 @@ export default function OrdersPage() {
     { id: 'done',        status: 'DONE',        title: 'Зроблено', icon: '✅', color: 'bg-green-400' },
   ];
 
-  const sevenDaysAgo = new Date();
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
 
   const getOrdersForColumn = (status: OrderStatus) => {
     if (status === 'DONE') {
-      return orders.filter((o: Order) => o.status === 'DONE' && new Date((o as any).completedAt ?? o.updatedAt) >= sevenDaysAgo);
+      return orders.filter((o: Order) => o.status === 'DONE' && new Date((o as any).completedAt ?? o.updatedAt) >= todayStart);
     }
     return orders.filter((o: Order) => o.status === status);
   };

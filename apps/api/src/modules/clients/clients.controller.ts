@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Body,
   Param,
   Query,
@@ -21,6 +22,30 @@ import { UserRole, Form } from '@prisma/client';
 @Controller('clients')
 export class ClientsController {
   constructor(private clientsService: ClientsService) {}
+
+  // ─── Groups ───────────────────────────────────────────────────
+  @Get('groups')
+  findAllGroups() {
+    return this.clientsService.findAllGroups();
+  }
+
+  @Roles(UserRole.ADMIN)
+  @Post('groups')
+  createGroup(@Body() dto: { name: string }) {
+    return this.clientsService.createGroup(dto);
+  }
+
+  @Roles(UserRole.ADMIN)
+  @Patch('groups/:id')
+  updateGroup(@Param('id') id: string, @Body() dto: { name: string }) {
+    return this.clientsService.updateGroup(id, dto);
+  }
+
+  @Roles(UserRole.ADMIN)
+  @Delete('groups/:id')
+  deleteGroup(@Param('id') id: string) {
+    return this.clientsService.deleteGroup(id);
+  }
 
   // GET /api/clients — всі ролі можуть бачити клієнтів
   @Get()

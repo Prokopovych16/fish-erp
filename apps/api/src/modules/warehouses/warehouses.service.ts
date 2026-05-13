@@ -97,14 +97,14 @@ export class WarehousesService {
       );
     }
 
-    // Надходження тільки на FRIDGE
+    // Надходження тільки на FRIDGE або SUPPLIES
     if (dto.type === MovementType.IN) {
       const warehouse = await this.prisma.warehouse.findUnique({
         where: { id: dto.warehouseId },
       });
-      if (warehouse?.type !== 'FRIDGE') {
+      if (warehouse?.type !== 'FRIDGE' && warehouse?.type !== 'SUPPLIES') {
         throw new BadRequestException(
-          'Надходження товару можливе тільки на склад типу "Холодильник"',
+          'Надходження товару можливе тільки на склад типу "Холодильник" або "Матеріали"',
         );
       }
     }
@@ -144,6 +144,7 @@ export class WarehousesService {
           quantity: dto.type === MovementType.IN ? dto.quantity : -dto.quantity,
           form,
           note: dto.note,
+          pricePerKg: dto.type === MovementType.IN ? (dto.pricePerKg ?? null) : null,
           supplierId:
             dto.type === MovementType.IN
               ? (dto.supplierId ?? null)
@@ -152,7 +153,7 @@ export class WarehousesService {
       });
 
       if (dto.type === MovementType.IN) {
-        // FRIDGE — завжди створюємо нову партію
+        // FRIDGE/SUPPLIES — завжди створюємо нову партію
         await tx.stockItem.create({
           data: {
             warehouseId: dto.warehouseId,
@@ -161,7 +162,8 @@ export class WarehousesService {
             quantity: dto.quantity,
             pricePerKg: dto.pricePerKg ?? null,
             supplierId: dto.supplierId ?? null,
-            arrivedAt: new Date(),
+            note: dto.note ?? null,
+            arrivedAt: dto.arrivedAt ? new Date(dto.arrivedAt) : new Date(),
           },
         });
       } else if (dto.type === MovementType.TRANSFER && transferStockItemId) {
@@ -248,11 +250,12 @@ export class WarehousesService {
     });
   }
 
-  async getMovements(warehouseId?: string, productId?: string) {
+  async getMovements(warehouseId?: string, productId?: string, type?: string) {
     return this.prisma.stockMovement.findMany({
       where: {
         ...(warehouseId && { warehouseId }),
         ...(productId && { productId }),
+        ...(type && { type: type as any }),
       },
       include: {
         warehouse: true,
@@ -260,7 +263,27 @@ export class WarehousesService {
         supplier: true,
       },
       orderBy: { createdAt: 'desc' },
-      take: 100,
+      take: 500,
+    });
+  }
+
+  async updateStockItem(id: string, dto: {
+    supplierId?: string | null;
+    pricePerKg?: number | null;
+    arrivedAt?: string;
+    quantity?: number;
+    note?: string | null;
+  }) {
+    return this.prisma.stockItem.update({
+      where: { id },
+      data: {
+        ...(dto.supplierId !== undefined && { supplierId: dto.supplierId }),
+        ...(dto.pricePerKg !== undefined && { pricePerKg: dto.pricePerKg }),
+        ...(dto.arrivedAt !== undefined && { arrivedAt: new Date(dto.arrivedAt) }),
+        ...(dto.quantity !== undefined && { quantity: dto.quantity }),
+        ...(dto.note !== undefined && { note: dto.note }),
+      },
+      include: { product: true, supplier: true },
     });
   }
 
@@ -332,6 +355,31 @@ export class WarehousesService {
       }
     }
 
+    // Збираємо supplierId з першої вхідної партії (для виходу)
+    let productionSupplierId: string | null = null;
+    for (const input of dto.inputs) {
+      if (productionSupplierId) break;
+      if (input.stockItemId) {
+        const item = await this.prisma.stockItem.findUnique({
+          where: { id: input.stockItemId },
+          select: { supplierId: true },
+        });
+        productionSupplierId = item?.supplierId ?? null;
+      } else {
+        const batch = await this.prisma.stockItem.findFirst({
+          where: {
+            warehouseId: input.warehouseId,
+            productId: input.productId,
+            form: input.form as any,
+            quantity: { gt: 0 },
+          },
+          orderBy: { arrivedAt: 'asc' },
+          select: { supplierId: true },
+        });
+        productionSupplierId = batch?.supplierId ?? null;
+      }
+    }
+
     // Списуємо сировину
     for (const input of dto.inputs) {
       if (input.stockItemId) {
@@ -387,6 +435,7 @@ export class WarehousesService {
           form: output.form as any,
           quantity: output.quantity,
           pricePerKg: output.pricePerKg ?? null,
+          supplierId: productionSupplierId,
           arrivedAt: new Date(),
         },
       });
@@ -399,6 +448,8 @@ export class WarehousesService {
           quantity: output.quantity,
           form: output.form as any,
           note: dto.note ? `[ВИХІД] ${dto.note}` : '[ВИХІД] Готова продукція',
+          supplierId: productionSupplierId,
+          pricePerKg: output.pricePerKg ?? null,
         },
       });
     }

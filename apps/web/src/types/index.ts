@@ -19,6 +19,12 @@ export interface User {
   createdAt: string;
 }
 
+export interface ClientGroup {
+  id: string;
+  name: string;
+  createdAt: string;
+}
+
 export interface Client {
   id: string;
   name: string;
@@ -27,6 +33,8 @@ export interface Client {
   contact?: string;
   isActive: boolean;
   createdAt: string;
+  groupId?: string | null;
+  group?: ClientGroup | null;
 }
 
 export interface Product {

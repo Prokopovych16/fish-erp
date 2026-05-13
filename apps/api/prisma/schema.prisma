@@ -98,6 +98,16 @@ model RolePermission {
   @@unique([role, resource, action])
 }
 
+model ClientGroup {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+
+  clients Client[]
+
+  @@index([name])
+}
+
 model Client {
   id        String   @id @default(uuid())
   name      String
@@ -108,14 +118,17 @@ model Client {
   createdAt DateTime @default(now())
   contractNumber String?
   bankAccount    String? // р/р для накладних
+  groupId   String?
 
+  group          ClientGroup?    @relation(fields: [groupId], references: [id])
   deliveryPoints DeliveryPoint[]
   prices         ClientPrice[]
   orders         Order[]
-  returns        ClientReturn[]   // ← зворотній зв'язок
+  returns        ClientReturn[]
 
   @@index([isActive])
   @@index([name])
+  @@index([groupId])
 }
 
 model ProductGroup {
@@ -205,6 +218,7 @@ model StockItem {
   quantity    Decimal  @db.Decimal(10, 3)
   pricePerKg  Decimal? @db.Decimal(10, 2)
   supplierId  String?
+  note        String?
   arrivedAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -226,6 +240,7 @@ model StockMovement {
   quantity    Decimal      @db.Decimal(10, 3)
   form        Form
   note        String?
+  pricePerKg  Decimal?     @db.Decimal(10, 2)
   orderId     String?
   supplierId  String?
   createdAt   DateTime     @default(now())

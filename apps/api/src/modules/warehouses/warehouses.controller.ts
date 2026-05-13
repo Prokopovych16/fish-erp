@@ -42,13 +42,14 @@ export class WarehousesController {
     return this.warehousesService.getStock(id);
   }
 
-  // GET /api/warehouses/movements?warehouseId=...&productId=...
+  // GET /api/warehouses/movements?warehouseId=...&productId=...&type=...
   @Get('movements')
   getMovements(
     @Query('warehouseId') warehouseId?: string,
     @Query('productId') productId?: string,
+    @Query('type') type?: string,
   ) {
-    return this.warehousesService.getMovements(warehouseId, productId);
+    return this.warehousesService.getMovements(warehouseId, productId, type);
   }
 
   // POST /api/warehouses — створити склад
@@ -61,6 +62,15 @@ export class WarehousesController {
   @Post('movement')
   createMovement(@Body() dto: StockMovementDto, @Request() req) {
     return this.warehousesService.createMovement(dto, req.user.id);
+  }
+
+  // PATCH /api/warehouses/stock-items/:id — редагувати партію на складі
+  @Patch('stock-items/:id')
+  updateStockItem(
+    @Param('id') id: string,
+    @Body() dto: { supplierId?: string | null; pricePerKg?: number | null; arrivedAt?: string; quantity?: number },
+  ) {
+    return this.warehousesService.updateStockItem(id, dto);
   }
 
   // PATCH /api/warehouses/:id — оновити склад

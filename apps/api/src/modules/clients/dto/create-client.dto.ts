@@ -18,5 +18,9 @@ export class CreateClientDto {
 
   @IsOptional()
   @IsString()
-  bankAccount?: string; // р/р клієнта для накладних
+  bankAccount?: string;
+
+  @IsOptional()
+  @IsString()
+  groupId?: string;
 }

@@ -25,10 +25,14 @@ export class StatisticsService {
     }
 
     if (from || to) {
-      where.completedAt = {
+      const dateRange = {
         ...(from && { gte: new Date(from) }),
         ...(to && { lte: new Date(to) }),
       };
+      where.OR = [
+        { invoiceDate: dateRange },
+        { invoiceDate: null, completedAt: dateRange },
+      ];
     }
 
     return where;
@@ -144,13 +148,13 @@ export class StatisticsService {
     const orders = await this.prisma.order.findMany({
       where,
       include: { items: { include: { product: true } } },
-      orderBy: { completedAt: 'asc' },
+      orderBy: { invoiceDate: 'asc' },
     });
 
     const byDay: Record<string, { date: string; count: number; revenue: number }> = {};
 
     for (const order of orders) {
-      const date = order.completedAt!.toISOString().split('T')[0];
+      const date = (order.invoiceDate ?? order.completedAt)!.toISOString().split('T')[0];
       if (!byDay[date]) byDay[date] = { date, count: 0, revenue: 0 };
       byDay[date].count++;
       byDay[date].revenue += order.items.reduce((s, item) => s + this.calcItemRevenue(item), 0);
@@ -167,28 +171,31 @@ export class StatisticsService {
 
     const orders = await this.prisma.order.findMany({
       where,
-      include: { client: true, items: { include: { product: true } } },
+      include: { client: { include: { group: true } }, items: { include: { product: true } } },
     });
 
     const clientMap: Record<
       string,
-      { clientId: string; clientName: string; revenue: number; ordersCount: number; totalWeightKg: number; totalPcs: number }
+      { clientId: string; clientName: string; isGroup: boolean; revenue: number; ordersCount: number; totalWeightKg: number; totalPcs: number }
     > = {};
 
     for (const order of orders) {
-      const id = order.clientId;
-      if (!clientMap[id]) {
-        clientMap[id] = { clientId: id, clientName: order.client.name, revenue: 0, ordersCount: 0, totalWeightKg: 0, totalPcs: 0 };
+      // групуємо по groupId якщо є, інакше по clientId
+      const key = order.client.groupId ?? order.clientId;
+      const name = order.client.group?.name ?? order.client.name;
+      const isGroup = !!order.client.groupId;
+      if (!clientMap[key]) {
+        clientMap[key] = { clientId: key, clientName: name, isGroup, revenue: 0, ordersCount: 0, totalWeightKg: 0, totalPcs: 0 };
       }
 
-      clientMap[id].ordersCount++;
-      clientMap[id].revenue += order.items.reduce((s, item) => s + this.calcItemRevenue(item), 0);
+      clientMap[key].ordersCount++;
+      clientMap[key].revenue += order.items.reduce((s, item) => s + this.calcItemRevenue(item), 0);
 
       for (const item of order.items) {
         const unit = item.product?.unit;
         const qty = Number(item.actualWeight ?? item.plannedWeight);
-        if (unit === 'шт') clientMap[id].totalPcs += qty;
-        else clientMap[id].totalWeightKg += qty;
+        if (unit === 'шт') clientMap[key].totalPcs += qty;
+        else clientMap[key].totalWeightKg += qty;
       }
     }
 
@@ -261,12 +268,16 @@ export class StatisticsService {
   async getOrdersStats(from?: string, to?: string, form?: Form) {
     const formFilter = form ? { form } : {};
 
-    // Для DONE — фільтр по completedAt
-    const completedDateFilter = from || to ? {
-      completedAt: {
-        ...(from && { gte: new Date(from) }),
-        ...(to && { lte: new Date(to) }),
-      },
+    // Для DONE — фільтр по invoiceDate (якщо є), інакше по completedAt
+    const dateRange = from || to ? {
+      ...(from && { gte: new Date(from) }),
+      ...(to && { lte: new Date(to) }),
+    } : null;
+    const completedDateFilter = dateRange ? {
+      OR: [
+        { invoiceDate: dateRange },
+        { invoiceDate: null, completedAt: dateRange },
+      ],
     } : {};
 
     // Для поточних статусів (PENDING, IN_PROGRESS, CANCELLED) — фільтр по createdAt
@@ -294,7 +305,7 @@ export class StatisticsService {
 
     const completedOrders = await this.prisma.order.findMany({
       where: { ...completedDateFilter, ...formFilter, status: OrderStatus.DONE, deletedAt: null },
-      select: { createdAt: true, completedAt: true },
+      select: { createdAt: true, completedAt: true, invoiceDate: true },
     });
 
     const avgCompletionTimeHours =
@@ -321,11 +332,15 @@ export class StatisticsService {
   // ПРАЦІВНИКИ — продуктивність
   // ============================================================
   async getWorkersStats(from?: string, to?: string) {
-    const dateFilter = from || to ? {
-      completedAt: {
-        ...(from && { gte: new Date(from) }),
-        ...(to && { lte: new Date(to) }),
-      },
+    const workerDateRange = from || to ? {
+      ...(from && { gte: new Date(from) }),
+      ...(to && { lte: new Date(to) }),
+    } : null;
+    const dateFilter = workerDateRange ? {
+      OR: [
+        { invoiceDate: workerDateRange },
+        { invoiceDate: null, completedAt: workerDateRange },
+      ],
     } : {};
 
     const orders = await this.prisma.order.findMany({

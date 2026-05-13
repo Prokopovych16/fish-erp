@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/api/axios';
 import { useAuthStore } from '@/store/auth';
-import { Client, Form } from '@/types';
+import { Client, ClientGroup, Form } from '@/types';
 
 const getAvatarColor = (name: string) => {
   const colors = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-orange-500', 'bg-red-500', 'bg-cyan-500'];
@@ -273,6 +273,97 @@ function BulkPriceModal({ allClients, onClose }: {
   );
 }
 
+// ─── GroupsModal — управління групами компаній ───────────────────────────────
+function GroupsModal({ onClose }: { onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const [newName, setNewName] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const { data: groups = [] } = useQuery<ClientGroup[]>({
+    queryKey: ['client-groups'],
+    queryFn: () => api.get('/clients/groups').then(r => r.data),
+  });
+
+  const handleCreate = async () => {
+    if (!newName.trim()) return;
+    setLoading(true);
+    try {
+      await api.post('/clients/groups', { name: newName.trim() });
+      queryClient.invalidateQueries({ queryKey: ['client-groups'] });
+      setNewName('');
+    } finally { setLoading(false); }
+  };
+
+  const handleUpdate = async (id: string) => {
+    if (!editName.trim()) return;
+    await api.patch(`/clients/groups/${id}`, { name: editName.trim() });
+    queryClient.invalidateQueries({ queryKey: ['client-groups'] });
+    queryClient.invalidateQueries({ queryKey: ['clients'] });
+    setEditingId(null);
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Видалити групу? Клієнти залишаться, але без групи.')) return;
+    await api.delete(`/clients/groups/${id}`);
+    queryClient.invalidateQueries({ queryKey: ['client-groups'] });
+    queryClient.invalidateQueries({ queryKey: ['clients'] });
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden">
+        <div className="px-5 py-4 border-b flex items-center justify-between">
+          <div>
+            <h2 className="font-bold text-gray-800">Групи компаній</h2>
+            <p className="text-xs text-gray-400 mt-0.5">Об'єднуйте ФОПів під одну фірму для статистики</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+        </div>
+        <div className="p-5 space-y-3 max-h-[60vh] overflow-y-auto">
+          {(groups as ClientGroup[]).map((g) => (
+            <div key={g.id} className="flex items-center gap-2 p-3 border border-gray-200 rounded-xl">
+              {editingId === g.id ? (
+                <>
+                  <input autoFocus value={editName} onChange={e => setEditName(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleUpdate(g.id)}
+                    className="flex-1 border border-blue-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  <button onClick={() => handleUpdate(g.id)} className="text-blue-600 text-xs font-bold px-2 py-1 rounded hover:bg-blue-50">OK</button>
+                  <button onClick={() => setEditingId(null)} className="text-gray-400 text-xs px-2 py-1 rounded hover:bg-gray-50">✕</button>
+                </>
+              ) : (
+                <>
+                  <span className="flex-1 text-sm font-medium text-gray-800">🏢 {g.name}</span>
+                  <button onClick={() => { setEditingId(g.id); setEditName(g.name); }}
+                    className="text-gray-400 hover:text-blue-600 text-xs px-2 py-1 rounded hover:bg-blue-50">✏️</button>
+                  <button onClick={() => handleDelete(g.id)}
+                    className="text-gray-400 hover:text-red-500 text-xs px-2 py-1 rounded hover:bg-red-50">🗑</button>
+                </>
+              )}
+            </div>
+          ))}
+          {groups.length === 0 && (
+            <div className="text-center text-gray-400 py-4 text-sm">Груп ще немає</div>
+          )}
+        </div>
+        <div className="px-5 pb-5 pt-3 border-t">
+          <div className="flex gap-2">
+            <input value={newName} onChange={e => setNewName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleCreate()}
+              placeholder="Назва нової групи..."
+              className="flex-1 border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <button onClick={handleCreate} disabled={loading || !newName.trim()}
+              className="bg-blue-600 text-white text-sm px-4 py-2.5 rounded-xl hover:bg-blue-700 disabled:opacity-50 font-bold">
+              + Додати
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── ClientModal ──────────────────────────────────────────────────────────────
 function ClientModal({ client, onClose }: { client?: Client; onClose: () => void }) {
   const queryClient = useQueryClient();
@@ -282,17 +373,24 @@ function ClientModal({ client, onClose }: { client?: Client; onClose: () => void
   const [contact, setContact] = useState(client?.contact || '');
   const [contractNumber, setContractNumber] = useState((client as any)?.contractNumber || '');
   const [bankAccount, setBankAccount] = useState((client as { bankAccount?: string })?.bankAccount || '');
+  const [groupId, setGroupId] = useState(client?.groupId || '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const { data: groups = [] } = useQuery<ClientGroup[]>({
+    queryKey: ['client-groups'],
+    queryFn: () => api.get('/clients/groups').then(r => r.data),
+  });
 
   const handleSave = async () => {
     if (!name.trim()) return setError('Вкажіть назву клієнта');
     setLoading(true); setError('');
     try {
+      const payload = { name, edrpou, address, contact, contractNumber, bankAccount, groupId: groupId || null };
       if (client) {
-        await api.patch(`/clients/${client.id}`, { name, edrpou, address, contact, contractNumber, bankAccount });
+        await api.patch(`/clients/${client.id}`, payload);
       } else {
-        await api.post('/clients', { name, edrpou, address, contact, contractNumber, bankAccount });
+        await api.post('/clients', payload);
       }
       queryClient.invalidateQueries({ queryKey: ['clients'] });
       onClose();
@@ -309,7 +407,7 @@ function ClientModal({ client, onClose }: { client?: Client; onClose: () => void
         </div>
         <div className="p-4 space-y-3">
           {[
-            { label: 'Назва *', value: name, onChange: setName, placeholder: 'ТОВ Рога і копита' },
+            { label: 'Назва *', value: name, onChange: setName, placeholder: 'ФОП Іванов І.І.' },
             { label: 'ЄДРПОУ', value: edrpou, onChange: setEdrpou, placeholder: '12345678' },
             { label: 'Адреса', value: address, onChange: setAddress, placeholder: 'м. Київ, вул. Хрещатик 1' },
             { label: 'Контакт', value: contact, onChange: setContact, placeholder: '+380 99 999 9999' },
@@ -323,6 +421,17 @@ function ClientModal({ client, onClose }: { client?: Client; onClose: () => void
                 placeholder={f.placeholder} />
             </div>
           ))}
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Група компанії (необов'язково)</label>
+            <select value={groupId} onChange={e => setGroupId(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="">— Без групи —</option>
+              {(groups as ClientGroup[]).map(g => (
+                <option key={g.id} value={g.id}>🏢 {g.name}</option>
+              ))}
+            </select>
+            <p className="text-[10px] text-gray-400 mt-1">Статистика буде вестись по групі в цілому</p>
+          </div>
           {error && <div className="text-red-500 text-sm bg-red-50 px-3 py-2 rounded-lg">{error}</div>}
         </div>
         <div className="p-4 border-t flex gap-2">
@@ -579,6 +688,7 @@ export default function ClientsPage() {
   const [detailsClient, setDetailsClient] = useState<Client | null>(null);
   const [showInactive, setShowInactive] = useState(false);
   const [showBulkPrice, setShowBulkPrice] = useState(false);
+  const [showGroups, setShowGroups] = useState(false);
 
   const { data: clients = [], isLoading } = useQuery({
     queryKey: ['clients'],
@@ -616,6 +726,12 @@ export default function ClientsPage() {
             <button onClick={() => setShowInactive(v => !v)}
               className={`text-sm px-3 py-1.5 rounded-lg border transition-colors ${showInactive ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
               {showInactive ? 'Сховати архів' : `Архів (${inactiveClients.length})`}
+            </button>
+          )}
+          {isAdmin && (
+            <button onClick={() => setShowGroups(true)}
+              className="bg-purple-600 text-white text-sm px-3 py-1.5 rounded-lg hover:bg-purple-700 transition-colors font-semibold">
+              🏢 Групи
             </button>
           )}
           {isAdmin && (
@@ -669,6 +785,11 @@ export default function ClientsPage() {
                     <span className="font-semibold text-gray-800 group-hover:text-blue-600 transition-colors truncate">{client.name}</span>
                     {!client.isActive && <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded shrink-0">архів</span>}
                   </div>
+                  {client.group && (
+                    <div className="mt-0.5">
+                      <span className="text-[10px] bg-purple-50 text-purple-600 px-1.5 py-0.5 rounded font-medium">🏢 {client.group.name}</span>
+                    </div>
+                  )}
                   <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1">
                     {client.edrpou && <span className="text-xs text-gray-400">📋 {client.edrpou}</span>}
                     {client.contact && <span className="text-xs text-gray-400">📞 {client.contact}</span>}
@@ -704,6 +825,7 @@ export default function ClientsPage() {
       {showBulkPrice && (
         <BulkPriceModal allClients={activeClients} onClose={() => setShowBulkPrice(false)} />
       )}
+      {showGroups && <GroupsModal onClose={() => setShowGroups(false)} />}
     </div>
   );
 }

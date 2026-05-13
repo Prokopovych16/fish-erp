@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '@/api/axios';
 import { useAuthStore } from '@/store/auth';
@@ -41,30 +41,157 @@ const movementTypeIcon: Record<MovementType, string> = {
 };
 
 
+// ─── EditStockItemModal ───────────────────────────────────────────────────────
+function EditStockItemModal({ item, onClose, onSaved }: {
+  item: any; onClose: () => void; onSaved: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [supplierId, setSupplierId] = useState(item.supplierId || '');
+  const [pricePerKg, setPricePerKg] = useState(item.pricePerKg ? String(Number(item.pricePerKg)) : '');
+  const [arrivedAt, setArrivedAt] = useState(
+    item.arrivedAt ? new Date(item.arrivedAt).toISOString().slice(0, 10) : '',
+  );
+  const [quantity, setQuantity] = useState(String(Number(item.quantity)));
+  const [note, setNote] = useState(item.note || '');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const { data: suppliers = [] } = useQuery({
+    queryKey: ['suppliers'],
+    queryFn: () => api.get('/warehouses/suppliers').then((r) => r.data),
+  });
+
+  const priceNum = Number(pricePerKg) || 0;
+  const qtyNum = Number(quantity) || 0;
+
+  const handleSave = async () => {
+    if (!quantity || Number(quantity) <= 0) return setError('Кількість має бути більше 0');
+    setLoading(true); setError('');
+    try {
+      await api.patch(`/warehouses/stock-items/${item.id}`, {
+        supplierId: supplierId || null,
+        pricePerKg: pricePerKg ? Number(pricePerKg) : null,
+        arrivedAt: arrivedAt || undefined,
+        quantity: Number(quantity),
+        note: note || null,
+      });
+      queryClient.invalidateQueries({ queryKey: ['stock'] });
+      queryClient.invalidateQueries({ queryKey: ['incoming-movements'] });
+      onSaved();
+      onClose();
+    } catch (e: any) {
+      setError(e.response?.data?.message || 'Помилка збереження');
+    } finally { setLoading(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden">
+        <div className="px-5 py-4 border-b flex items-center justify-between shrink-0">
+          <div>
+            <h2 className="font-bold text-gray-800">Редагування партії</h2>
+            <p className="text-xs text-gray-400 mt-0.5">{item.product?.name}</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Постачальник</label>
+            <select value={supplierId} onChange={(e) => setSupplierId(e.target.value)}
+              className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="">Без постачальника</option>
+              {(suppliers as any[]).filter((s: any) => s.isActive).map((s: any) =>
+                <option key={s.id} value={s.id}>🏭 {s.name}</option>
+              )}
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1.5">
+                Кількість ({item.product?.unit || 'кг'})
+              </label>
+              <input type="number" step="0.001" min="0.001" value={quantity}
+                onChange={(e) => setQuantity(e.target.value)}
+                className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Ціна/кг (з ПДВ)</label>
+              <input type="number" step="0.01" min="0" value={pricePerKg}
+                onChange={(e) => setPricePerKg(e.target.value)}
+                className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="0.00" />
+            </div>
+          </div>
+          {priceNum > 0 && qtyNum > 0 && (
+            <div className="grid grid-cols-2 gap-2 bg-blue-50 rounded-xl p-3">
+              <div className="text-center">
+                <div className="text-[10px] text-gray-400 mb-0.5">Без ПДВ</div>
+                <div className="text-sm font-bold text-gray-700">{(priceNum / 1.2).toFixed(2)} ₴/кг</div>
+              </div>
+              <div className="text-center">
+                <div className="text-[10px] text-gray-400 mb-0.5">Сума з ПДВ</div>
+                <div className="text-sm font-bold text-green-600">{(priceNum * qtyNum).toFixed(2)} ₴</div>
+              </div>
+            </div>
+          )}
+          <div>
+            <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Дата надходження</label>
+            <input type="date" value={arrivedAt} onChange={(e) => setArrivedAt(e.target.value)}
+              className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Коментар</label>
+            <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2}
+              className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              placeholder="Необов'язково..." />
+          </div>
+          {error && <div className="text-red-500 text-sm bg-red-50 border border-red-100 px-3 py-2.5 rounded-xl">⚠️ {error}</div>}
+        </div>
+        <div className="px-5 pb-5 pt-4 border-t flex gap-2 shrink-0">
+          <button onClick={onClose} className="flex-1 border border-gray-200 text-gray-600 text-sm px-4 py-2.5 rounded-xl hover:bg-gray-50">Скасувати</button>
+          <button onClick={handleSave} disabled={loading}
+            className="flex-1 bg-blue-600 text-white text-sm px-4 py-2.5 rounded-xl hover:bg-blue-700 disabled:opacity-50 font-bold">
+            {loading ? 'Зберігаю...' : 'Зберегти'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── WarehouseModal ───────────────────────────────────────────────────────────
 function WarehouseModal({ warehouse, onClose, onMovement }: {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   warehouse: any; onClose: () => void; onMovement: () => void;
 }) {
   const { user } = useAuthStore();
   const isInspector = user?.role === 'INSPECTOR';
+  const isAdmin = user?.role === 'ADMIN';
   const [formFilter, setFormFilter] = useState<'ALL' | 'FORM_1' | 'FORM_2'>(isInspector ? 'FORM_1' : 'ALL');
   const [search, setSearch] = useState('');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [editingItem, setEditingItem] = useState<any | null>(null);
   const items = warehouse.stockItems || [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const filtered = (formFilter === 'ALL' ? items : items.filter((i: any) => i.form === formFilter))
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .filter((i: any) => Number(i.quantity) > 0)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .filter((i: any) => !search || i.product.name.toLowerCase().includes(search.toLowerCase()));
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const totalSum = filtered.reduce((s: number, i: any) => s + Number(i.quantity) * Number(i.pricePerKg ?? 0), 0);
   const totalSumNoVat = totalSum / (1 + VAT_RATE);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const totalKg = filtered.filter((i: any) => i.product.unit === 'кг').reduce((s: number, i: any) => s + Number(i.quantity), 0);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const totalPcs = filtered.filter((i: any) => i.product.unit === 'шт').reduce((s: number, i: any) => s + Number(i.quantity), 0);
   const type = warehouse.type as WarehouseType;
 
-
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-3">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[95vh] flex flex-col overflow-hidden">
+    <>
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-2 sm:p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[95vh] flex flex-col overflow-hidden">
         <div className={`bg-gradient-to-r ${warehouseTypeColor[type] || 'from-gray-500 to-gray-600'} px-5 py-4 shrink-0`}>
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <span className="text-3xl">{warehouseTypeIcon[type] || '🏭'}</span>
               <div>
@@ -72,12 +199,12 @@ function WarehouseModal({ warehouse, onClose, onMovement }: {
                 <span className="text-white/60 text-xs">{warehouseTypeLabel[type]}</span>
               </div>
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3 sm:gap-5">
               <div className="hidden sm:flex items-center gap-4 text-sm">
                 {[
                   { label: 'Позицій', value: String(filtered.length) },
                   { label: 'Загально', value: [totalKg > 0 ? `${totalKg.toFixed(1)} кг` : '', totalPcs > 0 ? `${Math.round(totalPcs)} шт` : ''].filter(Boolean).join(' + ') || '0' },
-                  { label: 'Сума з ПДВ', value: `${totalSum.toFixed(0)} ₴` },
+                  { label: 'З ПДВ', value: `${totalSum.toFixed(0)} ₴` },
                   { label: 'Без ПДВ', value: `${totalSumNoVat.toFixed(0)} ₴` },
                 ].map((stat, i, arr) => (
                   <div key={stat.label} className="flex items-center gap-4">
@@ -89,32 +216,26 @@ function WarehouseModal({ warehouse, onClose, onMovement }: {
                   </div>
                 ))}
               </div>
-              <button onClick={onClose} className="text-white/70 hover:text-white text-2xl leading-none ml-2">×</button>
+              <button onClick={onClose} className="text-white/70 hover:text-white text-2xl leading-none">×</button>
             </div>
           </div>
         </div>
 
-        <div className="px-5 py-2.5 border-b bg-gray-50 flex flex-col gap-2 shrink-0">
-          <div className="flex items-center justify-between gap-2">
-            {!isInspector && (
-              <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs bg-white">
-                {[{ value: 'ALL', label: 'Всі' }, { value: 'FORM_1', label: '🏦 Ф1' }, { value: 'FORM_2', label: '💵 Ф2' }].map((f) => (
-                  <button key={f.value} onClick={() => setFormFilter(f.value as typeof formFilter)}
-                    className={`px-3 py-1.5 transition-colors ${formFilter === f.value ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
-                    {f.label}
-                  </button>
-                ))}
-              </div>
-            )}
-            <span className="text-xs text-gray-400">{filtered.length} позицій</span>
-          </div>
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Пошук по назві продукту..."
-            className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-          />
+        <div className="px-4 py-2.5 border-b bg-gray-50 flex items-center gap-2 shrink-0 flex-wrap">
+          {!isInspector && (
+            <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs bg-white">
+              {[{ value: 'ALL', label: 'Всі' }, { value: 'FORM_1', label: '🏦 Ф1' }, { value: 'FORM_2', label: '💵 Ф2' }].map((f) => (
+                <button key={f.value} onClick={() => setFormFilter(f.value as typeof formFilter)}
+                  className={`px-3 py-1.5 transition-colors ${formFilter === f.value ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          )}
+          <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
+            placeholder="Пошук по назві..."
+            className="flex-1 min-w-[160px] border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
+          <span className="text-xs text-gray-400 shrink-0">{filtered.length} поз.</span>
         </div>
 
         <div className="flex-1 overflow-y-auto">
@@ -124,82 +245,108 @@ function WarehouseModal({ warehouse, onClose, onMovement }: {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
                 <tr className="text-left text-xs text-gray-500">
-                  <th className="px-4 py-3 font-semibold">Продукт</th>
-                  <th className="px-4 py-3 font-semibold">Форма</th>
-                  <th className="px-4 py-3 font-semibold">Постачальник</th>
-                  <th className="px-4 py-3 font-semibold">Дата</th>
-                  <th className="px-4 py-3 font-semibold text-right">Кількість</th>
-                  <th className="px-4 py-3 font-semibold text-right">Ціна/кг (з ПДВ)</th>
-                  <th className="px-4 py-3 font-semibold text-right">Без ПДВ</th>
-                  <th className="px-4 py-3 font-semibold text-right">Сума з ПДВ</th>
+                  <th className="px-3 py-3 font-semibold">Продукт</th>
+                  <th className="px-3 py-3 font-semibold">Форма</th>
+                  <th className="px-3 py-3 font-semibold">Постачальник</th>
+                  <th className="px-3 py-3 font-semibold">Дата</th>
+                  <th className="px-3 py-3 font-semibold text-right">Кількість</th>
+                  <th className="px-3 py-3 font-semibold text-right">Ціна/кг (з ПДВ)</th>
+                  <th className="px-3 py-3 font-semibold text-right">Без ПДВ</th>
+                  <th className="px-3 py-3 font-semibold text-right">Сума</th>
+                  {isAdmin && <th className="px-3 py-3" />}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {Object.entries(
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   filtered.reduce((acc: Record<string, any[]>, item: any) => {
                     const key = item.product.name;
                     if (!acc[key]) acc[key] = [];
                     acc[key].push(item);
                     return acc;
                   }, {})
-                ).map(([productName, stockItems]) => {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                ).map(([productName, stockItems]: [string, any[]]) => {
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   const productQty = stockItems.reduce((s: number, i: any) => s + Number(i.quantity), 0);
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   const productSum = stockItems.reduce((s: number, i: any) => s + Number(i.quantity) * Number(i.pricePerKg ?? 0), 0);
+                  const unit = stockItems[0]?.product?.unit || 'кг';
                   return (
                     <>
+                      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                       {stockItems.map((item: any, idx: number) => {
                         const qty = Number(item.quantity);
                         const price = Number(item.pricePerKg ?? 0);
                         const priceNoVat = price / (1 + VAT_RATE);
                         const sumWithVat = qty * price;
                         return (
-                          <tr key={item.id} className="hover:bg-blue-50/30 transition-colors">
-                            <td className="px-4 py-3">
+                          <tr key={item.id} className="hover:bg-blue-50/30 transition-colors group">
+                            <td className="px-3 py-2.5">
                               {idx === 0 ? (
                                 <div className="flex items-center gap-2">
                                   <span className="text-base">🐟</span>
                                   <div>
-                                    <div className="font-semibold text-gray-800">{productName}</div>
-                                    {stockItems.length > 1 && <div className="text-xs text-gray-400">{stockItems.length} партії · {productQty.toFixed(3)} {(stockItems as any[])[0]?.product?.unit || 'кг'}</div>}
+                                    <div className="font-semibold text-gray-800 text-xs">{productName}</div>
+                                    {stockItems.length > 1 && <div className="text-[10px] text-gray-400">{stockItems.length} партії · {productQty.toFixed(3)} {unit}</div>}
                                   </div>
                                 </div>
                               ) : (
-                                <div className="pl-7 text-xs text-gray-400">↳ партія {idx + 1}</div>
+                                <div className="pl-7 text-[10px] text-gray-400">↳ партія {idx + 1}</div>
                               )}
                             </td>
-                            <td className="px-4 py-3">
-                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${item.form === 'FORM_1' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
+                            <td className="px-3 py-2.5">
+                              <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${item.form === 'FORM_1' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
                                 {item.form === 'FORM_1' ? 'Ф1' : 'Ф2'}
                               </span>
                             </td>
-                            <td className="px-4 py-3 text-xs text-gray-500">
-                              {item.supplier?.name ? <span className="bg-purple-50 text-purple-600 px-2 py-0.5 rounded">{item.supplier.name}</span> : <span className="text-gray-300">—</span>}
+                            <td className="px-3 py-2.5 text-xs text-gray-500">
+                              {item.supplier?.name
+                                ? <span className="bg-purple-50 text-purple-600 px-2 py-0.5 rounded text-[10px]">{item.supplier.name}</span>
+                                : <span className="text-gray-300">—</span>}
                             </td>
-                            <td className="px-4 py-3 text-xs text-gray-400">{new Date(item.arrivedAt).toLocaleDateString('uk-UA')}</td>
-                            <td className="px-4 py-3 text-right">
-                              <span className="font-bold text-gray-800 text-base">{qty.toFixed(3)}</span>
+                            <td className="px-3 py-2.5 text-xs text-gray-400 whitespace-nowrap">{new Date(item.arrivedAt).toLocaleDateString('uk-UA')}</td>
+                            <td className="px-3 py-2.5 text-right">
+                              <span className="font-bold text-gray-800">{qty.toFixed(3)}</span>
                               <span className="text-xs text-gray-400 ml-1">{item.product.unit}</span>
                             </td>
-                            <td className="px-4 py-3 text-right">{price > 0 ? <span className="font-medium text-gray-700">{price.toFixed(2)} ₴</span> : <span className="text-xs text-gray-300">—</span>}</td>
-                            <td className="px-4 py-3 text-right">{price > 0 ? <span className="text-gray-500 text-xs">{priceNoVat.toFixed(2)} ₴</span> : <span className="text-xs text-gray-300">—</span>}</td>
-                            <td className="px-4 py-3 text-right">{sumWithVat > 0 ? <span className="font-semibold text-green-600">{sumWithVat.toFixed(2)} ₴</span> : <span className="text-xs text-gray-300">—</span>}</td>
+                            <td className="px-3 py-2.5 text-right">{price > 0 ? <span className="font-medium text-gray-700 text-xs">{price.toFixed(2)} ₴</span> : <span className="text-xs text-gray-300">—</span>}</td>
+                            <td className="px-3 py-2.5 text-right">{price > 0 ? <span className="text-gray-500 text-xs">{priceNoVat.toFixed(2)} ₴</span> : <span className="text-xs text-gray-300">—</span>}</td>
+                            <td className="px-3 py-2.5 text-right">{sumWithVat > 0 ? <span className="font-semibold text-green-600 text-xs">{sumWithVat.toFixed(2)} ₴</span> : <span className="text-xs text-gray-300">—</span>}</td>
+                            {isAdmin && (
+                              <td className="px-3 py-2.5 text-right">
+                                <button onClick={() => setEditingItem(item)}
+                                  className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-blue-600 transition-all text-xs px-2 py-1 rounded-lg hover:bg-blue-50">
+                                  ✏️
+                                </button>
+                              </td>
+                            )}
                           </tr>
                         );
                       })}
                       {stockItems.length > 1 && (
                         <tr className="bg-blue-50/50 border-t border-blue-100">
-                          <td className="px-4 py-2" colSpan={4}><span className="text-xs font-semibold text-blue-600">Разом: {productName}</span></td>
-                          <td className="px-4 py-2 text-right"><span className="font-bold text-blue-700">{productQty.toFixed(3)} кг</span></td>
-                          <td className="px-4 py-2" colSpan={2} />
-                          <td className="px-4 py-2 text-right">{productSum > 0 && <span className="font-bold text-green-600">{productSum.toFixed(2)} ₴</span>}</td>
+                          <td className="px-3 py-2" colSpan={4}><span className="text-xs font-semibold text-blue-600">Разом: {productName}</span></td>
+                          <td className="px-3 py-2 text-right"><span className="font-bold text-blue-700 text-xs">{productQty.toFixed(3)} {unit}</span></td>
+                          <td className="px-3 py-2" colSpan={2} />
+                          <td className="px-3 py-2 text-right">{productSum > 0 && <span className="font-bold text-green-600 text-xs">{productSum.toFixed(2)} ₴</span>}</td>
+                          {isAdmin && <td />}
                         </tr>
                       )}
                     </>
                   );
                 })}
               </tbody>
-              <tfoot className="border-t-2 border-gray-300 bg-gray-50 sticky bottom-0">
-                
+              <tfoot className="border-t-2 border-gray-200 bg-gray-50 sticky bottom-0">
+                <tr>
+                  <td className="px-3 py-2.5 text-xs font-bold text-gray-600" colSpan={4}>Всього по складу</td>
+                  <td className="px-3 py-2.5 text-right text-xs font-bold text-gray-700">
+                    {totalKg > 0 && `${totalKg.toFixed(1)} кг`}{totalKg > 0 && totalPcs > 0 && ' · '}{totalPcs > 0 && `${Math.round(totalPcs)} шт`}
+                  </td>
+                  <td className="px-3 py-2.5" colSpan={2} />
+                  <td className="px-3 py-2.5 text-right text-sm font-bold text-green-600">{totalSum > 0 ? `${totalSum.toFixed(2)} ₴` : '—'}</td>
+                  {isAdmin && <td />}
+                </tr>
               </tfoot>
             </table>
           )}
@@ -211,6 +358,10 @@ function WarehouseModal({ warehouse, onClose, onMovement }: {
         </div>
       </div>
     </div>
+    {editingItem && (
+      <EditStockItemModal item={editingItem} onClose={() => setEditingItem(null)} onSaved={() => setEditingItem(null)} />
+    )}
+    </>
   );
 }
 
@@ -233,6 +384,7 @@ function MovementModal({ onClose }: { onClose: () => void }) {
   const [form, setForm] = useState<FormType>('FORM_1');
   const [pricePerKg, setPricePerKg] = useState('');
   const [supplierId, setSupplierId] = useState('');
+  const [arrivedAt, setArrivedAt] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -262,6 +414,7 @@ function MovementModal({ onClose }: { onClose: () => void }) {
         form: type === 'IN' ? form : 'FORM_1',
         ...(type === 'IN' && pricePerKg && { pricePerKg: Number(pricePerKg) }),
         ...(type === 'IN' && supplierId && { supplierId }),
+        ...(type === 'IN' && arrivedAt && { arrivedAt }),
       });
       queryClient.invalidateQueries({ queryKey: ['warehouses'] });
       queryClient.invalidateQueries({ queryKey: ['stock'] });
@@ -408,6 +561,11 @@ function MovementModal({ onClose }: { onClose: () => void }) {
                     ))}
                   </div>
                 )}
+                <div>
+                  <label className="block text-xs text-green-600 font-medium mb-1.5">Дата надходження<span className="text-green-400 ml-1 font-normal">— необов'язково, за замовч. сьогодні</span></label>
+                  <input type="date" value={arrivedAt} onChange={(e) => setArrivedAt(e.target.value)}
+                    className="w-full border border-green-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white" />
+                </div>
               </div>
             )}
 
@@ -679,9 +837,10 @@ export default function WarehousePage() {
   const queryClient = useQueryClient();
   const [showMovement, setShowMovement] = useState(false);
   const [showProduction, setShowProduction] = useState(false);
-  const [selectedWarehouse, setSelectedWarehouse] = useState<any | null>(null);
-  const [activeTab, setActiveTab] = useState<'stock' | 'movements' | 'returns'>('stock');
+  const [selectedWarehouseId, setSelectedWarehouseId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'stock' | 'movements' | 'returns' | 'incoming'>('stock');
   const [showReturn, setShowReturn] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [selectedReturn, setSelectedReturn] = useState<any | null>(null);
   const [showWriteOffConfirm, setShowWriteOffConfirm] = useState(false);
   const [writeOffLoading, setWriteOffLoading] = useState(false);
@@ -691,11 +850,17 @@ export default function WarehousePage() {
     enabled: activeTab === 'returns',
   });
 
-
   const { data: stock = [], isLoading: stockLoading, refetch: refetchStock } = useQuery({
     queryKey: ['stock'],
     queryFn: () => api.get('/warehouses/stock/all').then((r) => r.data),
   });
+
+  // Automatically picks up fresh data after EditStockItemModal saves
+  const selectedWarehouse = useMemo(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    () => selectedWarehouseId ? (stock as any[]).find((w: any) => w.id === selectedWarehouseId) ?? null : null,
+    [stock, selectedWarehouseId],
+  );
 
   const { data: settings, refetch: refetchSettings } = useQuery({
     queryKey: ['settings'],
@@ -712,6 +877,12 @@ export default function WarehousePage() {
     queryKey: ['movements'],
     queryFn: () => api.get('/warehouses/movements').then((r) => r.data),
     enabled: activeTab === 'movements',
+  });
+
+  const { data: incomingMovements = [], isLoading: incomingLoading } = useQuery({
+    queryKey: ['incoming-movements'],
+    queryFn: () => api.get('/warehouses/movements?type=IN').then((r) => r.data),
+    enabled: activeTab === 'incoming',
   });
 
   const totalStats = stock.reduce(
@@ -760,7 +931,8 @@ export default function WarehousePage() {
       <div className="flex rounded-xl border border-gray-200 overflow-hidden text-xs sm:text-sm w-full sm:w-fit bg-white">
         {[
           { value: 'stock', label: '📦 Залишки' },
-          { value: 'movements', label: '📋 Історія рухів' },
+          { value: 'incoming', label: '📥 Надходження' },
+          { value: 'movements', label: '📋 Рухи' },
           { value: 'returns', label: '↩ Повернення' },
         ].map((tab) => (
           <button key={tab.value} onClick={() => setActiveTab(tab.value as typeof activeTab)}
@@ -783,7 +955,7 @@ export default function WarehousePage() {
               const wTotalPcs = warehouse.stockItems?.filter((i: any) => i.product.unit === 'шт').reduce((s: number, i: any) => s + Number(i.quantity), 0) || 0;
               const totalSum = warehouse.stockItems?.reduce((s: number, i: any) => s + Number(i.quantity) * Number(i.pricePerKg ?? 0), 0) || 0;
               return (
-                <div key={warehouse.id} onClick={() => setSelectedWarehouse(warehouse)}
+                <div key={warehouse.id} onClick={() => setSelectedWarehouseId(warehouse.id)}
                   className="bg-white rounded-2xl border border-gray-200 overflow-hidden cursor-pointer hover:shadow-lg hover:border-blue-200 transition-all group">
                   <div className={`bg-gradient-to-r ${warehouseTypeColor[wType] || 'from-gray-400 to-gray-500'} p-4`}>
                     <div className="flex items-center justify-between">
@@ -836,6 +1008,101 @@ export default function WarehousePage() {
                 </div>
               );
             })}
+          </div>
+        )
+      )}
+
+      {activeTab === 'incoming' && (
+        incomingLoading ? (
+          <div className="text-center text-gray-400 py-12">Завантаження...</div>
+        ) : /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+          (incomingMovements as any[]).filter((m: any) => m.warehouse?.type === 'FRIDGE').length === 0 ? (
+          <div className="text-center text-gray-400 py-12 border-2 border-dashed border-gray-200 rounded-xl">
+            <div className="text-4xl mb-3">📥</div>
+            <div className="font-medium">Надходжень ще не було</div>
+          </div>
+        ) : (
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            {/* Мобільний вид */}
+            <div className="sm:hidden divide-y divide-gray-100">
+              {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+              {(incomingMovements as any[]).filter((m: any) => m.warehouse?.type === 'FRIDGE').map((m: any) => {
+                const price = Number(m.pricePerKg ?? 0);
+                const qty = Math.abs(Number(m.quantity));
+                return (
+                  <div key={m.id} className="p-4">
+                    <div className="flex items-start justify-between gap-2 mb-1">
+                      <div className="font-medium text-gray-800 text-sm">🐟 {m.product?.name || '—'}</div>
+                      <span className="font-bold text-gray-800 shrink-0">{qty.toFixed(3)} {m.product?.unit || 'кг'}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-400 mt-0.5">
+                      <span>{m.warehouse?.name}</span>
+                      {m.supplier?.name && <span className="text-purple-600">🏭 {m.supplier.name}</span>}
+                      {price > 0 && <span className="text-green-600 font-medium">{price.toFixed(2)} ₴/кг · {(qty * price).toFixed(2)} ₴</span>}
+                      <span className={`px-1.5 py-0.5 rounded font-medium ${m.form === 'FORM_1' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
+                        {m.form === 'FORM_1' ? 'Ф1' : 'Ф2'}
+                      </span>
+                    </div>
+                    {m.note && <div className="mt-1 text-xs text-amber-600 bg-amber-50 rounded px-2 py-1">💬 {m.note}</div>}
+                    <div className="text-xs text-gray-400 mt-1">{new Date(m.createdAt).toLocaleDateString('uk-UA')}</div>
+                  </div>
+                );
+              })}
+            </div>
+            {/* Десктопний вид */}
+            <div className="hidden sm:block overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr className="text-left text-xs text-gray-500">
+                    <th className="px-4 py-3 font-semibold">Дата</th>
+                    <th className="px-4 py-3 font-semibold">Продукт</th>
+                    <th className="px-4 py-3 font-semibold">Склад</th>
+                    <th className="px-4 py-3 font-semibold">Постачальник</th>
+                    <th className="px-4 py-3 font-semibold text-right">Кількість</th>
+                    <th className="px-4 py-3 font-semibold text-right">Ціна/кг (з ПДВ)</th>
+                    <th className="px-4 py-3 font-semibold text-right">Сума</th>
+                    <th className="px-4 py-3 font-semibold">Форма</th>
+                    <th className="px-4 py-3 font-semibold">Коментар</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                  {(incomingMovements as any[]).filter((m: any) => m.warehouse?.type === 'FRIDGE').map((m: any) => {
+                    const price = Number(m.pricePerKg ?? 0);
+                    const qty = Math.abs(Number(m.quantity));
+                    return (
+                      <tr key={m.id} className="hover:bg-green-50/30 transition-colors">
+                        <td className="px-4 py-2.5 text-xs text-gray-400 whitespace-nowrap">{new Date(m.createdAt).toLocaleDateString('uk-UA')}</td>
+                        <td className="px-4 py-2.5 font-medium text-gray-800 text-xs">🐟 {m.product?.name || '—'}</td>
+                        <td className="px-4 py-2.5 text-xs text-gray-500">{m.warehouse?.name}</td>
+                        <td className="px-4 py-2.5 text-xs">
+                          {m.supplier?.name
+                            ? <span className="bg-purple-50 text-purple-600 px-2 py-0.5 rounded">{m.supplier.name}</span>
+                            : <span className="text-gray-300">—</span>}
+                        </td>
+                        <td className="px-4 py-2.5 text-right font-semibold text-gray-800 text-xs">{qty.toFixed(3)} {m.product?.unit || 'кг'}</td>
+                        <td className="px-4 py-2.5 text-right text-xs">
+                          {price > 0 ? <span className="font-medium text-gray-700">{price.toFixed(2)} ₴</span> : <span className="text-gray-300">—</span>}
+                        </td>
+                        <td className="px-4 py-2.5 text-right text-xs">
+                          {price > 0 ? <span className="font-semibold text-green-600">{(qty * price).toFixed(2)} ₴</span> : <span className="text-gray-300">—</span>}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${m.form === 'FORM_1' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
+                            {m.form === 'FORM_1' ? 'Ф1' : 'Ф2'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2.5 text-xs max-w-[160px]">
+                          {m.note
+                            ? <span className="text-amber-700 bg-amber-50 px-2 py-0.5 rounded">{m.note}</span>
+                            : <span className="text-gray-300">—</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         )
       )}
@@ -1028,8 +1295,8 @@ export default function WarehousePage() {
       )}
 
       {selectedWarehouse && (
-        <WarehouseModal warehouse={selectedWarehouse} onClose={() => setSelectedWarehouse(null)}
-          onMovement={() => { setSelectedWarehouse(null); setShowMovement(true); }} />
+        <WarehouseModal warehouse={selectedWarehouse} onClose={() => setSelectedWarehouseId(null)}
+          onMovement={() => { setSelectedWarehouseId(null); setShowMovement(true); }} />
       )}
       {showMovement && (
         <MovementModal onClose={() => { setShowMovement(false); refetchStock(); }} />

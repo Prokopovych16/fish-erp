@@ -9,10 +9,30 @@ import { Form } from '@prisma/client';
 export class ClientsService {
   constructor(private prisma: PrismaService) {}
 
+  // ─── Groups ───────────────────────────────────────────────────
+  async findAllGroups() {
+    return this.prisma.clientGroup.findMany({ orderBy: { name: 'asc' } });
+  }
+
+  async createGroup(dto: { name: string }) {
+    return this.prisma.clientGroup.create({ data: dto });
+  }
+
+  async updateGroup(id: string, dto: { name: string }) {
+    return this.prisma.clientGroup.update({ where: { id }, data: dto });
+  }
+
+  async deleteGroup(id: string) {
+    // від'єднуємо клієнтів перед видаленням
+    await this.prisma.client.updateMany({ where: { groupId: id }, data: { groupId: null } });
+    return this.prisma.clientGroup.delete({ where: { id } });
+  }
+
   // Отримати всіх клієнтів
   async findAll() {
     return this.prisma.client.findMany({
       orderBy: { name: 'asc' },
+      include: { group: true },
     });
   }
 

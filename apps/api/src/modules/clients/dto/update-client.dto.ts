@@ -20,4 +20,8 @@ export class UpdateClientDto {
   @IsOptional()
   @IsString()
   bankAccount?: string;
+
+  @IsOptional()
+  @IsString()
+  groupId?: string | null;
 }

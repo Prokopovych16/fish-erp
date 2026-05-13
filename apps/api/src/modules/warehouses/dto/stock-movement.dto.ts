@@ -34,4 +34,8 @@ export class StockMovementDto {
   @IsOptional()
   @IsString()
   supplierId?: string;
+
+  @IsOptional()
+  @IsString()
+  arrivedAt?: string;
 }

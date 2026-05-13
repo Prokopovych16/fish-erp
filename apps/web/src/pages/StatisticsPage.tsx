@@ -459,6 +459,7 @@ export default function StatisticsPage() {
                       <div key={client.clientId} className="p-4">
                         <div className="flex items-center gap-3 mb-2">
                           <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0" style={{ background: COLORS[idx % COLORS.length] }}>{idx + 1}</div>
+                          <span className="text-base shrink-0">{client.isGroup ? '🏢' : '👤'}</span>
                           <span className="font-semibold text-gray-800 flex-1 truncate">{client.clientName}</span>
                           <span className="font-bold text-green-600 shrink-0">{(Number(client.revenue) * 1.2).toFixed(0)} ₴</span>
                         </div>
@@ -495,7 +496,9 @@ export default function StatisticsPage() {
                           <td className="px-4 py-3">
                             <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white" style={{ background: COLORS[idx % COLORS.length] }}>{idx + 1}</div>
                           </td>
-                          <td className="px-4 py-3 font-medium text-gray-800">{client.clientName}</td>
+                          <td className="px-4 py-3 font-medium text-gray-800">
+                            <span className="mr-1.5">{client.isGroup ? '🏢' : '👤'}</span>{client.clientName}
+                          </td>
                           <td className="px-4 py-3 text-right text-gray-600">{client.ordersCount}</td>
                           <td className="px-4 py-3 text-right text-gray-600 text-xs">{Number(client.totalWeightKg) > 0 ? `${Number(client.totalWeightKg).toFixed(1)} кг` : ''}{Number(client.totalWeightKg) > 0 && Number(client.totalPcs) > 0 ? ' · ' : ''}{Number(client.totalPcs) > 0 ? `${Math.round(Number(client.totalPcs))} шт` : ''}</td>
                           <td className="px-4 py-3 text-right font-semibold text-green-600">{(Number(client.revenue) * 1.2).toFixed(2)} ₴</td>

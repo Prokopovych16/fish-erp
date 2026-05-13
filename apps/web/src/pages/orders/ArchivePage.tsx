@@ -14,6 +14,24 @@ function FormBadge({ form }: { form: Form }) {
   );
 }
 
+const STATUS_LABEL: Record<string, string> = {
+  DRAFT: 'Чернетка', PENDING: 'Очікує', IN_PROGRESS: 'В роботі', DONE: 'Виконано', CANCELLED: 'Скасовано',
+};
+const STATUS_COLOR: Record<string, string> = {
+  DRAFT: 'bg-slate-100 text-slate-600',
+  PENDING: 'bg-gray-100 text-gray-600',
+  IN_PROGRESS: 'bg-yellow-100 text-yellow-700',
+  DONE: 'bg-green-100 text-green-700',
+  CANCELLED: 'bg-red-100 text-red-600',
+};
+
+function calcOrderTotal(items: Order['items']): number {
+  return items.reduce((s, i) => {
+    if (i.product.unit === 'шт' && !i.actualWeight) return s;
+    return s + Number(i.actualWeight ?? i.plannedWeight) * Number(i.pricePerKg ?? 0);
+  }, 0);
+}
+
 // ─── WeightsEditModal ─────────────────────────────────────────────────────────
 function WeightsEditModal({ order, onClose, onSaved }: {
   order: Order; onClose: () => void; onSaved: (updated: Order) => void;
@@ -136,10 +154,7 @@ function OrderDetailsModal({ order, onClose, onEditWeights, onEdit, onDelete, us
   const [printLoading, setPrintLoading] = useState(false);
   const deliveryPoint = (order as any).deliveryPoint;
   const displayNumber = (order as any).numberForm ?? order.number;
-  const total = order.items.reduce((s, i) => {
-    if (i.product.unit === 'шт' && !i.actualWeight) return s;
-    return s + Number(i.actualWeight ?? i.plannedWeight) * Number(i.pricePerKg ?? 0);
-  }, 0);
+  const total = calcOrderTotal(order.items);
   const totalWeight = order.items.reduce((s, i) => s + Number(i.actualWeight ?? i.plannedWeight), 0);
   const totalPlanned = order.items.reduce((s, i) => s + Number(i.plannedWeight), 0);
 
@@ -155,17 +170,51 @@ function OrderDetailsModal({ order, onClose, onEditWeights, onEdit, onDelete, us
     finally { setPrintLoading(false); }
   };
 
+  const canPrint = userRole === 'ADMIN' && order.status === 'DONE';
+
+  const buttons = (
+    <>
+      {canPrint && (
+        <>
+          <button onClick={() => handlePrint('all')} disabled={printLoading}
+            className="w-full bg-green-600 text-white text-sm px-3 py-2.5 rounded-xl hover:bg-green-700 disabled:opacity-50 font-bold">
+            🖨️ {printLoading ? 'Генерую...' : 'Все (5 стор.)'}
+          </button>
+          <div className="grid grid-cols-3 gap-2">
+            {[{ type: 'invoice' as const, label: '📄 Накладна', cls: 'bg-blue-600 hover:bg-blue-700' },
+              { type: 'ttn' as const, label: '🚚 ТТН', cls: 'bg-gray-600 hover:bg-gray-700' },
+              { type: 'quality' as const, label: '✅ Якісне', cls: 'bg-gray-600 hover:bg-gray-700' }].map((btn) => (
+              <button key={btn.type} onClick={() => handlePrint(btn.type)} disabled={printLoading}
+                className={`${btn.cls} text-white text-xs px-2 py-2.5 rounded-xl disabled:opacity-50 font-semibold`}>{btn.label}</button>
+            ))}
+          </div>
+          <button onClick={() => onEdit(order)}
+            className="w-full border border-blue-200 text-blue-700 text-sm px-3 py-2.5 rounded-xl hover:bg-blue-50 font-semibold">✏️ Редагувати</button>
+          <button onClick={() => onEditWeights(order)}
+            className="w-full border border-yellow-200 text-yellow-700 text-sm px-3 py-2.5 rounded-xl hover:bg-yellow-50 font-semibold">⚖️ Фактична вага</button>
+          <div className="border-t border-gray-200" />
+        </>
+      )}
+      {userRole === 'ADMIN' && onDelete && (
+        <button onClick={() => onDelete(order.id)}
+          className="w-full border border-red-300 text-red-600 text-sm px-3 py-2.5 rounded-xl hover:bg-red-50 font-semibold">🗑 Видалити</button>
+      )}
+      <button onClick={onClose} className="w-full border border-gray-200 text-gray-600 text-sm px-3 py-2.5 rounded-xl hover:bg-gray-50">Закрити</button>
+    </>
+  );
+
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] flex flex-col overflow-hidden">
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-2 sm:p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[95vh] flex flex-col overflow-hidden">
+        {/* Header */}
         <div className="px-5 py-4 border-b shrink-0">
           <div className="flex items-start justify-between gap-2">
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <h2 className="font-bold text-gray-800 text-xl">№{displayNumber}</h2>
                 <FormBadge form={order.form} />
-                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${order.status === 'DONE' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                  {order.status === 'DONE' ? '✓ Виконано' : '✕ Скасовано'}
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${STATUS_COLOR[order.status]}`}>
+                  {STATUS_LABEL[order.status]}
                 </span>
                 {printed && <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 font-bold">✓ Роздруковано</span>}
               </div>
@@ -179,105 +228,116 @@ function OrderDetailsModal({ order, onClose, onEditWeights, onEdit, onDelete, us
             <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none shrink-0">×</button>
           </div>
         </div>
-        <div className="p-5 overflow-y-auto flex-1 space-y-4">
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {order.driverName && <div className="bg-gray-50 border border-gray-100 rounded-xl p-2.5"><div className="text-xs text-gray-400 mb-0.5">Водій</div><div className="text-sm font-semibold text-gray-700 truncate">🚗 {order.driverName}</div></div>}
-            {order.carNumber && <div className="bg-gray-50 border border-gray-100 rounded-xl p-2.5"><div className="text-xs text-gray-400 mb-0.5">Авто</div><div className="text-sm font-semibold text-gray-700">🚛 {order.carNumber}</div></div>}
-            {order.createdBy && <div className="bg-gray-50 border border-gray-100 rounded-xl p-2.5"><div className="text-xs text-gray-400 mb-0.5">Створив</div><div className="text-sm font-semibold text-gray-700 truncate">{order.createdBy.name}</div></div>}
-            {order.completedAt && <div className="bg-green-50 border border-green-100 rounded-xl p-2.5"><div className="text-xs text-green-500 mb-0.5">Виконано</div><div className="text-sm font-semibold text-green-700">{new Date(order.completedAt).toLocaleDateString('uk-UA')}</div></div>}
-          </div>
-          <div>
-            <div className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Позиції</div>
-            <div className="border border-gray-200 rounded-xl overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr className="text-left text-xs text-gray-400">
-                    <th className="px-3 py-2.5 font-semibold">Товар</th>
-                    <th className="px-3 py-2.5 font-semibold text-right">План</th>
-                    <th className="px-3 py-2.5 font-semibold text-right">Факт</th>
-                    <th className="hidden sm:table-cell px-3 py-2.5 font-semibold text-right">Ціна</th>
-                    <th className="px-3 py-2.5 font-semibold text-right">Сума</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {order.items.map((item) => {
-                    const weight = Number(item.actualWeight ?? item.plannedWeight);
-                    const price = Number(item.pricePerKg ?? 0);
-                    const planned = Number(item.plannedWeight);
-                    const canCalcPrice = item.product.unit !== 'шт' || !!item.actualWeight;
-                    const diff = item.actualWeight ? Number(item.actualWeight) - planned : null;
-                    const diffPct = diff !== null && planned > 0 ? (diff / planned) * 100 : null;
-                    return (
-                      <tr key={item.id} className="hover:bg-gray-50/50">
-                        <td className="px-3 py-2.5 font-semibold text-gray-800 text-xs sm:text-sm">{item.product.name}</td>
-                        <td className="px-3 py-2.5 text-right text-gray-400 text-xs">{planned.toFixed(3)}</td>
-                        <td className="px-3 py-2.5 text-right">
-                          {item.actualWeight ? (
-                            <div>
-                              <span className="font-semibold text-gray-800 text-xs sm:text-sm">{Number(item.actualWeight).toFixed(3)}</span>
-                              {diffPct !== null && (
-                                <span className={`ml-1 text-xs ${Math.abs(diffPct) <= 2 ? 'text-green-500' : Math.abs(diffPct) <= 5 ? 'text-yellow-500' : 'text-red-500'}`}>
-                                  ({diffPct > 0 ? '+' : ''}{diffPct.toFixed(1)}%)
-                                </span>
-                              )}
-                            </div>
-                          ) : <span className="text-gray-400">—</span>}
-                        </td>
-                        <td className="hidden sm:table-cell px-3 py-2.5 text-right text-gray-500 text-xs">{canCalcPrice && price > 0 ? `${(price * 1.2).toFixed(2)} ₴` : '—'}</td>
-                        <td className="px-3 py-2.5 text-right font-bold text-gray-800 text-xs sm:text-sm">{canCalcPrice && weight * price > 0 ? `${(weight * price * 1.2).toFixed(2)} ₴` : '—'}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-                <tfoot className="bg-gray-50 border-t border-gray-200">
-                  <tr className="text-sm font-bold text-gray-700">
-                    <td className="px-3 py-2.5">Всього</td>
-                    <td className="px-3 py-2.5 text-right text-gray-400 text-xs font-normal">{totalPlanned.toFixed(3)}</td>
-                    <td className="px-3 py-2.5 text-right">{totalWeight.toFixed(3)}</td>
-                    <td className="hidden sm:table-cell px-3 py-2.5 text-right">—</td>
-                    <td className="px-3 py-2.5 text-right text-green-600">{(total * 1.2).toFixed(2)} ₴</td>
-                  </tr>
-                </tfoot>
-              </table>
+
+        {/* Body: two columns on desktop */}
+        <div className="flex flex-col md:flex-row flex-1 overflow-hidden min-h-0">
+          {/* Left: order content */}
+          <div className="flex-1 overflow-y-auto p-5 space-y-4">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {order.driverName && <div className="bg-gray-50 border border-gray-100 rounded-xl p-2.5"><div className="text-xs text-gray-400 mb-0.5">Водій</div><div className="text-sm font-semibold text-gray-700 truncate">🚗 {order.driverName}</div></div>}
+              {order.carNumber && <div className="bg-gray-50 border border-gray-100 rounded-xl p-2.5"><div className="text-xs text-gray-400 mb-0.5">Авто</div><div className="text-sm font-semibold text-gray-700">🚛 {order.carNumber}</div></div>}
+              {order.createdBy && <div className="bg-gray-50 border border-gray-100 rounded-xl p-2.5"><div className="text-xs text-gray-400 mb-0.5">Створив</div><div className="text-sm font-semibold text-gray-700 truncate">{order.createdBy.name}</div></div>}
+              {order.completedAt && <div className="bg-green-50 border border-green-100 rounded-xl p-2.5"><div className="text-xs text-green-500 mb-0.5">Виконано</div><div className="text-sm font-semibold text-green-700">{new Date(order.completedAt).toLocaleDateString('uk-UA')}</div></div>}
+            </div>
+            <div>
+              <div className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Позиції</div>
+              <div className="border border-gray-200 rounded-xl overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr className="text-left text-xs text-gray-400">
+                      <th className="px-3 py-2.5 font-semibold">Товар</th>
+                      <th className="px-3 py-2.5 font-semibold text-right">План</th>
+                      <th className="px-3 py-2.5 font-semibold text-right">Факт</th>
+                      <th className="px-3 py-2.5 font-semibold text-right">Ціна</th>
+                      <th className="px-3 py-2.5 font-semibold text-right">Сума</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {order.items.map((item) => {
+                      const weight = Number(item.actualWeight ?? item.plannedWeight);
+                      const price = Number(item.pricePerKg ?? 0);
+                      const planned = Number(item.plannedWeight);
+                      const canCalcPrice = item.product.unit !== 'шт' || !!item.actualWeight;
+                      const diff = item.actualWeight ? Number(item.actualWeight) - planned : null;
+                      const diffPct = diff !== null && planned > 0 ? (diff / planned) * 100 : null;
+                      const lineTotal = canCalcPrice && weight * price > 0 ? Math.round(weight * price * 1.2 * 100) / 100 : null;
+                      return (
+                        <tr key={item.id} className="hover:bg-gray-50/50">
+                          <td className="px-3 py-2.5 font-semibold text-gray-800 text-xs">{item.product.name}</td>
+                          <td className="px-3 py-2.5 text-right text-gray-400 text-xs">{planned.toFixed(3)}</td>
+                          <td className="px-3 py-2.5 text-right">
+                            {item.actualWeight ? (
+                              <span className="font-semibold text-gray-800 text-xs">
+                                {Number(item.actualWeight).toFixed(3)}
+                                {diffPct !== null && <span className={`ml-1 ${Math.abs(diffPct) <= 2 ? 'text-green-500' : Math.abs(diffPct) <= 5 ? 'text-yellow-500' : 'text-red-500'}`}>({diffPct > 0 ? '+' : ''}{diffPct.toFixed(1)}%)</span>}
+                              </span>
+                            ) : <span className="text-gray-400 text-xs">—</span>}
+                          </td>
+                          <td className="px-3 py-2.5 text-right text-gray-500 text-xs">{canCalcPrice && price > 0 ? `${(price * 1.2).toFixed(2)} ₴` : '—'}</td>
+                          <td className="px-3 py-2.5 text-right font-bold text-gray-800 text-xs">{lineTotal != null ? `${lineTotal.toFixed(2)} ₴` : '—'}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot className="bg-gray-50 border-t border-gray-200">
+                    <tr className="text-sm font-bold text-gray-700">
+                      <td className="px-3 py-2.5 text-xs">Всього</td>
+                      <td className="px-3 py-2.5 text-right text-gray-400 text-xs font-normal">{totalPlanned.toFixed(3)}</td>
+                      <td className="px-3 py-2.5 text-right text-xs">{totalWeight.toFixed(3)}</td>
+                      <td className="px-3 py-2.5 text-right text-xs">—</td>
+                      <td className="px-3 py-2.5 text-right text-green-600 text-sm">{(Math.round(total * 1.2 * 100) / 100).toFixed(2)} ₴</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+            {order.note && (
+              <div className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">
+                <div className="text-xs font-bold text-amber-500 mb-0.5">Примітка</div>
+                <div className="text-sm text-gray-700">{order.note}</div>
+              </div>
+            )}
+            <div className="md:hidden pt-4 border-t space-y-2">
+              {buttons}
             </div>
           </div>
-          {order.note && (
-            <div className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">
-              <div className="text-xs font-bold text-amber-500 mb-0.5">Примітка</div>
-              <div className="text-sm text-gray-700">{order.note}</div>
-            </div>
-          )}
-        </div>
-        <div className="px-5 pb-5 pt-4 border-t shrink-0 space-y-2">
-          {userRole === 'ADMIN' && order.status === 'DONE' && (
-            <>
-              <button onClick={() => handlePrint('all')} disabled={printLoading}
-                className="w-full bg-green-600 text-white text-sm px-4 py-2.5 rounded-xl hover:bg-green-700 disabled:opacity-50 font-bold">
-                🖨️ {printLoading ? 'Генерую...' : 'Роздрукувати все (5 сторінок)'}
-              </button>
-              <div className="grid grid-cols-3 gap-2">
+
+          {/* Right: action buttons */}
+          <div className="hidden md:flex md:flex-col md:w-52 shrink-0 md:border-l border-gray-200 p-4 gap-2 bg-gray-50/50">
+            {canPrint && (
+              <>
+                <button onClick={() => handlePrint('all')} disabled={printLoading}
+                  className="w-full bg-green-600 text-white text-sm px-3 py-2.5 rounded-xl hover:bg-green-700 disabled:opacity-50 font-bold text-center">
+                  🖨️ {printLoading ? 'Генерую...' : 'Все (5 стор.)'}
+                </button>
                 {[{ type: 'invoice' as const, label: '📄 Накладна', cls: 'bg-blue-600 hover:bg-blue-700' },
                   { type: 'ttn' as const, label: '🚚 ТТН', cls: 'bg-gray-600 hover:bg-gray-700' },
                   { type: 'quality' as const, label: '✅ Якісне', cls: 'bg-gray-600 hover:bg-gray-700' }].map((btn) => (
                   <button key={btn.type} onClick={() => handlePrint(btn.type)} disabled={printLoading}
-                    className={`${btn.cls} text-white text-xs px-3 py-2 rounded-xl disabled:opacity-50 font-semibold`}>{btn.label}</button>
+                    className={`w-full ${btn.cls} text-white text-sm px-3 py-2.5 rounded-xl disabled:opacity-50 font-semibold`}>{btn.label}</button>
                 ))}
-              </div>
-              <button onClick={() => onEdit(order)}
-                className="w-full border border-blue-200 text-blue-700 text-sm px-4 py-2.5 rounded-xl hover:bg-blue-50 font-semibold">
-                ✏️ Редагувати заявку
+                <div className="border-t border-gray-200 my-1" />
+                <button onClick={() => onEdit(order)}
+                  className="w-full border border-blue-200 text-blue-700 text-sm px-3 py-2.5 rounded-xl hover:bg-blue-50 font-semibold">
+                  ✏️ Редагувати
+                </button>
+                <button onClick={() => onEditWeights(order)}
+                  className="w-full border border-yellow-200 text-yellow-700 text-sm px-3 py-2.5 rounded-xl hover:bg-yellow-50 font-semibold">
+                  ⚖️ Фактична вага
+                </button>
+              </>
+            )}
+            {userRole === 'ADMIN' && onDelete && (
+              <button onClick={() => onDelete(order.id)}
+                className="w-full border border-red-300 text-red-600 text-sm px-3 py-2.5 rounded-xl hover:bg-red-50 font-semibold">
+                🗑 Видалити
               </button>
-              <button onClick={() => onEditWeights(order)}
-                className="w-full border border-yellow-200 text-yellow-700 text-sm px-4 py-2.5 rounded-xl hover:bg-yellow-50 font-semibold">
-                ⚖️ Редагувати фактичну вагу
-              </button>
-            </>
-          )}
-          {userRole === 'ADMIN' && onDelete && (
-            <button onClick={() => onDelete(order.id)}
-              className="w-full border border-red-300 text-red-600 text-sm px-4 py-2.5 rounded-xl hover:bg-red-50 font-semibold">🗑 Видалити заявку</button>
-          )}
-          <button onClick={onClose} className="w-full border border-gray-200 text-gray-600 text-sm px-4 py-2.5 rounded-xl hover:bg-gray-50">Закрити</button>
+            )}
+            <div className="flex-1" />
+            <button onClick={onClose} className="w-full border border-gray-200 text-gray-600 text-sm px-3 py-2.5 rounded-xl hover:bg-gray-50">
+              Закрити
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -771,10 +831,7 @@ export default function ArchivePage() {
               {/* Мобільний вид — картки */}
               <div className="sm:hidden divide-y divide-gray-100">
                 {orders.map((order) => {
-                  const orderTotal = order.items.reduce((s, i) => {
-                    if (i.product.unit === 'шт' && !i.actualWeight) return s;
-                    return s + Number(i.actualWeight ?? i.plannedWeight) * Number(i.pricePerKg ?? 0);
-                  }, 0);
+                  const orderTotal = calcOrderTotal(order.items);
                   const orderWeight = order.items.reduce((s, i) => s + Number(i.actualWeight ?? i.plannedWeight), 0);
                   const extOrder = order as Order & { printedAt?: string; numberForm?: number; deliveryPoint?: { name: string } };
                   const isPrinted = !!extOrder.printedAt;
@@ -787,11 +844,11 @@ export default function ArchivePage() {
                           <span className="font-bold text-gray-800">№{displayNumber}</span>
                           {isPrinted && <span className="text-purple-400 text-xs font-bold">✓</span>}
                           <FormBadge form={order.form} />
-                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${order.status === 'DONE' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                            {order.status === 'DONE' ? '✓ Виконано' : '✕ Скасовано'}
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${STATUS_COLOR[order.status]}`}>
+                            {STATUS_LABEL[order.status]}
                           </span>
                         </div>
-                        <span className="font-bold text-green-600 text-sm shrink-0">{(orderTotal * 1.2).toFixed(0)} ₴</span>
+                        <span className="font-bold text-green-600 text-sm shrink-0">{(Math.round(orderTotal * 1.2 * 100) / 100).toFixed(2)} ₴</span>
                       </div>
                       <div className="text-sm text-gray-700 font-medium truncate">{order.client.name}</div>
                       {extOrder.deliveryPoint && <div className="text-xs text-gray-400">📍 {extOrder.deliveryPoint.name}</div>}
@@ -821,10 +878,7 @@ export default function ArchivePage() {
                   <tbody className="divide-y divide-gray-100">
                     {orders.map((order) => {
                       const extOrd = order as Order & { printedAt?: string; numberForm?: number; deliveryPoint?: { name: string } };
-                      const orderTotal = order.items.reduce((s, i) => {
-                        if (i.product.unit === 'шт' && !i.actualWeight) return s;
-                        return s + Number(i.actualWeight ?? i.plannedWeight) * Number(i.pricePerKg ?? 0);
-                      }, 0);
+                      const orderTotal = calcOrderTotal(order.items);
                       const orderWeight = order.items.reduce((s, i) => s + Number(i.actualWeight ?? i.plannedWeight), 0);
                       const isPrinted = !!extOrd.printedAt;
                       const displayNumber = extOrd.numberForm ?? order.number;
@@ -843,12 +897,12 @@ export default function ArchivePage() {
                           </td>
                           <td className="px-4 py-3"><FormBadge form={order.form} /></td>
                           <td className="px-4 py-3">
-                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${order.status === 'DONE' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                              {order.status === 'DONE' ? '✓ Виконано' : '✕ Скасовано'}
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${STATUS_COLOR[order.status]}`}>
+                              {STATUS_LABEL[order.status]}
                             </span>
                           </td>
                           <td className="px-4 py-3 text-right text-gray-600 text-xs font-medium">{orderWeight.toFixed(1)} кг</td>
-                          <td className="px-4 py-3 text-right"><span className="font-bold text-green-600">{(orderTotal * 1.2).toFixed(2)} ₴</span></td>
+                          <td className="px-4 py-3 text-right"><span className="font-bold text-green-600">{(Math.round(orderTotal * 1.2 * 100) / 100).toFixed(2)} ₴</span></td>
                           <td className="px-4 py-3 text-right text-gray-400 text-xs">{new Date(order.createdAt).toLocaleDateString('uk-UA')}</td>
                         </tr>
                       );

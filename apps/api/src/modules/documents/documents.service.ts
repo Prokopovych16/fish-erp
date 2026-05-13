@@ -906,7 +906,7 @@ export class DocumentsService {
           4. Експлуатаційний дозвіл № 02-23-27 FR для потужностей (об'єктів) з виробництва, переробки або реалізації харчових продуктів від 04.05.2008 р.<br>
           5. Експертний висновок №008799 п/25 від 31.12.2025р. виданий Хмільницькою МДЛДСУ з питань безпечності харчових продуктів та захисту споживачів.<br>
           6. Продукція не містить ГМО.<br>
-          7. Експертний висновок № 003212 п/20 від 01.07.2020р. виданий Вінницькою регіональною державною лабораторією ДСУ з питань безпечності харчових продуктів та захисту споживачів.<br>
+          7. Експертний висновок № XB-000003 п/26 від 29.04.2026р. виданий Вінницькою регіональною державною лабораторією ДСУ з питань безпечності харчових продуктів та захисту споживачів.<br>
         </div>
 
         <div class="sigs">
@@ -927,24 +927,19 @@ export class DocumentsService {
     rows: {
       number: any;
       client: string;
-      deliveryPoint: string;
       form: string;
-      total: number;
+      totalNoVat: number;
+      totalWithVat: number;
+      vat: number;
       date: Date;
     }[];
-    grandTotal: number;
+    grandNoVat: number;
+    grandWithVat: number;
+    grandVat: number;
     from: string;
     to: string;
     form?: string;
-    companyName?: string;
   }): Promise<Buffer> {
-    const form1Total = data.rows
-      .filter((r) => r.form === 'FORM_1')
-      .reduce((s, r) => s + r.total, 0);
-    const form2Total = data.rows
-      .filter((r) => r.form === 'FORM_2')
-      .reduce((s, r) => s + r.total, 0);
-
     const rows = data.rows
       .map(
         (r, idx) => `
@@ -952,63 +947,120 @@ export class DocumentsService {
       <td>${idx + 1}</td>
       <td>${r.number}</td>
       <td style="text-align:left">${r.client}</td>
-      <td style="text-align:left">${r.deliveryPoint}</td>
-      <td><span class="badge ${r.form === 'FORM_1' ? 'f1' : 'f2'}">${r.form === 'FORM_1' ? 'Ф1' : 'Ф2'}</span></td>
-      <td>${new Date(r.date).toLocaleDateString('uk-UA')}</td>
-      <td style="text-align:right"><b>${r.total.toFixed(2)}</b></td>
-    </tr>
-  `,
+      <td style="text-align:right">${r.totalWithVat.toFixed(2)}</td>
+      <td style="text-align:right">${r.totalNoVat.toFixed(2)}</td>
+      <td style="text-align:right">${r.vat.toFixed(2)}</td>
+    </tr>`,
       )
       .join('');
 
+    const periodFrom = data.from
+      ? new Date(data.from).toLocaleDateString('uk-UA')
+      : '—';
+    const periodTo = data.to
+      ? new Date(data.to).toLocaleDateString('uk-UA')
+      : '—';
+    const formLabel =
+      data.form === 'FORM_1'
+        ? 'Форма 1 (безнал)'
+        : data.form === 'FORM_2'
+          ? 'Форма 2 (готівка)'
+          : 'Всі форми';
+
+    // Зведення по клієнту/групі
+    const clientSummaryMap: Record<
+      string,
+      { totalWithVat: number; totalNoVat: number; count: number }
+    > = {};
+    for (const r of data.rows) {
+      if (!clientSummaryMap[r.client]) {
+        clientSummaryMap[r.client] = {
+          totalWithVat: 0,
+          totalNoVat: 0,
+          count: 0,
+        };
+      }
+      clientSummaryMap[r.client].totalWithVat += r.totalWithVat;
+      clientSummaryMap[r.client].totalNoVat += r.totalNoVat;
+      clientSummaryMap[r.client].count++;
+    }
+    const summaryRows = Object.entries(clientSummaryMap)
+      .sort(([a], [b]) => a.localeCompare(b, 'uk'))
+      .map(([name, s]) => {
+        const withVat = Number(s.totalWithVat.toFixed(2));
+        const noVat = Number(s.totalNoVat.toFixed(2));
+        const vat = Number((withVat - noVat).toFixed(2));
+        return `<tr>
+      <td style="text-align:left">${name}</td>
+      <td>${s.count}</td>
+      <td style="text-align:right">${withVat.toFixed(2)}</td>
+      <td style="text-align:right">${noVat.toFixed(2)}</td>
+      <td style="text-align:right">${vat.toFixed(2)}</td>
+    </tr>`;
+      })
+      .join('');
+
     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: Arial, sans-serif; font-size: 11px; color: #000; }
-    h2 { text-align: center; font-size: 14px; font-weight: bold; margin-bottom: 4px; }
-    .subtitle { text-align: center; font-size: 10px; color: #555; margin-bottom: 12px; }
-    table { width: 100%; border-collapse: collapse; }
-    th { background: #f0f0f0; padding: 5px 4px; border: 1px solid #999; text-align: center; font-size: 10px; }
-    td { padding: 4px; border: 1px solid #ccc; text-align: center; font-size: 10px; }
-    .badge { padding: 1px 6px; border-radius: 10px; font-size: 9px; font-weight: bold; }
-    .f1 { background: #dbeafe; color: #1d4ed8; }
-    .f2 { background: #ffedd5; color: #c2410c; }
-    .totals { margin-top: 10px; display: flex; gap: 20px; justify-content: flex-end; font-size: 11px; }
-    .total-box { border: 1px solid #ccc; border-radius: 6px; padding: 6px 12px; text-align: center; }
-    .total-box .label { font-size: 9px; color: #666; margin-bottom: 2px; }
-    .total-box .value { font-weight: bold; font-size: 13px; }
-  </style></head><body>
-  <h2>Реєстр накладних</h2>
-  <p class="subtitle">
-    Період: ${data.from ? new Date(data.from).toLocaleDateString('uk-UA') : '—'} — ${data.to ? new Date(data.to).toLocaleDateString('uk-UA') : '—'}
-    ${data.form ? ` · ${data.form === 'FORM_1' ? 'Форма 1 (безнал)' : 'Форма 2 (готівка)'}` : ' · Всі форми'}
-  </p>
-  <table>
-    <thead>
-      <tr>
-        <th style="width:28px">№</th>
-        <th style="width:50px">Накладна</th>
-        <th>Клієнт</th>
-        <th>Точка доставки</th>
-        <th style="width:40px">Форма</th>
-        <th style="width:70px">Дата</th>
-        <th style="width:80px">Сума, ₴</th>
-      </tr>
-    </thead>
-    <tbody>${rows}</tbody>
-    <tfoot>
-      <tr style="font-weight:bold; background:#f5f5f5">
-        <td colspan="6" style="text-align:right; padding-right:8px;">ВСЬОГО:</td>
-        <td style="text-align:right">${data.grandTotal.toFixed(2)} ₴</td>
-      </tr>
-    </tfoot>
-  </table>
-  <div class="totals">
-    ${!data.form || data.form === 'FORM_1' ? `<div class="total-box"><div class="label">Ф1 (безнал)</div><div class="value" style="color:#1d4ed8">${form1Total.toFixed(2)} ₴</div></div>` : ''}
-    ${!data.form || data.form === 'FORM_2' ? `<div class="total-box"><div class="label">Ф2 (готівка)</div><div class="value" style="color:#c2410c">${form2Total.toFixed(2)} ₴</div></div>` : ''}
-    <div class="total-box"><div class="label">Разом</div><div class="value" style="color:#16a34a">${data.grandTotal.toFixed(2)} ₴</div></div>
-  </div>
-  </body></html>`;
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; font-size: 11px; color: #000; }
+  h2 { text-align: center; font-size: 14px; font-weight: bold; margin-bottom: 4px; }
+  .subtitle { text-align: center; font-size: 10px; color: #555; margin-bottom: 14px; }
+  table { width: 100%; border-collapse: collapse; }
+  th { background: #f0f0f0; padding: 5px 6px; border: 1px solid #999; text-align: center; font-size: 10px; }
+  td { padding: 4px 6px; border: 1px solid #ccc; font-size: 10px; text-align: center; }
+  tbody tr:nth-child(even) { background: #fafafa; }
+  tfoot tr td { font-weight: bold; background: #f0f0f0; border-top: 2px solid #666; }
+  .section-title { font-size: 12px; font-weight: bold; margin: 18px 0 6px; }
+  .summary-footer td { font-weight: bold; background: #e8f5e9; border-top: 2px solid #388e3c; }
+</style></head><body>
+<h2>Реєстр реалізації товару</h2>
+<p class="subtitle">Період: ${periodFrom} — ${periodTo} · ${formLabel} · ${data.rows.length} накладних</p>
+<table>
+  <thead>
+    <tr>
+      <th style="width:30px">№</th>
+      <th style="width:52px">№ накл.</th>
+      <th style="text-align:left">Назва організації</th>
+      <th style="width:90px">Сума загальна, грн</th>
+      <th style="width:85px">Сума без ПДВ, грн</th>
+      <th style="width:75px">ПДВ, грн</th>
+    </tr>
+  </thead>
+  <tbody>${rows}</tbody>
+  <tfoot>
+    <tr>
+      <td colspan="3" style="text-align:right; padding-right:10px;">ВСЬОГО:</td>
+      <td style="text-align:right">${data.grandWithVat.toFixed(2)}</td>
+      <td style="text-align:right">${data.grandNoVat.toFixed(2)}</td>
+      <td style="text-align:right">${data.grandVat.toFixed(2)}</td>
+    </tr>
+  </tfoot>
+</table>
+
+<p class="section-title">Зведення по клієнтах</p>
+<table>
+  <thead>
+    <tr>
+      <th style="text-align:left">Клієнт / Група</th>
+      <th style="width:52px">Накл.</th>
+      <th style="width:90px">Сума загальна, грн</th>
+      <th style="width:85px">Сума без ПДВ, грн</th>
+      <th style="width:75px">ПДВ, грн</th>
+    </tr>
+  </thead>
+  <tbody>${summaryRows}</tbody>
+  <tfoot>
+    <tr class="summary-footer">
+      <td style="text-align:right; padding-right:10px;">ВСЬОГО:</td>
+      <td>${data.rows.length}</td>
+      <td style="text-align:right">${data.grandWithVat.toFixed(2)}</td>
+      <td style="text-align:right">${data.grandNoVat.toFixed(2)}</td>
+      <td style="text-align:right">${data.grandVat.toFixed(2)}</td>
+    </tr>
+  </tfoot>
+</table>
+</body></html>`;
 
     return this.generatePdf(html);
   }

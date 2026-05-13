@@ -59,7 +59,6 @@ export class OrdersService {
 
     const where: any = {
       deletedAt: null,
-      status: { in: [OrderStatus.DONE, OrderStatus.CANCELLED] },
     };
 
     if (userRole === UserRole.INSPECTOR) {
@@ -710,24 +709,29 @@ export class OrdersService {
     userRole: UserRole,
     params: { from: string; to: string; form?: string },
   ) {
+    const dateRange = {
+      ...(params.from && { gte: new Date(params.from) }),
+      ...(params.to && { lte: new Date(new Date(params.to).setHours(23, 59, 59)) }),
+    };
+
     const where: any = {
       deletedAt: null,
       status: 'DONE',
       ...(params.form && { form: params.form as Form }),
       ...(userRole === UserRole.INSPECTOR && { form: Form.FORM_1 }),
-      createdAt: {
-        ...(params.from && { gte: new Date(params.from) }),
-        ...(params.to && {
-          lte: new Date(new Date(params.to).setHours(23, 59, 59)),
-        }),
-      },
+      // фільтр по даті накладної, якщо немає — по completedAt
+      OR: [
+        { invoiceDate: dateRange },
+        { invoiceDate: null, completedAt: dateRange },
+      ],
     };
 
     const orders = await this.prisma.order.findMany({
       where,
       include: {
-        client: { select: { name: true } },
-        deliveryPoint: { select: { name: true } },
+        client: {
+          select: { name: true, group: { select: { name: true } } },
+        },
         items: {
           select: {
             actualWeight: true,
@@ -737,33 +741,49 @@ export class OrdersService {
           },
         },
       },
-      orderBy: { completedAt: 'asc' },
+      orderBy: [{ invoiceDate: 'asc' }, { completedAt: 'asc' }],
     });
 
     const rows = orders.map((o) => {
-      const total = o.items.reduce((s, i) => {
-        // шт-товар без фактичної ваги — не рахуємо
+      // Та ж сама логіка що й у generateTtn/generateInvoice
+      const totalNoVat = o.items.reduce((s, i) => {
         if (i.product.unit === 'шт' && !i.actualWeight) return s;
-        return (
-          s +
-          Number(i.actualWeight ?? i.plannedWeight) * Number(i.pricePerKg ?? 0)
-        );
+        const rowTotal =
+          Math.round(
+            Number(i.actualWeight ?? i.plannedWeight) *
+              Number(i.pricePerKg ?? 0) *
+              100,
+          ) / 100;
+        return s + rowTotal;
       }, 0);
+      const totalWithVat = Number((totalNoVat * 1.2).toFixed(2));
+      // vat рахуємо як різниця щоб noVat + vat = withVat до копійки
+      const vat = Number((totalWithVat - totalNoVat).toFixed(2));
+
+      const clientName = o.client.group
+        ? `${o.client.name} (${o.client.group.name})`
+        : o.client.name;
+
       return {
         number: (o as any).numberForm ?? o.number,
-        client: o.client.name,
-        deliveryPoint: o.deliveryPoint?.name ?? '',
+        client: clientName,
         form: o.form,
-        total: total,
-        date: o.completedAt ?? o.createdAt,
+        totalNoVat,
+        totalWithVat,
+        vat,
+        date: (o as any).invoiceDate ?? o.completedAt ?? o.createdAt,
       };
     });
 
-    const grandTotal = rows.reduce((s, r) => s + r.total, 0);
+    const grandNoVat = rows.reduce((s, r) => s + r.totalNoVat, 0);
+    const grandWithVat = rows.reduce((s, r) => s + r.totalWithVat, 0);
+    const grandVat = Number((grandWithVat - grandNoVat).toFixed(2));
 
     return {
       rows,
-      grandTotal,
+      grandNoVat,
+      grandWithVat,
+      grandVat,
       from: params.from,
       to: params.to,
       form: params.form,
