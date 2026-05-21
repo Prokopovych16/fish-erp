@@ -46,7 +46,7 @@ function CustomTooltip({ active, payload, label }: any) {
       <p className="font-medium text-gray-700 mb-1">{label}</p>
       {payload.map((p: any, i: number) => (
         <p key={i} style={{ color: p.color }} className="text-xs">
-          {p.name}: <span className="font-semibold">{Number(p.value).toFixed(2)}</span>
+          {p.name}: <span className="font-semibold">{(Number(p.value) * 1.2).toFixed(2)}</span>
         </p>
       ))}
     </div>
@@ -265,7 +265,7 @@ export default function StatisticsPage() {
                           <Pie data={formPieData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} dataKey="value">
                             <Cell fill="#3b82f6" /><Cell fill="#f97316" />
                           </Pie>
-                          <Tooltip formatter={(v: any) => [`${Number(v).toFixed(2)} ₴`]} />
+                          <Tooltip formatter={(v: any) => [`${(Number(v) * 1.2).toFixed(2)} ₴`]} />
                         </PieChart>
                       </ResponsiveContainer>
                       <div className="flex-1 space-y-2">
@@ -278,7 +278,7 @@ export default function StatisticsPage() {
                                 <div className="w-3 h-3 rounded-full shrink-0" style={{ background: i === 0 ? '#3b82f6' : '#f97316' }} />
                                 <span className="text-gray-600">{d.name}</span>
                               </div>
-                              <div className="text-sm font-semibold text-gray-800 ml-5">{Number(d.value).toFixed(0)} ₴ <span className="text-xs text-gray-400">({pct}%)</span></div>
+                              <div className="text-sm font-semibold text-gray-800 ml-5">{(Number(d.value) * 1.2).toFixed(0)} ₴ <span className="text-xs text-gray-400">({pct}%)</span></div>
                             </div>
                           );
                         })}
@@ -326,7 +326,7 @@ export default function StatisticsPage() {
                             label={({ name, percent }) => `${name.split(' ')[0]} ${(percent * 100).toFixed(0)}%`} labelLine={false}>
                             <Cell fill="#3b82f6" /><Cell fill="#f97316" />
                           </Pie>
-                          <Tooltip formatter={(v: any) => [`${Number(v).toFixed(2)} ₴`]} />
+                          <Tooltip formatter={(v: any) => [`${(Number(v) * 1.2).toFixed(2)} ₴`]} />
                         </PieChart>
                       </ResponsiveContainer>
                     ) : <div className="text-center text-gray-400 py-8 text-sm">Немає даних</div>}
@@ -602,7 +602,7 @@ export default function StatisticsPage() {
                         <Pie data={products?.map((p: any) => ({ name: p.productName, value: Number(p.revenue || 0) }))} cx="50%" cy="50%" outerRadius={80} dataKey="value">
                           {products?.map((_: any, i: number) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                         </Pie>
-                        <Tooltip formatter={(v: any) => [`${Number(v).toFixed(2)} ₴`]} />
+                        <Tooltip formatter={(v: any) => [`${(Number(v) * 1.2).toFixed(2)} ₴`]} />
                       </PieChart>
                     </ResponsiveContainer>
                     <div className="flex-1 space-y-1.5">

@@ -495,8 +495,18 @@ function ClientDetailsModal({ client, onClose, onEdit, isAdmin, allClients }: {
       const items = Object.entries(prices)
         .filter(([, price]) => price !== '' && Number(price) > 0)
         .map(([productId, price]) => ({ productId, price: Number(price), form }));
-      if (items.length === 0) { setError('Вкажіть хоча б одну ціну'); setSaving(false); return; }
-      await api.patch(`/clients/${client.id}/prices`, { prices: items });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const toDelete = (clientPricesData as any[]).filter(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (p: any) => !prices[p.productId] || Number(prices[p.productId]) <= 0
+      );
+      if (items.length === 0 && toDelete.length === 0) { setError('Вкажіть хоча б одну ціну'); setSaving(false); return; }
+      if (items.length > 0) {
+        await api.patch(`/clients/${client.id}/prices`, { prices: items });
+      }
+      for (const p of toDelete) {
+        await api.delete(`/clients/${client.id}/prices/${p.productId}`, { params: { form } });
+      }
       queryClient.invalidateQueries({ queryKey: ['client-prices', client.id] });
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
