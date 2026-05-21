@@ -622,6 +622,17 @@ function ClientDetailsModal({ client, onClose, onEdit, isAdmin, allClients }: {
                                 <div className="text-xs font-semibold text-blue-600">{(price * 1.2).toFixed(2)} ₴</div>
                               </div>
                             )}
+                            {price > 0 && (
+                              <button
+                                onClick={async () => {
+                                  await api.delete(`/clients/${client.id}/prices/${product.id}`, { params: { form } });
+                                  queryClient.invalidateQueries({ queryKey: ['client-prices', client.id] });
+                                }}
+                                title="Видалити ціну"
+                                className="text-gray-300 hover:text-red-500 transition-colors text-base leading-none ml-1">
+                                ×
+                              </button>
+                            )}
                           </div>
                         ) : (
                           <div className="text-right shrink-0">

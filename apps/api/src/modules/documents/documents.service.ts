@@ -931,7 +931,7 @@ export class DocumentsService {
       totalNoVat: number;
       totalWithVat: number;
       vat: number;
-      date: Date;
+      invoiceDate: Date;
     }[];
     grandNoVat: number;
     grandWithVat: number;
@@ -946,6 +946,7 @@ export class DocumentsService {
     <tr>
       <td>${idx + 1}</td>
       <td>${r.number}</td>
+      <td>${new Date(r.invoiceDate).toLocaleDateString('uk-UA')}</td>
       <td style="text-align:left">${r.client}</td>
       <td style="text-align:right">${r.totalWithVat.toFixed(2)}</td>
       <td style="text-align:right">${r.totalNoVat.toFixed(2)}</td>
@@ -1019,18 +1020,19 @@ export class DocumentsService {
 <table>
   <thead>
     <tr>
-      <th style="width:30px">№</th>
-      <th style="width:52px">№ накл.</th>
+      <th style="width:28px">№</th>
+      <th style="width:48px">№ накл.</th>
+      <th style="width:66px">Дата накладної</th>
       <th style="text-align:left">Назва організації</th>
-      <th style="width:90px">Сума загальна, грн</th>
-      <th style="width:85px">Сума без ПДВ, грн</th>
-      <th style="width:75px">ПДВ, грн</th>
+      <th style="width:86px">Сума загальна, грн</th>
+      <th style="width:82px">Сума без ПДВ, грн</th>
+      <th style="width:72px">ПДВ, грн</th>
     </tr>
   </thead>
   <tbody>${rows}</tbody>
   <tfoot>
     <tr>
-      <td colspan="3" style="text-align:right; padding-right:10px;">ВСЬОГО:</td>
+      <td colspan="4" style="text-align:right; padding-right:10px;">ВСЬОГО:</td>
       <td style="text-align:right">${data.grandWithVat.toFixed(2)}</td>
       <td style="text-align:right">${data.grandNoVat.toFixed(2)}</td>
       <td style="text-align:right">${data.grandVat.toFixed(2)}</td>

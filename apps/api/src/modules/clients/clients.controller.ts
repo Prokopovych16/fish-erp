@@ -8,6 +8,7 @@ import {
   Param,
   Query,
   UseGuards,
+  HttpCode,
 } from '@nestjs/common';
 import { ClientsService } from './clients.service';
 import { CreateClientDto } from './dto/create-client.dto';
@@ -92,6 +93,18 @@ export class ClientsController {
   @Patch(':id/prices')
   upsertPrices(@Param('id') id: string, @Body() dto: UpsertPricesDto) {
     return this.clientsService.upsertPrices(id, dto);
+  }
+
+  // DELETE /api/clients/:id/prices/:productId?form=FORM_1
+  @Roles(UserRole.ADMIN)
+  @HttpCode(204)
+  @Delete(':id/prices/:productId')
+  deletePrice(
+    @Param('id') id: string,
+    @Param('productId') productId: string,
+    @Query('form') form: string,
+  ) {
+    return this.clientsService.deletePrice(id, productId, form);
   }
 
   @Get(':id/delivery-points')

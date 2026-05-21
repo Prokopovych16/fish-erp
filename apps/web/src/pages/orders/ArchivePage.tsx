@@ -532,7 +532,13 @@ function EditArchiveOrderModal({ order, onClose, onSaved }: { order: Order; onCl
         invoiceDate: invoiceDate || undefined,
       });
       // Зберігаємо фактичні ваги окремо
-      const weightItems = items.filter((i) => i.actualWeight !== '').map((i) => ({ itemId: i.id, actualWeight: Number(i.actualWeight) }));
+      const weightItems = items
+        .filter((i) => i.actualWeight !== '')
+        .map((i) => ({
+          itemId: i.id,
+          actualWeight: Number(i.actualWeight),
+          pricePerKg: i.pricePerKg > 0 ? i.pricePerKg : 0,
+        }));
       if (weightItems.length > 0) {
         await api.patch(`/orders/${order.id}/items`, { items: weightItems });
       }
@@ -634,29 +640,32 @@ function EditArchiveOrderModal({ order, onClose, onSaved }: { order: Order; onCl
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Фактичні ваги</label>
+            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Позиції</label>
             <div className="space-y-2">
               {items.map((item, idx) => (
                 <div key={item.id} className="border border-gray-200 rounded-xl p-3 bg-gray-50/50">
-                  <div className="flex items-center gap-3">
+                  <div className="text-xs font-semibold text-gray-700 mb-2">{item.productName}</div>
+                  <div className="flex items-center gap-2">
                     <div className="flex-1">
-                      <div className="text-xs font-semibold text-gray-700 mb-1">{item.productName}</div>
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1">
-                          <div className="text-[10px] text-gray-400 mb-0.5">Планова</div>
-                          <input type="number" step="0.001" min="0" value={item.plannedWeight}
-                            onChange={(e) => setItems((prev) => prev.map((p, i) => i === idx ? { ...p, plannedWeight: e.target.value } : p))}
-                            className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white" />
-                        </div>
-                        <div className="text-gray-300 mt-4">→</div>
-                        <div className="flex-1">
-                          <div className="text-[10px] text-gray-400 mb-0.5">Фактична</div>
-                          <input type="number" step="0.001" min="0" value={item.actualWeight}
-                            onChange={(e) => setItems((prev) => prev.map((p, i) => i === idx ? { ...p, actualWeight: e.target.value } : p))}
-                            className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
-                        </div>
-                        <div className="text-xs text-gray-400 mt-4">{item.productUnit}</div>
-                      </div>
+                      <div className="text-[10px] text-gray-400 mb-0.5">Планова</div>
+                      <input type="number" step="0.001" min="0" value={item.plannedWeight}
+                        onChange={(e) => setItems((prev) => prev.map((p, i) => i === idx ? { ...p, plannedWeight: e.target.value } : p))}
+                        className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white" />
+                    </div>
+                    <div className="text-gray-300 mt-4">→</div>
+                    <div className="flex-1">
+                      <div className="text-[10px] text-gray-400 mb-0.5">Фактична</div>
+                      <input type="number" step="0.001" min="0" value={item.actualWeight}
+                        onChange={(e) => setItems((prev) => prev.map((p, i) => i === idx ? { ...p, actualWeight: e.target.value } : p))}
+                        className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
+                    </div>
+                    <div className="text-xs text-gray-400 mt-4">{item.productUnit}</div>
+                    <div className="flex-1">
+                      <div className="text-[10px] text-gray-400 mb-0.5">Ціна/кг ₴</div>
+                      <input type="number" step="0.01" min="0" value={item.pricePerKg || ''}
+                        onChange={(e) => setItems((prev) => prev.map((p, i) => i === idx ? { ...p, pricePerKg: Number(e.target.value) } : p))}
+                        placeholder="0.00"
+                        className="w-full border border-amber-200 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-amber-400 bg-amber-50/50" />
                     </div>
                   </div>
                 </div>

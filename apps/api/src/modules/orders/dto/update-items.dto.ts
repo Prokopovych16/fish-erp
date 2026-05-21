@@ -2,19 +2,24 @@ import { Type } from 'class-transformer';
 import {
   IsArray,
   IsNumber,
+  IsOptional,
   IsString,
   Min,
   ValidateNested,
 } from 'class-validator';
 
-// Фактична вага яку вписує працівник
 export class UpdateOrderItemDto {
   @IsString()
-  itemId: string; // id позиції заявки
+  itemId: string;
 
   @IsNumber()
   @Min(0.001)
-  actualWeight: number; // фактична вага після зважування
+  actualWeight: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  pricePerKg?: number;
 }
 
 export class UpdateItemsDto {

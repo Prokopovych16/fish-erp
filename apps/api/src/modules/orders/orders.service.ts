@@ -547,7 +547,10 @@ export class OrdersService {
     const updates = dto.items.map((item) =>
       this.prisma.orderItem.update({
         where: { id: item.itemId },
-        data: { actualWeight: item.actualWeight },
+        data: {
+          actualWeight: item.actualWeight,
+          ...(item.pricePerKg !== undefined && { pricePerKg: item.pricePerKg }),
+        },
       }),
     );
 
@@ -741,7 +744,7 @@ export class OrdersService {
           },
         },
       },
-      orderBy: [{ invoiceDate: 'asc' }, { completedAt: 'asc' }],
+      orderBy: [{ numberForm: 'asc' }, { number: 'asc' }],
     });
 
     const rows = orders.map((o) => {
@@ -771,7 +774,7 @@ export class OrdersService {
         totalNoVat,
         totalWithVat,
         vat,
-        date: (o as any).invoiceDate ?? o.completedAt ?? o.createdAt,
+        invoiceDate: (o as any).invoiceDate ?? o.completedAt ?? o.createdAt,
       };
     });
 

@@ -120,6 +120,12 @@ export class ClientsService {
     return { message: 'Ціни збережено' };
   }
 
+  async deletePrice(clientId: string, productId: string, form: string) {
+    return this.prisma.clientPrice.deleteMany({
+      where: { clientId, productId, form: form as any },
+    });
+  }
+
   private async findOneOrFail(id: string) {
     const client = await this.prisma.client.findUnique({ where: { id } });
     if (!client) throw new NotFoundException('Клієнта не знайдено');
