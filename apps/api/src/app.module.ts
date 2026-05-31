@@ -15,6 +15,7 @@ import { DriversModule } from './modules/drivers/drivers.module';
 import { ProductionCalcModule } from './modules/production-calc/production-calc.module';
 import { ClientReturnsModule } from './modules/client-returns/client-returns.module';
 import { CashModule } from './modules/cash/cash.module';
+import { StoresModule } from './modules/stores/stores.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { CashModule } from './modules/cash/cash.module';
     ProductionCalcModule,
     ClientReturnsModule,
     CashModule,
+    StoresModule,
   ],
 })
 export class AppModule {}

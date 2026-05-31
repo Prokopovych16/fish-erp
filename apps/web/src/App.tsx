@@ -14,6 +14,7 @@ import AuditPage from '@/pages/AuditPage';
 import Layout from './components/layout/Layout';
 import ProductionCalcPage from '@/pages/ProductionCalcPage';
 import CashPage from '@/pages/CashPage';
+import StoresPage from '@/pages/StoresPage';
 
 // Компоненти сторінок — відповідність path → компонент
 const PAGE_COMPONENTS: Record<string, React.ReactNode> = {
@@ -28,6 +29,7 @@ const PAGE_COMPONENTS: Record<string, React.ReactNode> = {
   '/settings':   <SettingsPage />,
   '/audit':      <AuditPage />,
   '/production-calc': <ProductionCalcPage />,
+  '/stores':     <StoresPage />,
 };
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {

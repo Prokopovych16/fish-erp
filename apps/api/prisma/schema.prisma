@@ -321,7 +321,8 @@ model OrderItem {
   plannedWeight Decimal  @db.Decimal(10, 3)
   actualWeight  Decimal? @db.Decimal(10, 3)
   pricePerKg    Decimal? @db.Decimal(10, 2)
-  displayUnit String?
+  displayUnit   String?
+  sortOrder     Int      @default(0)
 
   order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product Product @relation(fields: [productId], references: [id])
@@ -479,4 +480,30 @@ model CashEntry {
   updatedAt DateTime @updatedAt
 
   @@index([date])
+}
+
+model StoreProspect {
+  id           String   @id @default(uuid())
+  osmId        String   @unique
+  name         String
+  lat          Float
+  lng          Float
+  chain        String?
+  address      String?
+  oblast       String
+  city         String?
+  phone        String?
+  openingHours String?
+  website      String?
+  rating       Float?
+  isWorking    Boolean  @default(false)
+  isNew        Boolean  @default(false)
+  notes        String?
+  firstSeenAt  DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([oblast])
+  @@index([chain])
+  @@index([isWorking])
 }

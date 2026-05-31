@@ -1257,8 +1257,10 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
   const totalWeight = items.reduce((s, i) => s + (Number(i.plannedWeight) || 0), 0);
   const totalSum = items.reduce((s, i) => {
     if (i.displayUnit !== getUnit(i.productId)) return s;
-    const price = getPriceForProduct(i.productId);
-    return s + (price ? price * (Number(i.plannedWeight) || 0) : 0);
+    const effectivePrice = (i.pricePerKg && Number(i.pricePerKg) > 0)
+      ? Number(i.pricePerKg)
+      : getPriceForProduct(i.productId);
+    return s + (effectivePrice ? effectivePrice * (Number(i.plannedWeight) || 0) : 0);
   }, 0);
 
   const handleSave = async () => {
@@ -1414,10 +1416,15 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
             ) : (
               <div className="space-y-2">
                 {items.map((item, idx) => {
-                  const price = getPriceForProduct(item.productId);
+                  const clientPrice = getPriceForProduct(item.productId);
                   const unit = getUnit(item.productId);
                   const canCalcPrice = item.displayUnit === unit;
-                  const lineSum = canCalcPrice && price && item.plannedWeight ? price * Number(item.plannedWeight) : null;
+                  const effectivePrice = (item.pricePerKg && Number(item.pricePerKg) > 0)
+                    ? Number(item.pricePerKg)
+                    : clientPrice;
+                  const lineSum = canCalcPrice && effectivePrice && item.plannedWeight
+                    ? effectivePrice * Number(item.plannedWeight)
+                    : null;
                   return (
                     <div key={idx} className={`rounded-xl border p-3 ${item.productId && item.plannedWeight ? 'border-green-200 bg-green-50/40' : 'border-gray-200 bg-gray-50/50'}`}>
                       <div className="space-y-2">
@@ -1426,7 +1433,14 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
                           <select value={item.productId}
                             onChange={(e) => {
                               const prod = (products as any[])?.find((p: any) => p.id === e.target.value);
-                              setItems((prev) => prev.map((p, i) => i === idx ? { ...p, productId: e.target.value, displayUnit: prod?.unit ?? 'кг' } : p));
+                              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                              const newClientPrice = (clientPrices as any[]).find((cp: any) => cp.productId === e.target.value);
+                              setItems((prev) => prev.map((p, i) => i === idx ? {
+                                ...p,
+                                productId: e.target.value,
+                                displayUnit: prod?.unit ?? 'кг',
+                                pricePerKg: newClientPrice ? String(Number(newClientPrice.price)) : '',
+                              } : p));
                             }}
                             className="flex-1 min-w-0 border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
                             <option value="">Оберіть продукт...</option>
@@ -1457,22 +1471,22 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
                               type="number" step="0.01" min="0"
                               value={item.pricePerKg}
                               onChange={(e) => setItems((prev) => prev.map((p, i) => i === idx ? { ...p, pricePerKg: e.target.value } : p))}
-                              placeholder={price ? `${price.toFixed(2)} (авто)` : 'не встановлено'}
+                              placeholder={clientPrice ? `${clientPrice.toFixed(2)} (авто)` : 'не встановлено'}
                               className="w-28 border border-gray-200 rounded-lg px-2 py-1 text-xs text-right focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
                             />
                             <span className="text-[10px] text-gray-400">без ПДВ</span>
-                            {item.pricePerKg && Number(item.pricePerKg) > 0 && item.plannedWeight && (
+                            {lineSum != null && lineSum > 0 && (
                               <span className="text-[10px] font-bold text-green-600">
-                                = {(Number(item.pricePerKg) * Number(item.plannedWeight) * 1.2).toFixed(2)} ₴
+                                = {(lineSum * 1.2).toFixed(2)} ₴
                               </span>
                             )}
                           </div>
-                          {!item.pricePerKg && price && (
+                          {!item.pricePerKg && clientPrice && (
                             <div className="text-[10px] text-gray-400 pl-[72px]">
-                              Клієнтська ціна: {price.toFixed(2)} ₴/кг
+                              Клієнтська ціна: {clientPrice.toFixed(2)} ₴/кг
                             </div>
                           )}
-                          {!item.pricePerKg && !price && (
+                          {!item.pricePerKg && !clientPrice && (
                             <div className="text-[10px] text-orange-500 pl-[72px]">⚠️ Ціна не встановлена</div>
                           )}
                         </div>

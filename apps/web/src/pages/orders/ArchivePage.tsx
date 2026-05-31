@@ -533,11 +533,11 @@ function EditArchiveOrderModal({ order, onClose, onSaved }: { order: Order; onCl
       });
       // Зберігаємо фактичні ваги окремо
       const weightItems = items
-        .filter((i) => i.actualWeight !== '')
+        .filter((i) => i.actualWeight !== '' || i.pricePerKg > 0)
         .map((i) => ({
           itemId: i.id,
-          actualWeight: Number(i.actualWeight),
-          pricePerKg: i.pricePerKg > 0 ? i.pricePerKg : 0,
+          ...(i.actualWeight !== '' && { actualWeight: Number(i.actualWeight) }),
+          pricePerKg: i.pricePerKg,
         }));
       if (weightItems.length > 0) {
         await api.patch(`/orders/${order.id}/items`, { items: weightItems });

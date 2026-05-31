@@ -12,9 +12,10 @@ export class UpdateOrderItemDto {
   @IsString()
   itemId: string;
 
+  @IsOptional()
   @IsNumber()
   @Min(0.001)
-  actualWeight: number;
+  actualWeight?: number;
 
   @IsOptional()
   @IsNumber()

@@ -44,7 +44,7 @@ export class OrdersService {
       include: {
         client: true,
         deliveryPoint: true,
-        items: { include: { product: true } },
+        items: { include: { product: true }, orderBy: { sortOrder: 'asc' } },
         createdBy: { select: { id: true, name: true } },
         assignedTo: { select: { id: true, name: true } },
       },
@@ -68,7 +68,7 @@ export class OrdersService {
     }
 
     if (dto.clientId) where.clientId = dto.clientId;
-    if (dto.number) where.number = Number(dto.number);
+    if (dto.number) where.numberForm = Number(dto.number);
 
     if (dto.from || dto.to) {
       where.createdAt = {
@@ -83,7 +83,7 @@ export class OrdersService {
       include: {
         client: true,
         deliveryPoint: true,
-        items: { include: { product: true } },
+        items: { include: { product: true }, orderBy: { sortOrder: 'asc' } },
         createdBy: { select: { id: true, name: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -106,7 +106,7 @@ export class OrdersService {
       include: {
         client: true,
         deliveryPoint: true,
-        items: { include: { product: true } },
+        items: { include: { product: true }, orderBy: { sortOrder: 'asc' } },
         createdBy: { select: { id: true, name: true } },
         assignedTo: { select: { id: true, name: true } },
       },
@@ -197,18 +197,19 @@ export class OrdersService {
         deliveryPointId: dto.deliveryPointId ?? null,
         note: dto.note,
         items: {
-          create: (dto.items ?? []).map((item) => ({
+          create: (dto.items ?? []).map((item, idx) => ({
             productId: item.productId,
             plannedWeight: item.plannedWeight,
             pricePerKg: priceMap.get(item.productId) ?? null,
             displayUnit: item.displayUnit ?? null,
+            sortOrder: idx,
           })),
         },
       },
       include: {
         client: true,
         deliveryPoint: true,
-        items: { include: { product: true } },
+        items: { include: { product: true }, orderBy: { sortOrder: 'asc' } },
       },
     });
 
@@ -317,7 +318,7 @@ export class OrdersService {
         include: {
           client: true,
           deliveryPoint: true,
-          items: { include: { product: true } },
+          items: { include: { product: true }, orderBy: { sortOrder: 'asc' } },
         },
       });
 
@@ -358,7 +359,7 @@ export class OrdersService {
           include: {
             client: true,
             deliveryPoint: true,
-            items: { include: { product: true } },
+            items: { include: { product: true }, orderBy: { sortOrder: 'asc' } },
           },
         });
         await this.audit.log({
@@ -507,7 +508,7 @@ export class OrdersService {
       include: {
         client: true,
         deliveryPoint: true,
-        items: { include: { product: true } },
+        items: { include: { product: true }, orderBy: { sortOrder: 'asc' } },
       },
     });
 
@@ -548,7 +549,7 @@ export class OrdersService {
       this.prisma.orderItem.update({
         where: { id: item.itemId },
         data: {
-          actualWeight: item.actualWeight,
+          ...(item.actualWeight !== undefined && { actualWeight: item.actualWeight }),
           ...(item.pricePerKg !== undefined && { pricePerKg: item.pricePerKg }),
         },
       }),
@@ -652,7 +653,7 @@ export class OrdersService {
       include: {
         client: true,
         deliveryPoint: true,
-        items: { include: { product: true } },
+        items: { include: { product: true }, orderBy: { sortOrder: 'asc' } },
         createdBy: { select: { id: true, name: true } },
         assignedTo: { select: { id: true, name: true } },
       },

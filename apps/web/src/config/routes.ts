@@ -18,4 +18,5 @@ export const ROUTES: RouteConfig[] = [
   { path: '/statistics', label: '📈 Статистика',     roles: ['ADMIN', 'ACCOUNTANT', 'INSPECTOR'] },
   { path: '/settings',   label: '⚙️ Налаштування',   roles: ['ADMIN'] },
   { path: '/audit',      label: '🔍 Аудит',          roles: ['ADMIN', 'INSPECTOR'] },
+  { path: '/stores',     label: '🏪 Магазини',        roles: ['ADMIN', 'INSPECTOR'] },
 ];
