@@ -576,19 +576,30 @@ function AiPricingTab({ calcs }: { calcs: ProductionCalc[] }) {
   const productMap = useMemo(() => {
     const map = new Map<string, { name: string; costs: number[]; markups: number[]; salePrices: number[]; totalQty: number }>();
     calcs.forEach(calc => {
+      // Собівартість береться з батьківського calc (точніша), або з output
+      const batchCost = Number(calc.costPerKg) || 0;
       calc.outputs.forEach(o => {
-        if (!map.has(o.productName)) map.set(o.productName, { name: o.productName, costs: [], markups: [], salePrices: [], totalQty: 0 });
-        const e = map.get(o.productName)!;
-        e.costs.push(o.costPerKg);
-        if (o.markupPct != null) e.markups.push(o.markupPct);
-        if (o.salePricePerKg != null) e.salePrices.push(o.salePricePerKg);
-        e.totalQty += Number(o.quantity);
+        const name = o.productName?.trim();
+        if (!name) return;
+        if (!map.has(name)) map.set(name, { name, costs: [], markups: [], salePrices: [], totalQty: 0 });
+        const e = map.get(name)!;
+        const cost = batchCost > 0 ? batchCost : Number(o.costPerKg) || 0;
+        if (cost > 0) e.costs.push(cost);
+        const markup = o.markupPct != null ? Number(o.markupPct) : null;
+        if (markup != null && !isNaN(markup)) e.markups.push(markup);
+        // salePricePerKg: берем збережене або рахуємо з markup
+        let salePrice = o.salePricePerKg != null ? Number(o.salePricePerKg) : null;
+        if ((salePrice == null || salePrice === 0) && cost > 0 && markup != null) {
+          salePrice = cost * (1 + markup / 100);
+        }
+        if (salePrice != null && salePrice > 0 && !isNaN(salePrice)) e.salePrices.push(salePrice);
+        e.totalQty += Number(o.quantity) || 0;
       });
     });
     return map;
   }, [calcs]);
 
-  const avg = (arr: number[]) => arr.length ? arr.reduce((s, v) => s + v, 0) / arr.length : 0;
+  const avg = (arr: number[]) => arr.length ? arr.reduce((s, v) => s + Number(v), 0) / arr.length : 0;
 
   // Поєднуємо дані калькулятора зі статистикою продажів
   const enriched = useMemo(() => {
@@ -749,7 +760,9 @@ ${rows || '— немає даних'}
                   return (
                     <tr key={p.name} className="hover:bg-purple-50/30">
                       <td className="px-4 py-3 font-semibold text-gray-800">{p.name}</td>
-                      <td className="px-4 py-3 text-right text-gray-600">{p.avgCost.toFixed(2)}</td>
+                      <td className="px-4 py-3 text-right text-gray-600">
+                        {p.avgCost > 0 && !isNaN(p.avgCost) ? `${p.avgCost.toFixed(2)} ₴` : <span className="text-orange-400 text-[10px]">не вист.</span>}
+                      </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1.5">
                           <div className="w-12 h-1.5 bg-gray-100 rounded-full overflow-hidden">
