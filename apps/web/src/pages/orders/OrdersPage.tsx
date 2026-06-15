@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/api/axios';
 import { useAuthStore } from '@/store/auth';
@@ -165,7 +165,6 @@ function ShortageModal({ data, onClose, onTransferred, userRole }: {
               <option value="">Оберіть...</option>
               {availableWarehouses
                 .map((w: any) => {
-                  // Фільтруємо тільки ті продукти яких не вистачає
                   const relevantQty = (w.stockItems || [])
                     .filter((i: any) => 
                       Number(i.quantity) > 0 &&
@@ -177,8 +176,8 @@ function ShortageModal({ data, onClose, onTransferred, userRole }: {
                     .reduce((s: number, i: any) => s + Number(i.quantity), 0);
                   return { w, relevantQty, totalQty };
                 })
-                .filter(({ totalQty }) => totalQty > 0) // показуємо тільки непорожні склади
-                .sort((a, b) => b.relevantQty - a.relevantQty) // спочатку ті де є потрібний товар
+                .filter(({ totalQty }) => totalQty > 0)
+                .sort((a, b) => b.relevantQty - a.relevantQty)
                 .map(({ w, relevantQty, totalQty }) => (
                   <option key={w.id} value={w.id}>
                     {w.name} · всього: {totalQty.toFixed(1)} кг
@@ -216,44 +215,43 @@ function OrderDetailsModal({ order, onClose, onStatusChange, onUpdateWeights, on
   const displayNumber = (order as any).numberForm ?? order.number;
   const deliveryPoint = (order as any).deliveryPoint;
   const total = order.items.reduce((s, i) => {
-    // шт-товар без фактичної ваги — ціну не рахуємо
     if (i.product.unit === 'шт' && !i.actualWeight) return s;
     return s + Number(i.actualWeight ?? i.plannedWeight) * Number(i.pricePerKg ?? 0);
   }, 0);
   const totalPlanned = order.items.reduce((s, i) => s + Number(i.plannedWeight), 0);
   const totalActual = order.items.reduce((s, i) => s + Number(i.actualWeight ?? i.plannedWeight), 0);
   const [returnWeights, setReturnWeights] = useState<Record<string, string>>({});
-const [processingReturn, setProcessingReturn] = useState<string | null>(null);
+  const [processingReturn, setProcessingReturn] = useState<string | null>(null);
 
-const deliveryPointId = (order as any).deliveryPointId;
+  const deliveryPointId = (order as any).deliveryPointId;
 
-const { data: orderReturns = [] } = useQuery({
-  queryKey: ['order-returns-by-point', deliveryPointId],
-  queryFn: () => api.get(`/client-returns/pending-by-point/${deliveryPointId}`).then(r => r.data),
-  enabled: !!deliveryPointId,
-});
+  const { data: orderReturns = [] } = useQuery({
+    queryKey: ['order-returns-by-point', deliveryPointId],
+    queryFn: () => api.get(`/client-returns/pending-by-point/${deliveryPointId}`).then(r => r.data),
+    enabled: !!deliveryPointId,
+  });
 
-const handleProcessReturn = async (retId: string) => {
-  setProcessingReturn(retId);
-  try {
-    const ret = (orderReturns as any[]).find((r: any) => r.id === retId);
-    if (!ret) return;
-    await api.patch(`/client-returns/${retId}/process`, {
-      orderId: order.id,
-      items: ret.items.map((item: any) => ({
-        returnItemId: item.id,
-        actualQty: Number(returnWeights[item.id] || item.goodQty),
-      })),
-    });
-    queryClient.invalidateQueries({ queryKey: ['order-returns-by-point', deliveryPointId] });
-    queryClient.invalidateQueries({ queryKey: ['stock'] });
-    queryClient.invalidateQueries({ queryKey: ['client-returns'] });
-  } catch (e: any) {
-    alert(e.response?.data?.message || 'Помилка');
-  } finally {
-    setProcessingReturn(null);
-  }
-};
+  const handleProcessReturn = async (retId: string) => {
+    setProcessingReturn(retId);
+    try {
+      const ret = (orderReturns as any[]).find((r: any) => r.id === retId);
+      if (!ret) return;
+      await api.patch(`/client-returns/${retId}/process`, {
+        orderId: order.id,
+        items: ret.items.map((item: any) => ({
+          returnItemId: item.id,
+          actualQty: Number(returnWeights[item.id] || item.goodQty),
+        })),
+      });
+      queryClient.invalidateQueries({ queryKey: ['order-returns-by-point', deliveryPointId] });
+      queryClient.invalidateQueries({ queryKey: ['stock'] });
+      queryClient.invalidateQueries({ queryKey: ['client-returns'] });
+    } catch (e: any) {
+      alert(e.response?.data?.message || 'Помилка');
+    } finally {
+      setProcessingReturn(null);
+    }
+  };
 
   const handlePrint = async (type: 'ttn' | 'quality' | 'invoice') => {
     try {
@@ -421,6 +419,7 @@ const handleProcessReturn = async (retId: string) => {
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {order.items.map((item) => {
+                      const displayUnit = (item as any).displayUnit || item.product.unit;
                       const w = Number(item.actualWeight ?? item.plannedWeight);
                       const p = Number(item.pricePerKg ?? 0);
                       const canCalcPrice = item.product.unit !== 'шт' || !!item.actualWeight;
@@ -428,8 +427,8 @@ const handleProcessReturn = async (retId: string) => {
                       return (
                         <tr key={item.id} className="hover:bg-gray-50/50">
                           <td className="px-3 py-2.5 font-semibold text-gray-800 text-xs">{item.product.name}</td>
-                          <td className="px-3 py-2.5 text-right text-gray-400 text-xs">{Number(item.plannedWeight).toFixed(3)}</td>
-                          <td className="px-3 py-2.5 text-right text-xs font-semibold text-green-600">{item.actualWeight ? Number(item.actualWeight).toFixed(3) : '—'}</td>
+                          <td className="px-3 py-2.5 text-right text-gray-400 text-xs">{Number(item.plannedWeight).toFixed(3)} {displayUnit}</td>
+                          <td className="px-3 py-2.5 text-right text-xs font-semibold text-green-600">{item.actualWeight ? `${Number(item.actualWeight).toFixed(3)} ${displayUnit}` : '—'}</td>
                           {userRole !== 'WORKER' && <td className="px-3 py-2.5 text-right text-gray-500 text-xs">{canCalcPrice && p > 0 ? `${(p * 1.2).toFixed(2)} ₴` : '—'}</td>}
                           {userRole !== 'WORKER' && <td className="px-3 py-2.5 text-right font-bold text-gray-800 text-xs">{lineTotal != null ? `${lineTotal.toFixed(2)} ₴` : '—'}</td>}
                         </tr>
@@ -474,10 +473,13 @@ const handleProcessReturn = async (retId: string) => {
                             <span className="text-xs text-gray-400">очікується: <b>{Number(item.goodQty).toFixed(3)} кг</b></span>
                           </div>
                           <div className="flex items-center gap-2">
-                            <input type="number" step="0.001" min="0" value={returnWeights[item.id] ?? ''}
+                            <input
+                              type="number" step="0.001" min="0"
+                              value={returnWeights[item.id] ?? ''}
                               onChange={(e) => setReturnWeights(prev => ({ ...prev, [item.id]: e.target.value }))}
                               placeholder={Number(item.goodQty).toFixed(3)}
-                              className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-orange-400" />
+                              style={{ MozAppearance: 'textfield' } as any}
+                              className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-orange-400 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" />
                             <span className="text-xs text-gray-400 shrink-0">кг факт</span>
                           </div>
                         </div>
@@ -512,20 +514,52 @@ function WeightsModal({ order, onClose, onSave, userRole }: {
   onSave: (items: { itemId: string; actualWeight: number }[]) => void;
   userRole: string;
 }) {
+  const queryClient = useQueryClient();
+
+  // FIX 3: auto-save — зберігаємо при кожній зміні ваги
+  const autoSaveMutation = useMutation({
+    mutationFn: (items: { itemId: string; actualWeight: number }[]) =>
+      api.patch(`/orders/${order.id}/items`, { items }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+    },
+  });
+
   const [weights, setWeights] = useState<Record<string, string>>(
     Object.fromEntries(order.items.map((i) => [i.id, i.actualWeight ? String(i.actualWeight) : ''])),
   );
+
+  // Дебаунс автозбереження — 600мс після останньої зміни
+  const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleWeightChange = useCallback((itemId: string, value: string) => {
+    setWeights((prev) => {
+      const next = { ...prev, [itemId]: value };
+
+      // Скасовуємо попередній таймер
+      if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+
+      // Запускаємо новий таймер автозбереження
+      autoSaveTimer.current = setTimeout(() => {
+        const itemsToSave = order.items
+          .filter((i) => next[i.id] !== '')
+          .map((i) => ({ itemId: i.id, actualWeight: Number(next[i.id]) }));
+        if (itemsToSave.length > 0) {
+          autoSaveMutation.mutate(itemsToSave);
+        }
+      }, 600);
+
+      return next;
+    });
+  }, [order.items, autoSaveMutation]);
+
   const displayNumber = (order as any).numberForm ?? order.number;
   const totalPlanned = order.items.reduce((s, i) => s + Number(i.plannedWeight), 0);
   const totalActual = order.items.reduce((s, i) => s + (Number(weights[i.id]) || 0), 0);
-  const totalDiff = totalActual - totalPlanned;
-  const totalDiffPct = totalPlanned > 0 ? (totalDiff / totalPlanned) * 100 : 0;
   const totalSum = order.items.reduce((s, i) => {
-    // шт-товар без введеної ваги — ціну не рахуємо
     if (i.product.unit === 'шт' && !weights[i.id]) return s;
     return s + (Number(weights[i.id]) || 0) * Number(i.pricePerKg ?? 0);
   }, 0);
-  const isUnit = (unit: string) => unit === 'шт';
 
   const kgItems = order.items.filter(i => {
     const du = (i as any).displayUnit || 'кг';
@@ -535,6 +569,9 @@ function WeightsModal({ order, onClose, onSave, userRole }: {
   const totalActualKg = kgItems.reduce((s, i) => s + (Number(weights[i.id]) || 0), 0);
   const totalDiffKg = totalActualKg - totalPlannedKg;
   const totalDiffPctKg = totalPlannedKg > 0 ? (totalDiffKg / totalPlannedKg) * 100 : 0;
+
+  // Статус автозбереження
+  const isSaving = autoSaveMutation.isPending;
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
@@ -548,14 +585,19 @@ function WeightsModal({ order, onClose, onSave, userRole }: {
               </div>
               <p className="text-sm text-gray-500 mt-0.5">{order.client.name}</p>
             </div>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+            <div className="flex items-center gap-2">
+              {/* Індикатор автозбереження */}
+              {isSaving && (
+                <span className="text-xs text-gray-400 animate-pulse">💾 збереження...</span>
+              )}
+              <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+            </div>
           </div>
         </div>
         <div className="p-5 overflow-y-auto flex-1 space-y-3">
           {order.items.map((item) => {
-            const displayUnit = (item as any).displayUnit || 'кг';
-            const unit = displayUnit; // показуємо обрану одиницю
-            const unitMode = item.product.unit === 'шт'; // режим штук лише якщо продукт справді штучний
+            const displayUnit = (item as any).displayUnit || item.product.unit;
+            const unitMode = item.product.unit === 'шт';
             const planned = Number(item.plannedWeight);
             const actual = Number(weights[item.id]) || 0;
             const diff = actual - planned;
@@ -575,8 +617,8 @@ function WeightsModal({ order, onClose, onSave, userRole }: {
                   <div>
                     <span className="font-bold text-gray-800 text-sm">{item.product.name}</span>
                     {displayUnit !== 'кг' && (
-                        <span className="ml-2 text-[10px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded font-semibold">{displayUnit}</span>
-                      )}
+                      <span className="ml-2 text-[10px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded font-semibold">{displayUnit}</span>
+                    )}
                   </div>
                   {price > 0 && hasValue && actual > 0 && userRole !== 'WORKER' && (
                     <span className="text-xs font-bold text-green-600">{(actual * price).toFixed(2)} ₴</span>
@@ -586,18 +628,24 @@ function WeightsModal({ order, onClose, onSave, userRole }: {
                   <div className="flex-1">
                     <div className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide mb-1">Планова</div>
                     <div className="bg-white/80 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-600 text-right font-medium">
-                      {planned.toFixed(3)} {unit}
+                      {planned.toFixed(3)} {displayUnit}
                     </div>
                   </div>
                   <div className="text-gray-300 text-lg shrink-0 mt-4">→</div>
                   <div className="flex-1">
                     <div className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide mb-1">Фактична</div>
-                    <input type="number" step={unitMode ? '1' : '0.001'} min="0"
+                    {/* FIX 2: прибираємо повзунок (spinner) */}
+                    <input
+                      type="number"
+                      step={unitMode ? '1' : '0.001'}
+                      min="0"
                       value={weights[item.id]}
-                      onChange={(e) => setWeights((prev) => ({ ...prev, [item.id]: e.target.value }))}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
+                      onChange={(e) => handleWeightChange(item.id, e.target.value)}
+                      style={{ MozAppearance: 'textfield' } as any}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                    />
                   </div>
-                  <div className="text-xs text-gray-400 shrink-0 mt-5">{item.product.unit}</div>
+                  <div className="text-xs text-gray-400 shrink-0 mt-5">{displayUnit}</div>
                 </div>
                 {!unitMode && hasValue && actual > 0 && (
                   <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-white/60">
@@ -616,9 +664,11 @@ function WeightsModal({ order, onClose, onSave, userRole }: {
             {[
               { label: 'План', value: totalPlanned.toFixed(3), color: 'text-gray-700' },
               { label: 'Факт', value: totalActual.toFixed(3), color: totalActual > 0 ? 'text-blue-600' : 'text-gray-400' },
-              { label: 'Відхилення', 
-  value: totalActualKg > 0 ? `${totalDiffKg > 0 ? '+' : ''}${totalDiffPctKg.toFixed(1)}%` : '—',
-  color: totalActualKg === 0 ? 'text-gray-400' : Math.abs(totalDiffPctKg) <= 2 ? 'text-green-600' : Math.abs(totalDiffPctKg) <= 5 ? 'text-yellow-600' : 'text-red-600' },
+              {
+                label: 'Відхилення',
+                value: totalActualKg > 0 ? `${totalDiffKg > 0 ? '+' : ''}${totalDiffPctKg.toFixed(1)}%` : '—',
+                color: totalActualKg === 0 ? 'text-gray-400' : Math.abs(totalDiffPctKg) <= 2 ? 'text-green-600' : Math.abs(totalDiffPctKg) <= 5 ? 'text-yellow-600' : 'text-red-600',
+              },
             ].map((c) => (
               <div key={c.label}>
                 <div className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide mb-0.5">{c.label}</div>
@@ -631,9 +681,16 @@ function WeightsModal({ order, onClose, onSave, userRole }: {
           )}
         </div>
         <div className="px-5 pb-5 border-t pt-4 flex gap-2 shrink-0">
-          <button onClick={() => setWeights(Object.fromEntries(order.items.map((i) => [i.id, String(i.plannedWeight)])))}
+          <button onClick={() => {
+            const planWeights = Object.fromEntries(order.items.map((i) => [i.id, String(i.plannedWeight)]));
+            setWeights(planWeights);
+            // Автозберігаємо план
+            if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+            const itemsToSave = order.items.map((i) => ({ itemId: i.id, actualWeight: Number(i.plannedWeight) }));
+            autoSaveMutation.mutate(itemsToSave);
+          }}
             className="border border-gray-200 text-gray-600 text-sm px-3 py-2.5 rounded-xl hover:bg-gray-50 whitespace-nowrap font-medium">= План</button>
-          <button onClick={onClose} className="flex-1 border border-gray-200 text-gray-600 text-sm px-4 py-2.5 rounded-xl hover:bg-gray-50">Скасувати</button>
+          <button onClick={onClose} className="flex-1 border border-gray-200 text-gray-600 text-sm px-4 py-2.5 rounded-xl hover:bg-gray-50">Закрити</button>
           <button onClick={() => onSave(order.items.filter((i) => weights[i.id] !== '').map((i) => ({ itemId: i.id, actualWeight: Number(weights[i.id]) })))}
             className="flex-1 bg-blue-600 text-white text-sm px-4 py-2.5 rounded-xl hover:bg-blue-700 font-bold">Зберегти</button>
         </div>
@@ -698,7 +755,6 @@ function CreateOrderModal({ onClose, onCreated }: { onClose: () => void; onCreat
     if (!file) return;
     setImageLoading(true); setImageError(''); setImageWarnings([]);
     try {
-      // Конвертуємо будь-який формат (включно з HEIC/iOS) у JPEG через canvas
       const { base64, mediaType } = await new Promise<{ base64: string; mediaType: string }>((resolve, reject) => {
         const img = new Image();
         const url = URL.createObjectURL(file);
@@ -818,15 +874,17 @@ function CreateOrderModal({ onClose, onCreated }: { onClose: () => void; onCreat
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
+
   const handleResolveReturn = async (retId: string) => {
-  try {
-    await api.patch(`/client-returns/${retId}/resolve`);
-    setResolvedReturnIds(prev => new Set(prev).add(retId));
-    queryClient.invalidateQueries({ queryKey: ['client-returns-pending-point', deliveryPointId] });
-  } catch {
-    // тихо ігноруємо
-  }
-};
+    try {
+      await api.patch(`/client-returns/${retId}/resolve`);
+      setResolvedReturnIds(prev => new Set(prev).add(retId));
+      queryClient.invalidateQueries({ queryKey: ['client-returns-pending-point', deliveryPointId] });
+    } catch {
+      // тихо ігноруємо
+    }
+  };
+
   const getPriceForProduct = (productId: string) => {
     const p = clientPrices.find((cp: any) => cp.productId === productId);
     return p ? Number(p.price) : null;
@@ -856,7 +914,6 @@ function CreateOrderModal({ onClose, onCreated }: { onClose: () => void; onCreat
     if (!isDraft && items.some((i) => !i.productId || !i.plannedWeight)) return setError('Заповніть всі позиції');
     setLoading(true); setError('');
     try {
-
       await api.post('/orders', {
         clientId, form, note, driverName, carNumber,
         deliveryPointId: deliveryPointId || undefined,
@@ -868,7 +925,6 @@ function CreateOrderModal({ onClose, onCreated }: { onClose: () => void; onCreat
           ? items.filter((i) => i.productId && i.plannedWeight).map((i) => ({ productId: i.productId, plannedWeight: Number(i.plannedWeight), displayUnit: i.displayUnit }))
           : items.map((i) => ({ productId: i.productId, plannedWeight: Number(i.plannedWeight), displayUnit: i.displayUnit })),
       });
-
       onCreated(); onClose();
     } catch (e: any) {
       const msg = e.response?.data?.message;
@@ -957,94 +1013,62 @@ function CreateOrderModal({ onClose, onCreated }: { onClose: () => void; onCreat
               {selectedPoint && !addingPoint && (
                 <div className="mt-1.5 flex items-center gap-1.5 text-xs"><span>📍</span><span className="font-semibold text-gray-700">{selectedPoint.name}</span></div>
               )}
-{pendingReturns.length > 0 && (
-  <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 space-y-3">
-    <div className="flex items-center gap-2">
-      <span className="text-orange-500 text-lg">⚠️</span>
-      <div>
-        <p className="text-sm font-bold text-orange-700">
-          {pendingReturns.length > 1
-            ? `${pendingReturns.length} невраховані повернення з цього магазину`
-            : 'Є невраховане повернення з цього магазину'}
-        </p>
-        <p className="text-xs text-orange-500 mt-0.5">Відмітьте як враховано перед відправкою</p>
-      </div>
-    </div>
-
-    <div className="space-y-2">
-      {(pendingReturns as any[]).map((ret: any) => {
-        const isResolved = resolvedReturnIds.has(ret.id);
-        return (
-          <div key={ret.id} className={`border rounded-lg p-3 transition-all ${
-            isResolved
-              ? 'bg-green-50 border-green-200'
-              : 'bg-white border-orange-100'
-          }`}>
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold text-orange-600">
-                  📅 {new Date(ret.createdAt).toLocaleDateString('uk-UA')}
-                </span>
-                {ret.note && (
-                  <span className="text-xs text-gray-400 italic truncate max-w-[40%]">{ret.note}</span>
-                )}
-              </div>
-
-              {/* Кнопка або бейдж */}
-              {isResolved ? (
-                <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-0.5 rounded-full">
-                  ✓ Враховано
-                </span>
-              ) : (
-                <button
-                  onClick={() => handleResolveReturn(ret.id)}
-                  className="text-xs font-bold text-white bg-orange-500 hover:bg-orange-600 px-2.5 py-1 rounded-lg transition-colors"
-                >
-                  Відмітити ✓
-                </button>
-              )}
-            </div>
-
-            <div className="space-y-1">
-              {ret.items.map((item: any) => (
-                <div key={item.id} className="grid grid-cols-3 text-xs">
-                  <span className={`font-medium ${isResolved ? 'text-gray-400' : 'text-gray-700'}`}>
-                    {item.product.name}
-                  </span>
-                  <span className="text-gray-500 text-center">
-                    всього: <b>{Number(item.totalQty).toFixed(3)}</b> {item.product.unit}
-                  </span>
-                  <div className="text-right space-x-2">
-                    <span className={isResolved ? 'text-gray-400' : 'text-green-600'}>
-                      ✓ {Number(item.goodQty).toFixed(3)}
-                    </span>
-                    {Number(item.wasteQty) > 0 && (
-                      <span className={isResolved ? 'text-gray-400' : 'text-red-500'}>
-                        🗑 {Number(item.wasteQty).toFixed(3)}
-                      </span>
-                    )}
+              {pendingReturns.length > 0 && (
+                <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-orange-500 text-lg">⚠️</span>
+                    <div>
+                      <p className="text-sm font-bold text-orange-700">
+                        {pendingReturns.length > 1
+                          ? `${pendingReturns.length} невраховані повернення з цього магазину`
+                          : 'Є невраховане повернення з цього магазину'}
+                      </p>
+                      <p className="text-xs text-orange-500 mt-0.5">Відмітьте як враховано перед відправкою</p>
+                    </div>
                   </div>
+                  <div className="space-y-2">
+                    {(pendingReturns as any[]).map((ret: any) => {
+                      const isResolved = resolvedReturnIds.has(ret.id);
+                      return (
+                        <div key={ret.id} className={`border rounded-lg p-3 transition-all ${isResolved ? 'bg-green-50 border-green-200' : 'bg-white border-orange-100'}`}>
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-semibold text-orange-600">📅 {new Date(ret.createdAt).toLocaleDateString('uk-UA')}</span>
+                              {ret.note && <span className="text-xs text-gray-400 italic truncate max-w-[40%]">{ret.note}</span>}
+                            </div>
+                            {isResolved ? (
+                              <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-0.5 rounded-full">✓ Враховано</span>
+                            ) : (
+                              <button onClick={() => handleResolveReturn(ret.id)}
+                                className="text-xs font-bold text-white bg-orange-500 hover:bg-orange-600 px-2.5 py-1 rounded-lg transition-colors">
+                                Відмітити ✓
+                              </button>
+                            )}
+                          </div>
+                          <div className="space-y-1">
+                            {ret.items.map((item: any) => (
+                              <div key={item.id} className="grid grid-cols-3 text-xs">
+                                <span className={`font-medium ${isResolved ? 'text-gray-400' : 'text-gray-700'}`}>{item.product.name}</span>
+                                <span className="text-gray-500 text-center">всього: <b>{Number(item.totalQty).toFixed(3)}</b> {item.product.unit}</span>
+                                <div className="text-right space-x-2">
+                                  <span className={isResolved ? 'text-gray-400' : 'text-green-600'}>✓ {Number(item.goodQty).toFixed(3)}</span>
+                                  {Number(item.wasteQty) > 0 && <span className={isResolved ? 'text-gray-400' : 'text-red-500'}>🗑 {Number(item.wasteQty).toFixed(3)}</span>}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {resolvedReturnIds.size < pendingReturns.length && (
+                    <p className="text-xs text-orange-500 text-center">Залишилось відмітити: {pendingReturns.length - resolvedReturnIds.size}</p>
+                  )}
+                  {resolvedReturnIds.size === pendingReturns.length && pendingReturns.length > 0 && (
+                    <p className="text-xs text-green-600 font-semibold text-center">✓ Всі повернення враховано</p>
+                  )}
                 </div>
-              ))}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-
-    {/* Підказка якщо не всі враховані */}
-    {resolvedReturnIds.size < pendingReturns.length && (
-      <p className="text-xs text-orange-500 text-center">
-        Залишилось відмітити: {pendingReturns.length - resolvedReturnIds.size}
-      </p>
-    )}
-    {resolvedReturnIds.size === pendingReturns.length && pendingReturns.length > 0 && (
-      <p className="text-xs text-green-600 font-semibold text-center">
-        ✓ Всі повернення враховано
-      </p>
-    )}
-  </div>
-)}
+              )}
             </div>
           )}
           <div className="grid grid-cols-2 gap-3">
@@ -1083,25 +1107,27 @@ function CreateOrderModal({ onClose, onCreated }: { onClose: () => void; onCreat
                         <div className="w-5 h-5 rounded-full bg-gray-200 text-gray-600 flex items-center justify-center text-[10px] font-bold shrink-0">{idx + 1}</div>
                         <select value={item.productId}
                           onChange={(e) => {
-                          const selectedProduct = (products as any[])?.find((pr: any) => pr.id === e.target.value);
-                          setItems((prev) => prev.map((p, i) => i === idx ? {
-                            ...p,
-                            productId: e.target.value,
-                            displayUnit: selectedProduct?.unit ?? 'кг',
-                          } : p));
-                        }}
+                            const selectedProduct = (products as any[])?.find((pr: any) => pr.id === e.target.value);
+                            setItems((prev) => prev.map((p, i) => i === idx ? {
+                              ...p,
+                              productId: e.target.value,
+                              displayUnit: selectedProduct?.unit ?? 'кг',
+                            } : p));
+                          }}
                           className="flex-1 min-w-0 border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
                           <option value="">Оберіть продукт...</option>
                           {products?.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
                         </select>
                       </div>
                       <div className="flex items-center gap-1 pl-7">
+                        {/* FIX 2: прибираємо повзунок у полі кількості */}
                         <input
                           type="number" step="0.001" min="0"
                           value={item.plannedWeight}
                           onChange={(e) => setItems((prev) => prev.map((p, i) => i === idx ? { ...p, plannedWeight: e.target.value } : p))}
                           placeholder="0.000"
-                          className="flex-1 sm:flex-none sm:w-20 border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                          style={{ MozAppearance: 'textfield' } as any}
+                          className="flex-1 sm:flex-none sm:w-20 border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                         />
                         <select
                           value={item.displayUnit}
@@ -1135,35 +1161,32 @@ function CreateOrderModal({ onClose, onCreated }: { onClose: () => void; onCreat
               className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" placeholder="Необов'язково..." />
           </div>
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
-  <div className="text-xs font-bold text-amber-700">✏️ Номер та дати накладної</div>
-  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-    <div>
-      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
-        Номер накладної
-      </label>
-      <input
-        type="number"
-        value={customNumber}
-        onChange={(e) => setCustomNumber(e.target.value)}
-        placeholder="авто"
-        className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white"
-      />
-      <div className="text-[10px] text-gray-400 mt-1">Порожньо — автоматично</div>
-    </div>
-    <div>
-     <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
-        Дата в накладній
-      </label>
-      <input
-        type="date"
-        value={invoiceDate}
-        onChange={(e) => setInvoiceDate(e.target.value)}
-        className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white"
-      />
-      <div className="text-[10px] text-gray-400 mt-1">Порожньо — дата виконання заявки</div>
-    </div>
-    
-  </div>
+            <div className="text-xs font-bold text-amber-700">✏️ Номер та дати накладної</div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Номер накладної</label>
+                {/* FIX 2: прибираємо повзунок */}
+                <input
+                  type="number"
+                  value={customNumber}
+                  onChange={(e) => setCustomNumber(e.target.value)}
+                  placeholder="авто"
+                  style={{ MozAppearance: 'textfield' } as any}
+                  className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                />
+                <div className="text-[10px] text-gray-400 mt-1">Порожньо — автоматично</div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Дата в накладній</label>
+                <input
+                  type="date"
+                  value={invoiceDate}
+                  onChange={(e) => setInvoiceDate(e.target.value)}
+                  className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white"
+                />
+                <div className="text-[10px] text-gray-400 mt-1">Порожньо — дата виконання заявки</div>
+              </div>
+            </div>
           </div>
           <div onClick={() => setIsDraft(!isDraft)}
             className={`flex items-center gap-3 p-3.5 rounded-xl border-2 cursor-pointer select-none ${isDraft ? 'border-slate-400 bg-slate-50' : 'border-gray-200 bg-gray-50 hover:border-gray-300'}`}>
@@ -1320,22 +1343,18 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
         </div>
         <div className="overflow-y-auto flex-1 p-5 space-y-4">
-
-          {/* Номер накладної */}
           <div>
-            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
-              Номер накладної <span className="text-red-500">*</span>
-            </label>
+            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Номер накладної <span className="text-red-500">*</span></label>
+            {/* FIX 2: прибираємо повзунок */}
             <input
               type="number" min="1" value={numberFormVal}
               onChange={(e) => setNumberFormVal(e.target.value)}
-              className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              style={{ MozAppearance: 'textfield' } as any}
+              className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
               placeholder="Введіть номер..."
             />
             <p className="text-xs text-gray-400 mt-1">При зміні — перевіряється на дублікат</p>
           </div>
-
-          {/* Клієнт */}
           <div>
             <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Клієнт *</label>
             <select value={clientId} onChange={(e) => { setClientId(e.target.value); setDeliveryPointId(''); }}
@@ -1344,8 +1363,6 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
               {(clients as any[])?.filter((c: any) => c.isActive).map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
-
-          {/* Точка доставки */}
           {clientId && (
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Точка доставки</label>
@@ -1356,8 +1373,6 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
               </select>
             </div>
           )}
-
-          {/* Водій / Авто */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Водій</label>
@@ -1376,8 +1391,6 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
               </select>
             </div>
           </div>
-
-          {/* Дати */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Дата накладної</label>
@@ -1390,15 +1403,11 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
                 className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
           </div>
-
-          {/* Примітка */}
           <div>
             <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Примітка</label>
             <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2}
               className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
           </div>
-
-          {/* Позиції */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Позиції</label>
@@ -1433,7 +1442,6 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
                           <select value={item.productId}
                             onChange={(e) => {
                               const prod = (products as any[])?.find((p: any) => p.id === e.target.value);
-                              // eslint-disable-next-line @typescript-eslint/no-explicit-any
                               const newClientPrice = (clientPrices as any[]).find((cp: any) => cp.productId === e.target.value);
                               setItems((prev) => prev.map((p, i) => i === idx ? {
                                 ...p,
@@ -1448,10 +1456,12 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
                           </select>
                         </div>
                         <div className="flex items-center gap-1 pl-7">
+                          {/* FIX 2: прибираємо повзунок */}
                           <input type="number" step="0.001" min="0" value={item.plannedWeight}
                             onChange={(e) => setItems((prev) => prev.map((p, i) => i === idx ? { ...p, plannedWeight: e.target.value } : p))}
                             placeholder="0.000"
-                            className="flex-1 sm:flex-none sm:w-20 border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
+                            style={{ MozAppearance: 'textfield' } as any}
+                            className="flex-1 sm:flex-none sm:w-20 border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" />
                           <select value={item.displayUnit}
                             onChange={(e) => setItems((prev) => prev.map((p, i) => i === idx ? { ...p, displayUnit: e.target.value } : p))}
                             className="border border-gray-300 rounded-lg px-1.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-600 w-14">
@@ -1467,24 +1477,22 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
                         <div className="mt-2 pl-7 space-y-1">
                           <div className="flex items-center gap-2">
                             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide w-16 shrink-0">Ціна/кг</label>
+                            {/* FIX 2: прибираємо повзунок */}
                             <input
                               type="number" step="0.01" min="0"
                               value={item.pricePerKg}
                               onChange={(e) => setItems((prev) => prev.map((p, i) => i === idx ? { ...p, pricePerKg: e.target.value } : p))}
                               placeholder={clientPrice ? `${clientPrice.toFixed(2)} (авто)` : 'не встановлено'}
-                              className="w-28 border border-gray-200 rounded-lg px-2 py-1 text-xs text-right focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+                              style={{ MozAppearance: 'textfield' } as any}
+                              className="w-28 border border-gray-200 rounded-lg px-2 py-1 text-xs text-right focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                             />
                             <span className="text-[10px] text-gray-400">без ПДВ</span>
                             {lineSum != null && lineSum > 0 && (
-                              <span className="text-[10px] font-bold text-green-600">
-                                = {(lineSum * 1.2).toFixed(2)} ₴
-                              </span>
+                              <span className="text-[10px] font-bold text-green-600">= {(lineSum * 1.2).toFixed(2)} ₴</span>
                             )}
                           </div>
                           {!item.pricePerKg && clientPrice && (
-                            <div className="text-[10px] text-gray-400 pl-[72px]">
-                              Клієнтська ціна: {clientPrice.toFixed(2)} ₴/кг
-                            </div>
+                            <div className="text-[10px] text-gray-400 pl-[72px]">Клієнтська ціна: {clientPrice.toFixed(2)} ₴/кг</div>
                           )}
                           {!item.pricePerKg && !clientPrice && (
                             <div className="text-[10px] text-orange-500 pl-[72px]">⚠️ Ціна не встановлена</div>
@@ -1501,7 +1509,6 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
               </div>
             )}
           </div>
-
           {error && <div className="text-red-500 text-sm bg-red-50 px-3 py-2 rounded-lg">{error}</div>}
         </div>
         <div className="px-5 pb-5 pt-4 border-t flex gap-2 shrink-0">
@@ -1516,7 +1523,7 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
   );
 }
 
-// ─── OrderCardContent — вміст картки (використовується і в картці і в overlay) ─
+// ─── OrderCardContent — вміст картки ─────────────────────────────────────────
 function OrderCardContent({ order, userRole }: { order: Order; userRole: string }) {
   const totalActual = order.items.reduce((s, i) => s + Number(i.actualWeight ?? 0), 0);
   const totalPlanned = order.items.reduce((s, i) => s + Number(i.plannedWeight), 0);
@@ -1542,16 +1549,20 @@ function OrderCardContent({ order, userRole }: { order: Order; userRole: string 
           <div className="text-[10px] text-gray-400 shrink-0 font-medium">{new Date(order.createdAt).toLocaleDateString('uk-UA')}</div>
         </div>
         <div className="mt-2.5 space-y-1">
-          {order.items.map((item) => (
-            <div key={item.id} className="flex justify-between text-xs text-gray-600">
-              <span className="truncate mr-2">{item.product.name}</span>
-              <span className="shrink-0">
-                {item.actualWeight
-                  ? <span className="text-green-600 font-bold">{Number(item.actualWeight).toFixed(3)} {item.product.unit}</span>
-                  : <span className="text-gray-500">{Number(item.plannedWeight).toFixed(3)} {item.product.unit}</span>}
-              </span>
-            </div>
-          ))}
+          {order.items.map((item) => {
+            // FIX 1: використовуємо displayUnit замість item.product.unit
+            const displayUnit = (item as any).displayUnit || item.product.unit;
+            return (
+              <div key={item.id} className="flex justify-between text-xs text-gray-600">
+                <span className="truncate mr-2">{item.product.name}</span>
+                <span className="shrink-0">
+                  {item.actualWeight
+                    ? <span className="text-green-600 font-bold">{Number(item.actualWeight).toFixed(3)} {displayUnit}</span>
+                    : <span className="text-gray-500">{Number(item.plannedWeight).toFixed(3)} {displayUnit}</span>}
+                </span>
+              </div>
+            );
+          })}
         </div>
         <div className="text-[10px] text-gray-400 border-t border-gray-100 pt-2 mt-2.5 flex gap-3">
           <span>План: <span className="font-semibold text-gray-600">{totalPlanned.toFixed(3)}</span></span>
@@ -1589,17 +1600,13 @@ function DraggableOrderCard({ order, onStatusChange, onUpdateWeights, onOpenDeta
       {...listeners}
       className={`transition-opacity ${isDragging ? 'opacity-30' : ''} ${canDrag ? 'cursor-grab active:cursor-grabbing' : ''}`}
     >
-      {/* Клікабельна область — відкриває деталі */}
       <div
         className={`bg-white rounded-xl border shadow-sm overflow-hidden hover:shadow-md transition-shadow ${isDraft ? 'border-slate-200' : 'border-gray-200'}`}
-        onPointerDown={(e) => e.stopPropagation()} // щоб drag не спрацьовував тут
+        onPointerDown={(e) => e.stopPropagation()}
       >
         <div
           onClick={() => onOpenDetails(order)}
           className="p-4 pb-3 cursor-pointer hover:bg-gray-50/60 transition-colors"
-          onPointerDown={(e) => {
-            // дозволяємо drag тільки з батьківського елементу
-          }}
         >
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
@@ -1615,16 +1622,20 @@ function DraggableOrderCard({ order, onStatusChange, onUpdateWeights, onOpenDeta
             <div className="text-[10px] text-gray-400 shrink-0 font-medium">{new Date(order.createdAt).toLocaleDateString('uk-UA')}</div>
           </div>
           <div className="mt-2.5 space-y-1">
-            {order.items.map((item) => (
-              <div key={item.id} className="flex justify-between text-xs text-gray-600">
-                <span className="truncate mr-2">{item.product.name}</span>
-                <span className="shrink-0">
-                  {item.actualWeight
-                    ? <span className="text-green-600 font-bold">{Number(item.actualWeight).toFixed(3)} {item.product.unit}</span>
-                    : <span className="text-gray-500">{Number(item.plannedWeight).toFixed(3)} {item.product.unit}</span>}
-                </span>
-              </div>
-            ))}
+            {order.items.map((item) => {
+              // FIX 1: використовуємо displayUnit замість item.product.unit
+              const displayUnit = (item as any).displayUnit || item.product.unit;
+              return (
+                <div key={item.id} className="flex justify-between text-xs text-gray-600">
+                  <span className="truncate mr-2">{item.product.name}</span>
+                  <span className="shrink-0">
+                    {item.actualWeight
+                      ? <span className="text-green-600 font-bold">{Number(item.actualWeight).toFixed(3)} {displayUnit}</span>
+                      : <span className="text-gray-500">{Number(item.plannedWeight).toFixed(3)} {displayUnit}</span>}
+                  </span>
+                </div>
+              );
+            })}
           </div>
           <div className="text-[10px] text-gray-400 border-t border-gray-100 pt-2 mt-2.5 flex gap-3">
             <span>План: <span className="font-semibold text-gray-600">{order.items.reduce((s, i) => s + Number(i.plannedWeight), 0).toFixed(3)}</span></span>
@@ -1793,7 +1804,6 @@ export default function OrdersPage() {
     onError: (error: any) => { alert(error.response?.data?.message || 'Помилка видалення'); },
   });
 
-  // Колонки
   const COLUMNS: { id: string; status: OrderStatus; title: string; icon: string; color: string; adminOnly?: boolean }[] = [
     { id: 'draft',       status: 'DRAFT',       title: 'Чернетки', icon: '📋', color: 'bg-slate-400',  adminOnly: true },
     { id: 'pending',     status: 'PENDING',     title: 'Очікує',   icon: '⏳', color: 'bg-gray-400' },
@@ -1826,18 +1836,15 @@ export default function OrdersPage() {
     const order = orders.find((o: Order) => o.id === orderId);
     if (!order) return;
 
-    // Визначаємо цільовий статус
     const targetColumn = COLUMNS.find((c) => c.id === targetColumnId);
     if (!targetColumn) return;
 
     const targetStatus = targetColumn.status;
     if (targetStatus === order.status) return;
 
-    // Перевіряємо чи дозволений перехід
     const allowed = ALLOWED_DRAG[order.status] ?? [];
     if (!allowed.includes(targetStatus)) return;
 
-    // Адмін може перетягувати будь-що, воркер тільки своє
     if (user?.role !== 'ADMIN' && (order.status === 'DRAFT' || targetStatus === 'DRAFT' || targetStatus === 'DONE')) return;
 
     statusMutation.mutate({ id: orderId, status: targetStatus });
@@ -1891,7 +1898,6 @@ export default function OrdersPage() {
           ))}
         </div>
 
-        {/* Overlay — картка що "летить" під час drag */}
         <DragOverlay>
           {activeOrder && (
             <div className="rotate-2 scale-105 opacity-95 shadow-2xl">
