@@ -82,6 +82,7 @@ export interface OrderItem {
   productId: string;
   plannedWeight: number;
   actualWeight?: number;
+  returnedWeight?: number | null;
   pricePerKg?: number;
   product: Product;
 }
@@ -100,6 +101,7 @@ export interface Order {
   carNumber?: string;
   deliveryAddress?: string;
   note?: string;
+  isBazaar?: boolean;
   createdAt: string;
   updatedAt: string;
   client: Client;

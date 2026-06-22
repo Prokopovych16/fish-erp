@@ -67,6 +67,15 @@ export class ClientsController {
     return this.clientsService.create(dto);
   }
 
+  // PATCH /api/clients/bulk-prices — масова зміна цін (має йти ПЕРЕД :id!)
+  @Roles(UserRole.ADMIN)
+  @Patch('bulk-prices')
+  bulkUpsertPrices(
+    @Body() dto: { clientIds: string[]; prices: { productId: string; price: number; form: string }[] },
+  ) {
+    return this.clientsService.bulkUpsertPrices(dto);
+  }
+
   // PATCH /api/clients/:id — тільки ADMIN
   @Roles(UserRole.ADMIN)
   @Patch(':id')

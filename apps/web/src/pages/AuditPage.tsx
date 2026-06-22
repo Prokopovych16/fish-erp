@@ -304,38 +304,43 @@ export default function AuditPage() {
   };
 
   return (
-    <div className="space-y-4">
-      {/* Заголовок */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-gray-800">Аудит дій</h1>
-          {total > 0 && <p className="text-xs text-gray-400 mt-0.5">{total} записів</p>}
+    <div className="space-y-5">
+      {/* Шапка-дашборд */}
+      <div className="bg-gradient-to-br from-slate-50 via-white to-indigo-50/40 rounded-2xl sm:rounded-3xl border border-gray-100 p-3.5 sm:p-5 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2 sm:gap-2.5">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl bg-gradient-to-br from-slate-700 to-gray-900 flex items-center justify-center text-lg sm:text-xl shadow-md shadow-gray-300 shrink-0">🔍</div>
+            <div>
+              <h1 className="text-lg sm:text-xl font-bold text-gray-800 tracking-tight">Аудит дій</h1>
+              <p className="text-xs sm:text-sm text-gray-400">{total > 0 ? `${total} записів у журналі` : 'Журнал дій користувачів'}</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setShowFilters(v => !v)}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl border text-sm font-medium transition-all ${
+              showFilters || hasFilters
+                ? 'bg-gray-900 text-white border-gray-900 shadow-md'
+                : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
+            }`}
+          >
+            🔍 Фільтри
+            {hasFilters && (
+              <span className="bg-white text-gray-900 text-xs px-1.5 py-0.5 rounded-full font-bold">
+                {[action, from, to].filter(Boolean).length}
+              </span>
+            )}
+          </button>
         </div>
-        <button
-          onClick={() => setShowFilters(v => !v)}
-          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm transition-colors ${
-            showFilters || hasFilters
-              ? 'bg-blue-600 text-white border-blue-600'
-              : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-          }`}
-        >
-          🔍 Фільтри
-          {hasFilters && (
-            <span className="bg-white text-blue-600 text-xs px-1.5 py-0.5 rounded-full font-bold">
-              {[action, from, to].filter(Boolean).length}
-            </span>
-          )}
-        </button>
       </div>
 
       {/* Фільтри */}
       {showFilters && (
-        <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 space-y-3">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div>
-              <label className="block text-xs text-gray-500 mb-1">Тип дії</label>
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Тип дії</label>
               <select value={action} onChange={(e) => { setAction(e.target.value); setPage(1); }}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
                 <option value="">Всі дії</option>
                 {Object.entries(actionLabel).map(([value, label]) => (
                   <option key={value} value={value}>{label}</option>
@@ -343,22 +348,22 @@ export default function AuditPage() {
               </select>
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">Від</label>
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Від</label>
               <input type="date" value={from}
                 onChange={(e) => { setFrom(e.target.value); setPage(1); }}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
               />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">До</label>
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1.5">До</label>
               <input type="date" value={to}
                 onChange={(e) => { setTo(e.target.value); setPage(1); }}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
               />
             </div>
           </div>
           {hasFilters && (
-            <button onClick={resetFilters} className="text-xs text-red-500 hover:text-red-700">
+            <button onClick={resetFilters} className="text-xs text-red-500 hover:text-red-700 font-medium">
               × Скинути фільтри
             </button>
           )}
@@ -367,13 +372,16 @@ export default function AuditPage() {
 
       {/* Контент */}
       {isLoading ? (
-        <div className="text-center text-gray-400 py-12">Завантаження...</div>
+        <div className="text-center text-gray-400 py-16">
+          <div className="inline-block w-6 h-6 border-2 border-gray-200 border-t-gray-700 rounded-full animate-spin mb-3" />
+          <div className="text-sm">Завантаження...</div>
+        </div>
       ) : logs.length === 0 ? (
-        <div className="text-center text-gray-400 py-16 border-2 border-dashed border-gray-200 rounded-xl">
-          <div className="text-4xl mb-3">🔍</div>
-          <div className="font-medium text-gray-500">Записів не знайдено</div>
+        <div className="text-center text-gray-400 py-16 border-2 border-dashed border-gray-200 rounded-2xl">
+          <div className="text-5xl mb-3 opacity-40">🔍</div>
+          <div className="font-semibold text-gray-500">Записів не знайдено</div>
           {hasFilters && (
-            <button onClick={resetFilters} className="mt-2 text-xs text-blue-500 hover:text-blue-700">
+            <button onClick={resetFilters} className="mt-2 text-xs text-blue-500 hover:text-blue-700 font-medium">
               Скинути фільтри
             </button>
           )}
@@ -384,32 +392,32 @@ export default function AuditPage() {
             <div key={date}>
               {/* Роздільник дати */}
               <div className="flex items-center gap-3 mb-3">
-                <div className="text-xs font-semibold text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
+                <div className="text-xs font-bold text-gray-500 bg-gray-100 px-3 py-1.5 rounded-full">
                   📅 {date}
                 </div>
                 <div className="flex-1 h-px bg-gray-100" />
-                <div className="text-xs text-gray-400">{dateLogs.length} дій</div>
+                <div className="text-xs text-gray-400 font-medium">{dateLogs.length} дій</div>
               </div>
 
               {/* Таймлайн */}
               <div className="relative">
-                <div className="absolute left-[19px] top-0 bottom-0 w-px bg-gray-100" />
+                <div className="absolute left-[15px] top-0 bottom-0 w-px bg-gray-100" />
                 <div className="space-y-3">
                   {dateLogs.map((log: any) => (
                     <div key={log.id} className="flex gap-3">
                       {/* Іконка */}
-                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 z-10 mt-3 ${
+                      <div className={`w-8 h-8 rounded-2xl flex items-center justify-center text-sm font-bold shrink-0 z-10 mt-3 shadow-sm ${
                         actionColor[log.action] || 'bg-gray-100 text-gray-600'
                       }`}>
                         {actionIcon[log.action] || '•'}
                       </div>
 
                       {/* Картка */}
-                      <div className="flex-1 bg-white border border-gray-200 rounded-xl p-4 hover:border-gray-300 hover:shadow-sm transition-all">
+                      <div className="flex-1 bg-white border border-gray-100 rounded-2xl p-4 hover:border-gray-200 hover:shadow-md transition-all shadow-sm">
                         {/* Шапка картки */}
                         <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
                               actionColor[log.action] || 'bg-gray-100 text-gray-600'
                             }`}>
                               {actionLabel[log.action] || log.action}
@@ -417,7 +425,7 @@ export default function AuditPage() {
 
                             {/* Юзер */}
                             <div className="flex items-center gap-1.5">
-                              <div className={`w-5 h-5 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 ${
+                              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 shadow-sm ${
                                 log.user?.role === 'ADMIN' ? 'bg-purple-500'
                                   : log.user?.role === 'WORKER' ? 'bg-blue-500'
                                   : log.user?.role === 'ACCOUNTANT' ? 'bg-green-500'
@@ -425,7 +433,7 @@ export default function AuditPage() {
                               }`}>
                                 {log.user?.name?.charAt(0).toUpperCase() || '?'}
                               </div>
-                              <span className="text-sm font-medium text-gray-700">
+                              <span className="text-sm font-semibold text-gray-700">
                                 {log.user?.name || '—'}
                               </span>
                               <span className="text-xs text-gray-400">
@@ -438,7 +446,7 @@ export default function AuditPage() {
                           </div>
 
                           {/* Час */}
-                          <span className="text-xs text-gray-400 shrink-0 bg-gray-50 px-2 py-0.5 rounded">
+                          <span className="text-xs text-gray-400 shrink-0 bg-gray-50 px-2 py-0.5 rounded-md font-medium">
                             🕐 {new Date(log.createdAt).toLocaleTimeString('uk-UA', {
                               hour: '2-digit', minute: '2-digit',
                             })}
@@ -457,13 +465,13 @@ export default function AuditPage() {
 
           {/* Пагінація */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-between px-1 py-2">
-              <div className="text-xs text-gray-500">
+            <div className="flex items-center justify-between px-1 py-2 flex-wrap gap-2">
+              <div className="text-xs text-gray-400 font-medium">
                 {total} записів · сторінка {page} з {totalPages}
               </div>
               <div className="flex items-center gap-1">
                 <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
-                  className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg disabled:opacity-40 hover:bg-gray-50 transition-colors">
+                  className="px-3 py-1.5 text-sm border border-gray-200 rounded-xl disabled:opacity-40 hover:bg-gray-50 transition-colors">
                   ←
                 </button>
                 {getPaginationPages().map((p, i) =>
@@ -471,17 +479,17 @@ export default function AuditPage() {
                     <span key={`dots-${i}`} className="px-2 text-gray-400 text-sm">…</span>
                   ) : (
                     <button key={p} onClick={() => setPage(p as number)}
-                      className={`w-8 h-8 text-xs rounded-lg border transition-colors ${
+                      className={`w-8 h-8 text-xs rounded-xl border font-medium transition-colors ${
                         p === page
-                          ? 'bg-blue-600 text-white border-blue-600'
-                          : 'border-gray-300 text-gray-600 hover:bg-gray-50'
+                          ? 'bg-gray-900 text-white border-gray-900 shadow-md'
+                          : 'border-gray-200 text-gray-600 hover:bg-gray-50'
                       }`}>
                       {p}
                     </button>
                   )
                 )}
                 <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
-                  className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg disabled:opacity-40 hover:bg-gray-50 transition-colors">
+                  className="px-3 py-1.5 text-sm border border-gray-200 rounded-xl disabled:opacity-40 hover:bg-gray-50 transition-colors">
                   →
                 </button>
               </div>

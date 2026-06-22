@@ -159,9 +159,19 @@ function EditStockItemModal({ item, onClose, onSaved }: {
 }
 
 // ─── WarehouseModal ───────────────────────────────────────────────────────────
-function WarehouseModal({ warehouse, onClose, onMovement }: {
+function freshnessBadge(arrivedAt: string): { label: string; cls: string } {
+  const days = Math.floor((Date.now() - new Date(arrivedAt).getTime()) / 86400000);
+  if (days <= 1) return { label: 'сьогодні', cls: 'bg-emerald-50 text-emerald-600' };
+  if (days <= 3) return { label: `${days} дн.`, cls: 'bg-emerald-50 text-emerald-600' };
+  if (days <= 7) return { label: `${days} дн.`, cls: 'bg-amber-50 text-amber-600' };
+  return { label: `${days} дн.`, cls: 'bg-red-50 text-red-500' };
+}
+
+function WarehouseModal({ warehouse, onClose, onMovement, onProduction }: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   warehouse: any; onClose: () => void; onMovement: () => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  onProduction: (item: any) => void;
 }) {
   const { user } = useAuthStore();
   const isInspector = user?.role === 'INSPECTOR';
@@ -176,7 +186,11 @@ function WarehouseModal({ warehouse, onClose, onMovement }: {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .filter((i: any) => Number(i.quantity) > 0)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .filter((i: any) => !search || i.product.name.toLowerCase().includes(search.toLowerCase()));
+    .filter((i: any) => !search || i.product.name.toLowerCase().includes(search.toLowerCase()))
+    // Найновіші партії — першими
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .sort((a: any, b: any) => new Date(b.arrivedAt).getTime() - new Date(a.arrivedAt).getTime());
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const totalSum = filtered.reduce((s: number, i: any) => s + Number(i.quantity) * Number(i.pricePerKg ?? 0), 0);
   const totalSumNoVat = totalSum / (1 + VAT_RATE);
@@ -186,175 +200,192 @@ function WarehouseModal({ warehouse, onClose, onMovement }: {
   const totalPcs = filtered.filter((i: any) => i.product.unit === 'шт').reduce((s: number, i: any) => s + Number(i.quantity), 0);
   const type = warehouse.type as WarehouseType;
 
+  // Групуємо по продукту, всередині групи лишається сортування найновіше → найстаріше
+  const groups = Object.entries(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    filtered.reduce((acc: Record<string, any[]>, item: any) => {
+      const key = item.product.name;
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(item);
+      return acc;
+    }, {}),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ) as [string, any[]][];
+  // Сортуємо групи продуктів за датою найновішої партії
+  groups.sort(([, a], [, b]) => new Date(b[0].arrivedAt).getTime() - new Date(a[0].arrivedAt).getTime());
+
   return (
     <>
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-2 sm:p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[95vh] flex flex-col overflow-hidden">
-        <div className={`bg-gradient-to-r ${warehouseTypeColor[type] || 'from-gray-500 to-gray-600'} px-5 py-4 shrink-0`}>
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <span className="text-3xl">{warehouseTypeIcon[type] || '🏭'}</span>
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4">
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-5xl max-h-[95vh] flex flex-col overflow-hidden">
+
+        {/* ── Шапка ── */}
+        <div className={`bg-gradient-to-br ${warehouseTypeColor[type] || 'from-gray-500 to-gray-600'} px-6 py-5 shrink-0 relative overflow-hidden`}>
+          <div className="absolute -right-6 -top-10 w-40 h-40 rounded-full bg-white/10" />
+          <div className="absolute right-16 -bottom-12 w-28 h-28 rounded-full bg-white/10" />
+          <div className="relative flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3.5">
+              <div className="w-14 h-14 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center text-3xl shadow-inner shrink-0">
+                {warehouseTypeIcon[type] || '🏭'}
+              </div>
               <div>
-                <h2 className="font-bold text-white text-lg">{warehouse.name}</h2>
-                <span className="text-white/60 text-xs">{warehouseTypeLabel[type]}</span>
+                <h2 className="font-bold text-white text-2xl leading-tight">{warehouse.name}</h2>
+                <span className="text-white/70 text-sm font-medium">{warehouseTypeLabel[type]}</span>
               </div>
             </div>
-            <div className="flex items-center gap-3 sm:gap-5">
-              <div className="hidden sm:flex items-center gap-4 text-sm">
-                {[
-                  { label: 'Позицій', value: String(filtered.length) },
-                  { label: 'Загально', value: [totalKg > 0 ? `${totalKg.toFixed(1)} кг` : '', totalPcs > 0 ? `${Math.round(totalPcs)} шт` : ''].filter(Boolean).join(' + ') || '0' },
-                  { label: 'З ПДВ', value: `${totalSum.toFixed(0)} ₴` },
-                  { label: 'Без ПДВ', value: `${totalSumNoVat.toFixed(0)} ₴` },
-                ].map((stat, i, arr) => (
-                  <div key={stat.label} className="flex items-center gap-4">
-                    <div className="text-center">
-                      <div className="text-white/60 text-xs">{stat.label}</div>
-                      <div className="text-white font-bold">{stat.value}</div>
-                    </div>
-                    {i < arr.length - 1 && <div className="w-px h-8 bg-white/20" />}
-                  </div>
-                ))}
+            <button onClick={onClose} className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/25 flex items-center justify-center text-white text-2xl leading-none transition-colors shrink-0">×</button>
+          </div>
+
+          <div className="relative grid grid-cols-2 sm:grid-cols-4 gap-2.5 mt-5">
+            {[
+              { label: 'Позицій', value: String(filtered.length) },
+              { label: 'Обсяг', value: [totalKg > 0 ? `${totalKg.toFixed(1)} кг` : '', totalPcs > 0 ? `${Math.round(totalPcs)} шт` : ''].filter(Boolean).join(' + ') || '0' },
+              { label: 'Без ПДВ', value: `${totalSumNoVat.toFixed(0)} ₴` },
+              { label: 'З ПДВ', value: `${totalSum.toFixed(0)} ₴` },
+            ].map((stat) => (
+              <div key={stat.label} className="bg-white/15 backdrop-blur-sm rounded-xl px-3 py-2">
+                <div className="text-white/60 text-xs uppercase tracking-wide font-semibold">{stat.label}</div>
+                <div className="text-white font-bold text-lg leading-tight">{stat.value}</div>
               </div>
-              <button onClick={onClose} className="text-white/70 hover:text-white text-2xl leading-none">×</button>
-            </div>
+            ))}
           </div>
         </div>
 
-        <div className="px-4 py-2.5 border-b bg-gray-50 flex items-center gap-2 shrink-0 flex-wrap">
+        {/* ── Фільтри ── */}
+        <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/60 flex items-center gap-2 shrink-0 flex-wrap">
           {!isInspector && (
-            <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs bg-white">
+            <div className="flex rounded-xl border border-gray-200 overflow-hidden text-sm bg-white shadow-sm">
               {[{ value: 'ALL', label: 'Всі' }, { value: 'FORM_1', label: '🏦 Ф1' }, { value: 'FORM_2', label: '💵 Ф2' }].map((f) => (
                 <button key={f.value} onClick={() => setFormFilter(f.value as typeof formFilter)}
-                  className={`px-3 py-1.5 transition-colors ${formFilter === f.value ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
+                  className={`px-3 py-1.5 transition-colors font-medium ${formFilter === f.value ? 'bg-gray-900 text-white' : 'text-gray-500 hover:bg-gray-50'}`}>
                   {f.label}
                 </button>
               ))}
             </div>
           )}
-          <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
-            placeholder="Пошук по назві..."
-            className="flex-1 min-w-[160px] border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
-          <span className="text-xs text-gray-400 shrink-0">{filtered.length} поз.</span>
+          <div className="relative flex-1 min-w-[160px]">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300 text-sm">🔍</span>
+            <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
+              placeholder="Пошук по назві..."
+              className="w-full border border-gray-200 rounded-xl pl-8 pr-3 py-1.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white shadow-sm" />
+          </div>
+          <span className="text-sm text-gray-400 shrink-0 font-medium">{filtered.length} поз. · найновіші вгорі</span>
         </div>
 
-        <div className="flex-1 overflow-y-auto">
-          {filtered.length === 0 ? (
-            <div className="text-center text-gray-400 py-16"><div className="text-4xl mb-3">📭</div><div className="font-medium">Склад порожній</div></div>
+        {/* ── Тіло: картки по продуктах ── */}
+        <div className="flex-1 overflow-y-auto bg-gray-50/40 p-4 space-y-3">
+          {groups.length === 0 ? (
+            <div className="text-center text-gray-400 py-16">
+              <div className="text-5xl mb-3 opacity-40">📭</div>
+              <div className="font-semibold">Склад порожній</div>
+            </div>
           ) : (
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
-                <tr className="text-left text-xs text-gray-500">
-                  <th className="px-3 py-3 font-semibold">Продукт</th>
-                  <th className="px-3 py-3 font-semibold">Форма</th>
-                  <th className="px-3 py-3 font-semibold">Постачальник</th>
-                  <th className="px-3 py-3 font-semibold">Дата</th>
-                  <th className="px-3 py-3 font-semibold text-right">Кількість</th>
-                  <th className="px-3 py-3 font-semibold text-right">Ціна/кг (з ПДВ)</th>
-                  <th className="px-3 py-3 font-semibold text-right">Без ПДВ</th>
-                  <th className="px-3 py-3 font-semibold text-right">Сума</th>
-                  {isAdmin && <th className="px-3 py-3" />}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {Object.entries(
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  filtered.reduce((acc: Record<string, any[]>, item: any) => {
-                    const key = item.product.name;
-                    if (!acc[key]) acc[key] = [];
-                    acc[key].push(item);
-                    return acc;
-                  }, {})
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                ).map(([productName, stockItems]: [string, any[]]) => {
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  const productQty = stockItems.reduce((s: number, i: any) => s + Number(i.quantity), 0);
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  const productSum = stockItems.reduce((s: number, i: any) => s + Number(i.quantity) * Number(i.pricePerKg ?? 0), 0);
-                  const unit = stockItems[0]?.product?.unit || 'кг';
-                  return (
-                    <>
-                      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                      {stockItems.map((item: any, idx: number) => {
-                        const qty = Number(item.quantity);
-                        const price = Number(item.pricePerKg ?? 0);
-                        const priceNoVat = price / (1 + VAT_RATE);
-                        const sumWithVat = qty * price;
-                        return (
-                          <tr key={item.id} className="hover:bg-blue-50/30 transition-colors group">
-                            <td className="px-3 py-2.5">
-                              {idx === 0 ? (
-                                <div className="flex items-center gap-2">
-                                  <span className="text-base">🐟</span>
-                                  <div>
-                                    <div className="font-semibold text-gray-800 text-xs">{productName}</div>
-                                    {stockItems.length > 1 && <div className="text-[10px] text-gray-400">{stockItems.length} партії · {productQty.toFixed(3)} {unit}</div>}
-                                  </div>
-                                </div>
-                              ) : (
-                                <div className="pl-7 text-[10px] text-gray-400">↳ партія {idx + 1}</div>
-                              )}
-                            </td>
-                            <td className="px-3 py-2.5">
-                              <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${item.form === 'FORM_1' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
-                                {item.form === 'FORM_1' ? 'Ф1' : 'Ф2'}
-                              </span>
-                            </td>
-                            <td className="px-3 py-2.5 text-xs text-gray-500">
-                              {item.supplier?.name
-                                ? <span className="bg-purple-50 text-purple-600 px-2 py-0.5 rounded text-[10px]">{item.supplier.name}</span>
-                                : <span className="text-gray-300">—</span>}
-                            </td>
-                            <td className="px-3 py-2.5 text-xs text-gray-400 whitespace-nowrap">{new Date(item.arrivedAt).toLocaleDateString('uk-UA')}</td>
-                            <td className="px-3 py-2.5 text-right">
-                              <span className="font-bold text-gray-800">{qty.toFixed(3)}</span>
-                              <span className="text-xs text-gray-400 ml-1">{item.product.unit}</span>
-                            </td>
-                            <td className="px-3 py-2.5 text-right">{price > 0 ? <span className="font-medium text-gray-700 text-xs">{price.toFixed(2)} ₴</span> : <span className="text-xs text-gray-300">—</span>}</td>
-                            <td className="px-3 py-2.5 text-right">{price > 0 ? <span className="text-gray-500 text-xs">{priceNoVat.toFixed(2)} ₴</span> : <span className="text-xs text-gray-300">—</span>}</td>
-                            <td className="px-3 py-2.5 text-right">{sumWithVat > 0 ? <span className="font-semibold text-green-600 text-xs">{sumWithVat.toFixed(2)} ₴</span> : <span className="text-xs text-gray-300">—</span>}</td>
-                            {isAdmin && (
-                              <td className="px-3 py-2.5 text-right">
-                                <button onClick={() => setEditingItem(item)}
-                                  className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-blue-600 transition-all text-xs px-2 py-1 rounded-lg hover:bg-blue-50">
-                                  ✏️
+            groups.map(([productName, stockItems]) => {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const productQty = stockItems.reduce((s: number, i: any) => s + Number(i.quantity), 0);
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const productSum = stockItems.reduce((s: number, i: any) => s + Number(i.quantity) * Number(i.pricePerKg ?? 0), 0);
+              const unit = stockItems[0]?.product?.unit || 'кг';
+              return (
+                <div key={productName} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                  {/* Заголовок продукту */}
+                  <div className="flex items-center justify-between gap-3 px-4 py-3 bg-gradient-to-r from-gray-50 to-white border-b border-gray-100">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="text-xl shrink-0">🐟</span>
+                      <div className="min-w-0">
+                        <div className="font-bold text-gray-800 text-base truncate">{productName}</div>
+                        <div className="text-[11px] text-gray-400">{stockItems.length} {stockItems.length === 1 ? 'партія' : 'партій'}</div>
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="font-bold text-gray-800 text-base">{productQty.toFixed(unit === 'шт' ? 0 : 3)} {unit}</div>
+                      {productSum > 0 && <div className="text-emerald-600 font-semibold text-sm">{productSum.toFixed(2)} ₴</div>}
+                    </div>
+                  </div>
+
+                  {/* Партії */}
+                  <div className="divide-y divide-gray-50">
+                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                    {stockItems.map((item: any, idx: number) => {
+                      const qty = Number(item.quantity);
+                      const price = Number(item.pricePerKg ?? 0);
+                      const priceNoVat = price / (1 + VAT_RATE);
+                      const sumWithVat = qty * price;
+                      const fresh = freshnessBadge(item.arrivedAt);
+                      return (
+                        <div key={item.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-blue-50/30 transition-colors group">
+                          {idx === 0 && (
+                            <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-emerald-400" title="Найновіша партія" />
+                          )}
+                          {idx !== 0 && <span className="shrink-0 w-1.5" />}
+
+                          <span className={`shrink-0 text-xs px-1.5 py-0.5 rounded-md font-bold ${item.form === 'FORM_1' ? 'bg-blue-50 text-blue-600' : 'bg-orange-50 text-orange-600'}`}>
+                            {item.form === 'FORM_1' ? 'Ф1' : 'Ф2'}
+                          </span>
+
+                          <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full font-semibold ${fresh.cls}`}>
+                            {new Date(item.arrivedAt).toLocaleDateString('uk-UA')} · {fresh.label}
+                          </span>
+
+                          <span className="text-sm text-gray-400 truncate w-20 shrink-0">
+                            {item.supplier?.name
+                              ? <span className="text-purple-500 font-medium">🏭 {item.supplier.name}</span>
+                              : <span className="text-gray-300">—</span>}
+                          </span>
+
+                          <span className="shrink-0 font-bold text-gray-800 text-base">
+                            {qty.toFixed(item.product.unit === 'шт' ? 0 : 3)}
+                            <span className="text-xs font-normal text-gray-400 ml-0.5">{item.product.unit}</span>
+                          </span>
+
+                          <span className="flex-1 text-right text-sm min-w-[90px]">
+                            {price > 0 ? (
+                              <>
+                                <div className="font-semibold text-gray-700">{price.toFixed(2)} ₴/кг</div>
+                                <div className="text-gray-400 text-xs">{priceNoVat.toFixed(2)} б/ПДВ</div>
+                              </>
+                            ) : <span className="text-gray-300">—</span>}
+                          </span>
+
+                          <span className="shrink-0 text-right w-20 text-sm font-bold text-emerald-600">
+                            {sumWithVat > 0 ? `${sumWithVat.toFixed(2)} ₴` : <span className="text-gray-300 font-normal">—</span>}
+                          </span>
+
+                          {isAdmin && (
+                            <div className="shrink-0 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                              {(warehouse.type === 'RAW_MATERIAL' || warehouse.type === 'FRIDGE') && (
+                                <button onClick={() => onProduction({ warehouseId: warehouse.id, stockItemId: item.id, quantity: String(qty) })}
+                                  title="Провести виробництво з цієї партії"
+                                  className="text-gray-400 hover:text-purple-600 w-7 h-7 rounded-lg hover:bg-purple-50 flex items-center justify-center">
+                                  ⚙️
                                 </button>
-                              </td>
-                            )}
-                          </tr>
-                        );
-                      })}
-                      {stockItems.length > 1 && (
-                        <tr className="bg-blue-50/50 border-t border-blue-100">
-                          <td className="px-3 py-2" colSpan={4}><span className="text-xs font-semibold text-blue-600">Разом: {productName}</span></td>
-                          <td className="px-3 py-2 text-right"><span className="font-bold text-blue-700 text-xs">{productQty.toFixed(3)} {unit}</span></td>
-                          <td className="px-3 py-2" colSpan={2} />
-                          <td className="px-3 py-2 text-right">{productSum > 0 && <span className="font-bold text-green-600 text-xs">{productSum.toFixed(2)} ₴</span>}</td>
-                          {isAdmin && <td />}
-                        </tr>
-                      )}
-                    </>
-                  );
-                })}
-              </tbody>
-              <tfoot className="border-t-2 border-gray-200 bg-gray-50 sticky bottom-0">
-                <tr>
-                  <td className="px-3 py-2.5 text-xs font-bold text-gray-600" colSpan={4}>Всього по складу</td>
-                  <td className="px-3 py-2.5 text-right text-xs font-bold text-gray-700">
-                    {totalKg > 0 && `${totalKg.toFixed(1)} кг`}{totalKg > 0 && totalPcs > 0 && ' · '}{totalPcs > 0 && `${Math.round(totalPcs)} шт`}
-                  </td>
-                  <td className="px-3 py-2.5" colSpan={2} />
-                  <td className="px-3 py-2.5 text-right text-sm font-bold text-green-600">{totalSum > 0 ? `${totalSum.toFixed(2)} ₴` : '—'}</td>
-                  {isAdmin && <td />}
-                </tr>
-              </tfoot>
-            </table>
+                              )}
+                              <button onClick={() => setEditingItem(item)}
+                                className="text-gray-400 hover:text-blue-600 w-7 h-7 rounded-lg hover:bg-blue-50 flex items-center justify-center">
+                                ✏️
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })
           )}
         </div>
 
-        <div className="border-t bg-gray-50 px-5 py-3 shrink-0 flex gap-2">
-          <button onClick={onMovement} className="flex-1 bg-blue-600 text-white text-sm px-4 py-2.5 rounded-xl hover:bg-blue-700 transition-colors font-medium">+ Рух товару</button>
-          <button onClick={onClose} className="flex-1 border border-gray-300 text-gray-600 text-sm px-4 py-2.5 rounded-xl hover:bg-gray-100 transition-colors">Закрити</button>
+        {/* ── Підсумок + дії ── */}
+        <div className="border-t border-gray-100 bg-white px-5 py-3.5 shrink-0 flex items-center gap-3">
+          <div className="text-sm text-gray-500">
+            Всього: <span className="font-bold text-gray-800">{totalKg > 0 && `${totalKg.toFixed(1)} кг`}{totalKg > 0 && totalPcs > 0 && ' · '}{totalPcs > 0 && `${Math.round(totalPcs)} шт`}</span>
+            {totalSum > 0 && <span className="ml-2 font-bold text-emerald-600">{totalSum.toFixed(2)} ₴</span>}
+          </div>
+          <div className="flex gap-2 ml-auto">
+            <button onClick={onClose} className="border border-gray-200 text-gray-600 text-base px-4 py-2.5 rounded-xl hover:bg-gray-50 transition-colors font-medium">Закрити</button>
+            <button onClick={onMovement} className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-base px-5 py-2.5 rounded-xl hover:opacity-90 transition-all font-semibold shadow-md shadow-blue-200">+ Рух товару</button>
+          </div>
         </div>
       </div>
     </div>
@@ -371,6 +402,188 @@ function WarehouseModal({ warehouse, onClose, onMovement }: {
 
 
 
+
+// ─── SupplierInvoiceModal — накладна з кількома товарами ─────────────────────
+interface InvoiceItemRow { productId: string; quantity: string; pricePerKg: string }
+
+function SupplierInvoiceModal({ onClose }: { onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const [supplierId, setSupplierId] = useState('');
+  const [invoiceNumber, setInvoiceNumber] = useState('');
+  const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().slice(0, 10));
+  const [warehouseId, setWarehouseId] = useState('');
+  const [form, setForm] = useState<FormType>('FORM_1');
+  const [note, setNote] = useState('');
+  const [items, setItems] = useState<InvoiceItemRow[]>([{ productId: '', quantity: '', pricePerKg: '' }]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const { data: warehouses = [] } = useQuery({ queryKey: ['warehouses'], queryFn: () => api.get('/warehouses').then((r) => r.data) });
+  const { data: products = [] } = useQuery({ queryKey: ['products-active'], queryFn: () => api.get('/products/active').then((r) => r.data) });
+  const { data: suppliers = [] } = useQuery({ queryKey: ['suppliers'], queryFn: () => api.get('/warehouses/suppliers').then((r) => r.data) });
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const inWarehouses = (warehouses as any[]).filter((w) => w.isActive && (w.type === 'FRIDGE' || w.type === 'SUPPLIES'));
+
+  const addItem = () => setItems((prev) => [...prev, { productId: '', quantity: '', pricePerKg: '' }]);
+  const removeItem = (idx: number) => setItems((prev) => prev.filter((_, i) => i !== idx));
+  const updateItem = (idx: number, key: keyof InvoiceItemRow, val: string) =>
+    setItems((prev) => prev.map((r, i) => (i === idx ? { ...r, [key]: val } : r)));
+
+  // Точно той самий розрахунок, що й на бекенді — щоб попередній перегляд завжди збігався
+  const validItems = items.filter((i) => i.productId && Number(i.quantity) > 0 && Number(i.pricePerKg) > 0);
+  const totalWithVat = validItems.reduce((s, i) => s + Math.round(Number(i.quantity) * Number(i.pricePerKg) * 100) / 100, 0);
+  const totalNoVat = Number((totalWithVat / 1.2).toFixed(2));
+  const totalVat = Number((totalWithVat - totalNoVat).toFixed(2));
+
+  const handleSave = async () => {
+    if (!supplierId) return setError('Оберіть постачальника');
+    if (!warehouseId) return setError('Оберіть склад');
+    if (!invoiceDate) return setError('Вкажіть дату накладної');
+    if (validItems.length === 0) return setError('Додайте хоча б одну позицію з кількістю і ціною');
+    setLoading(true); setError('');
+    try {
+      await api.post('/supplier-invoices', {
+        supplierId, invoiceNumber: invoiceNumber || undefined, invoiceDate, warehouseId, form,
+        note: note || undefined,
+        items: validItems.map((i) => ({ productId: i.productId, quantity: Number(i.quantity), pricePerKg: Number(i.pricePerKg) })),
+      });
+      queryClient.invalidateQueries({ queryKey: ['warehouses'] });
+      queryClient.invalidateQueries({ queryKey: ['stock'] });
+      queryClient.invalidateQueries({ queryKey: ['movements'] });
+      queryClient.invalidateQueries({ queryKey: ['incoming-movements'] });
+      onClose();
+    } catch (e: any) {
+      setError(e.response?.data?.message || 'Помилка збереження');
+    } finally { setLoading(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-3">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[95vh] flex flex-col overflow-hidden">
+        <div className="px-6 py-4 border-b shrink-0 flex items-center justify-between bg-gradient-to-r from-emerald-600 to-teal-600">
+          <div>
+            <h2 className="font-bold text-white text-lg">📄 Накладна постачальника</h2>
+            <p className="text-emerald-100 text-xs mt-0.5">Декілька товарів в одній накладній — потрапляє в реєстр постачальників</p>
+          </div>
+          <button onClick={onClose} className="text-white/70 hover:text-white text-2xl leading-none">×</button>
+        </div>
+
+        <div className="overflow-y-auto flex-1 p-6 space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Постачальник *</label>
+              <select value={supplierId} onChange={(e) => setSupplierId(e.target.value)}
+                className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                <option value="">Оберіть...</option>
+                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                {(suppliers as any[]).filter((s) => s.isActive).map((s) => <option key={s.id} value={s.id}>🏭 {s.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Склад *</label>
+              <select value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)}
+                className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                <option value="">Оберіть...</option>
+                {inWarehouses.map((w) => <option key={w.id} value={w.id}>{warehouseTypeIcon[w.type as WarehouseType]} {w.name}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1.5">№ накладної</label>
+              <input value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} placeholder="напр. 1234"
+                className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Дата накладної *</label>
+              <input type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)}
+                className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Форма оплати</label>
+              <div className="flex rounded-xl border border-gray-200 overflow-hidden text-sm">
+                {(['FORM_1', 'FORM_2'] as FormType[]).map((f) => (
+                  <button key={f} onClick={() => setForm(f)}
+                    className={`flex-1 py-2 transition-colors text-xs font-medium ${form === f ? 'bg-emerald-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+                    {f === 'FORM_1' ? '🏦 Ф1' : '💵 Ф2'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Позиції */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Товари в накладній</label>
+              <button onClick={addItem} className="text-xs text-emerald-600 hover:text-emerald-700 font-semibold">+ Додати товар</button>
+            </div>
+            <div className="space-y-2">
+              {items.map((item, idx) => {
+                const lineTotal = Number(item.quantity) > 0 && Number(item.pricePerKg) > 0
+                  ? Math.round(Number(item.quantity) * Number(item.pricePerKg) * 100) / 100 : 0;
+                return (
+                  <div key={idx} className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl p-2.5">
+                    <select value={item.productId} onChange={(e) => updateItem(idx, 'productId', e.target.value)}
+                      className="flex-1 min-w-0 border border-gray-300 rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white">
+                      <option value="">Продукт...</option>
+                      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                      {(products as any[]).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                    <input type="number" step="0.001" min="0" value={item.quantity} onChange={(e) => updateItem(idx, 'quantity', e.target.value)}
+                      placeholder="кг" className="w-20 border border-gray-300 rounded-lg px-2 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white" />
+                    <input type="number" step="0.01" min="0" value={item.pricePerKg} onChange={(e) => updateItem(idx, 'pricePerKg', e.target.value)}
+                      placeholder="₴/кг з ПДВ" className="w-28 border border-gray-300 rounded-lg px-2 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white" />
+                    <span className="w-20 text-right text-xs font-bold text-emerald-600 shrink-0">{lineTotal > 0 ? `${lineTotal.toFixed(2)}₴` : ''}</span>
+                    {items.length > 1 && (
+                      <button onClick={() => removeItem(idx)} className="text-red-400 hover:text-red-600 text-lg leading-none shrink-0 px-1">×</button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Підсумок */}
+          {totalWithVat > 0 && (
+            <div className="grid grid-cols-3 gap-2 bg-emerald-50 border border-emerald-200 rounded-xl p-3">
+              <div className="text-center">
+                <div className="text-[10px] text-gray-400 mb-0.5">Без ПДВ</div>
+                <div className="text-sm font-bold text-gray-700">{totalNoVat.toFixed(2)} ₴</div>
+              </div>
+              <div className="text-center">
+                <div className="text-[10px] text-gray-400 mb-0.5">ПДВ 20%</div>
+                <div className="text-sm font-bold text-orange-500">{totalVat.toFixed(2)} ₴</div>
+              </div>
+              <div className="text-center">
+                <div className="text-[10px] text-gray-400 mb-0.5">Сума з ПДВ</div>
+                <div className="text-sm font-bold text-emerald-600">{totalWithVat.toFixed(2)} ₴</div>
+              </div>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Коментар</label>
+            <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2}
+              className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none" placeholder="Необов'язково..." />
+          </div>
+
+          {error && <div className="text-red-500 text-sm bg-red-50 border border-red-100 px-3 py-2.5 rounded-xl">⚠️ {error}</div>}
+        </div>
+
+        <div className="px-6 py-4 border-t flex gap-2 shrink-0 bg-gray-50">
+          <button onClick={onClose} className="flex-1 border border-gray-300 text-gray-600 text-sm px-4 py-2.5 rounded-xl hover:bg-gray-100 transition-colors">Скасувати</button>
+          <button onClick={handleSave} disabled={loading}
+            className="flex-2 min-w-[160px] bg-emerald-600 text-white text-sm px-6 py-2.5 rounded-xl hover:bg-emerald-700 disabled:opacity-50 transition-colors font-semibold">
+            {loading ? 'Збереження...' : '📄 Зберегти накладну'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ─── MovementModal ────────────────────────────────────────────────────────────
 function MovementModal({ onClose }: { onClose: () => void }) {
@@ -836,7 +1049,9 @@ function ReturnDetailsModal({ ret, onClose, onUpdated }: {
 export default function WarehousePage() {
   const queryClient = useQueryClient();
   const [showMovement, setShowMovement] = useState(false);
+  const [showInvoice, setShowInvoice] = useState(false);
   const [showProduction, setShowProduction] = useState(false);
+  const [productionItem, setProductionItem] = useState<{ warehouseId: string; stockItemId: string; quantity: string } | null>(null);
   const [selectedWarehouseId, setSelectedWarehouseId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'stock' | 'movements' | 'returns' | 'incoming'>('stock');
   const [showReturn, setShowReturn] = useState(false);
@@ -895,113 +1110,189 @@ export default function WarehousePage() {
     { kg: 0, pcs: 0, sum: 0 },
   );
 
+  const warehouseTypeRing: Record<WarehouseType, string> = {
+    RAW_MATERIAL: 'shadow-blue-200/60', IN_PRODUCTION: 'shadow-orange-200/60',
+    FINISHED_GOODS: 'shadow-emerald-200/60', FRIDGE: 'shadow-cyan-200/60', SUPPLIES: 'shadow-amber-200/60',
+  };
+
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-gray-800">Склади</h1>
-          <p className="text-xs text-gray-400 mt-0.5">
-            {stock.length} складів · {totalStats.kg.toFixed(1)} кг{totalStats.pcs > 0 ? ` · ${Math.round(totalStats.pcs)} шт` : ''} · {totalStats.sum.toFixed(0)} ₴
-          </p>
+    <div className="space-y-5">
+      {/* ── Шапка з дашбордом ── */}
+      <div className="bg-gradient-to-br from-slate-50 via-white to-blue-50/40 rounded-2xl sm:rounded-3xl border border-gray-100 p-3.5 sm:p-5 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2.5">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-xl shadow-md shadow-blue-200">
+                🏭
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-gray-800 tracking-tight">Склади</h1>
+                <p className="text-sm text-gray-400">Запаси, рухи та надходження продукції</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <button onClick={toggleBypass}
+              className={`text-sm sm:text-base px-3.5 py-2 rounded-xl transition-all font-medium flex items-center gap-1.5 border shadow-sm ${bypassStock ? 'bg-red-50 border-red-200 text-red-600 hover:bg-red-100' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50 hover:shadow'}`}>
+              <span className={`w-2 h-2 rounded-full ${bypassStock ? 'bg-red-500' : 'bg-emerald-500'} ${!bypassStock && 'animate-pulse'}`} />
+              {bypassStock ? 'Склад відключено' : 'Склад активний'}
+            </button>
+            <button onClick={() => setShowReturn(true)}
+              className="bg-white border border-orange-200 text-orange-600 text-sm sm:text-base px-3.5 py-2 rounded-xl hover:bg-orange-50 transition-all font-medium flex items-center gap-1.5 shadow-sm hover:shadow">
+              ↩ Повернення
+            </button>
+            <button onClick={() => setShowProduction(true)}
+              className="bg-white border border-purple-200 text-purple-600 text-sm sm:text-base px-3.5 py-2 rounded-xl hover:bg-purple-50 transition-all font-medium flex items-center gap-1.5 shadow-sm hover:shadow">
+              ⚙️ Виробництво
+            </button>
+            <button onClick={() => setShowWriteOffConfirm(true)}
+              className="bg-white border border-red-200 text-red-600 text-sm sm:text-base px-3.5 py-2 rounded-xl hover:bg-red-50 transition-all font-medium flex items-center gap-1.5 shadow-sm hover:shadow">
+              🗑 Списати сировину
+            </button>
+            <button onClick={() => setShowInvoice(true)}
+              className="bg-gradient-to-r from-emerald-600 to-teal-600 text-white text-sm sm:text-base px-4 py-2 rounded-xl hover:opacity-90 transition-all font-semibold flex items-center gap-1.5 shadow-md shadow-emerald-200">
+              📄 Накладна постачальника
+            </button>
+            <button onClick={() => setShowMovement(true)}
+              className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-sm sm:text-base px-4 py-2 rounded-xl hover:opacity-90 transition-all font-semibold flex items-center gap-1.5 shadow-md shadow-blue-200">
+              + Рух товару
+            </button>
+          </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <button onClick={toggleBypass}
-            className={`text-xs sm:text-sm px-3 sm:px-4 py-2 rounded-xl transition-colors font-medium flex items-center gap-1.5 border ${bypassStock ? 'bg-red-50 border-red-300 text-red-700 hover:bg-red-100' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
-            {bypassStock ? '🔴 Склад відключено' : '🟢 Склад активний'}
-          </button>
-          <button onClick={() => setShowReturn(true)}
-            className="bg-orange-500 text-white text-xs sm:text-sm px-3 sm:px-4 py-2 rounded-xl hover:bg-orange-600 transition-colors font-medium flex items-center gap-1.5">
-            ↩ <span className="hidden xs:inline">Повернення</span><span className="xs:hidden">Повернення</span>
-          </button>
-          <button onClick={() => setShowProduction(true)}
-            className="bg-purple-600 text-white text-xs sm:text-sm px-3 sm:px-4 py-2 rounded-xl hover:bg-purple-700 transition-colors font-medium flex items-center gap-1.5">
-            ⚙️ Виробництво
-          </button>
-          <button onClick={() => setShowWriteOffConfirm(true)}
-            className="bg-red-600 text-white text-xs sm:text-sm px-3 sm:px-4 py-2 rounded-xl hover:bg-red-700 transition-colors font-medium flex items-center gap-1.5">
-            🗑 Списати сировину
-          </button>
-          <button onClick={() => setShowMovement(true)}
-            className="bg-blue-600 text-white text-xs sm:text-sm px-3 sm:px-4 py-2 rounded-xl hover:bg-blue-700 transition-colors font-medium flex items-center gap-1.5">
-            + Рух товару
-          </button>
+
+        {/* Міні-статистика */}
+        <div className="grid grid-cols-3 gap-2 sm:gap-3 mt-4 sm:mt-5">
+          <div className="bg-white/70 backdrop-blur-sm rounded-xl sm:rounded-2xl border border-gray-100 px-2.5 sm:px-4 py-2.5 sm:py-3 flex items-center gap-2 sm:gap-3">
+            <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center text-lg shrink-0">🏬</div>
+            <div className="min-w-0">
+              <div className="text-xs text-gray-400 uppercase tracking-wide font-semibold">Складів</div>
+              <div className="font-bold text-gray-800 text-xl leading-tight">{stock.length}</div>
+            </div>
+          </div>
+          <div className="bg-white/70 backdrop-blur-sm rounded-xl sm:rounded-2xl border border-gray-100 px-2.5 sm:px-4 py-2.5 sm:py-3 flex items-center gap-2 sm:gap-3">
+            <div className="w-9 h-9 rounded-xl bg-cyan-50 flex items-center justify-center text-lg shrink-0">⚖️</div>
+            <div className="min-w-0">
+              <div className="text-xs text-gray-400 uppercase tracking-wide font-semibold">Обсяг</div>
+              <div className="font-bold text-gray-800 text-xl leading-tight truncate">
+                {totalStats.kg.toFixed(0)} кг{totalStats.pcs > 0 ? ` · ${Math.round(totalStats.pcs)} шт` : ''}
+              </div>
+            </div>
+          </div>
+          <div className="bg-white/70 backdrop-blur-sm rounded-xl sm:rounded-2xl border border-gray-100 px-2.5 sm:px-4 py-2.5 sm:py-3 flex items-center gap-2 sm:gap-3">
+            <div className="w-9 h-9 rounded-xl bg-emerald-50 flex items-center justify-center text-lg shrink-0">💰</div>
+            <div className="min-w-0">
+              <div className="text-xs text-gray-400 uppercase tracking-wide font-semibold">Вартість</div>
+              <div className="font-bold text-emerald-600 text-xl leading-tight">{totalStats.sum.toFixed(0)} ₴</div>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div className="flex rounded-xl border border-gray-200 overflow-hidden text-xs sm:text-sm w-full sm:w-fit bg-white">
+      {/* ── Таби ── */}
+      <div className="flex gap-1.5 overflow-x-auto pb-1">
         {[
-          { value: 'stock', label: '📦 Залишки' },
-          { value: 'incoming', label: '📥 Надходження' },
-          { value: 'movements', label: '📋 Рухи' },
-          { value: 'returns', label: '↩ Повернення' },
+          { value: 'stock', label: 'Залишки', icon: '📦' },
+          { value: 'incoming', label: 'Надходження', icon: '📥' },
+          { value: 'movements', label: 'Рухи', icon: '📋' },
+          { value: 'returns', label: 'Повернення', icon: '↩' },
         ].map((tab) => (
           <button key={tab.value} onClick={() => setActiveTab(tab.value as typeof activeTab)}
-            className={`flex-1 sm:flex-none px-3 sm:px-4 py-2 transition-colors ${activeTab === tab.value ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
-            {tab.label}
+            className={`shrink-0 px-4 py-2 rounded-xl text-sm sm:text-base font-medium transition-all flex items-center gap-1.5 ${activeTab === tab.value ? 'bg-gray-900 text-white shadow-md' : 'bg-white text-gray-500 border border-gray-200 hover:bg-gray-50'}`}>
+            <span>{tab.icon}</span>{tab.label}
           </button>
         ))}
       </div>
 
       {activeTab === 'stock' && (
         stockLoading ? (
-          <div className="text-center text-gray-400 py-12">Завантаження...</div>
+          <div className="text-center text-gray-400 py-16">
+            <div className="inline-block w-6 h-6 border-2 border-gray-200 border-t-blue-500 rounded-full animate-spin mb-3" />
+            <div className="text-base">Завантаження...</div>
+          </div>
         ) : stock.length === 0 ? (
-          <div className="text-center text-gray-400 py-12 border-2 border-dashed border-gray-200 rounded-xl">Немає даних про залишки</div>
+          <div className="text-center text-gray-400 py-16 border-2 border-dashed border-gray-200 rounded-2xl">
+            <div className="text-4xl mb-3">📭</div>Немає даних про залишки
+          </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {stock.map((warehouse: any) => {
               const wType = warehouse.type as WarehouseType;
               const wTotalKg = warehouse.stockItems?.filter((i: any) => i.product.unit === 'кг').reduce((s: number, i: any) => s + Number(i.quantity), 0) || 0;
               const wTotalPcs = warehouse.stockItems?.filter((i: any) => i.product.unit === 'шт').reduce((s: number, i: any) => s + Number(i.quantity), 0) || 0;
               const totalSum = warehouse.stockItems?.reduce((s: number, i: any) => s + Number(i.quantity) * Number(i.pricePerKg ?? 0), 0) || 0;
+              const items = warehouse.stockItems || [];
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const topItems = [...items].sort((a: any, b: any) => Number(b.quantity) - Number(a.quantity)).slice(0, 4);
               return (
                 <div key={warehouse.id} onClick={() => setSelectedWarehouseId(warehouse.id)}
-                  className="bg-white rounded-2xl border border-gray-200 overflow-hidden cursor-pointer hover:shadow-lg hover:border-blue-200 transition-all group">
-                  <div className={`bg-gradient-to-r ${warehouseTypeColor[wType] || 'from-gray-400 to-gray-500'} p-4`}>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="text-2xl">{warehouseTypeIcon[wType] || '🏭'}</span>
+                  className={`bg-white rounded-3xl border border-gray-100 overflow-hidden cursor-pointer hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 group ${warehouseTypeRing[wType] || ''}`}>
+                  {/* Шапка картки */}
+                  <div className={`bg-gradient-to-br ${warehouseTypeColor[wType] || 'from-gray-400 to-gray-500'} p-5 relative overflow-hidden`}>
+                    <div className="absolute -right-4 -top-4 w-24 h-24 rounded-full bg-white/10" />
+                    <div className="absolute -right-8 top-8 w-16 h-16 rounded-full bg-white/10" />
+                    <div className="relative flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center text-2xl shadow-inner">
+                          {warehouseTypeIcon[wType] || '🏭'}
+                        </div>
                         <div>
-                          <h3 className="font-bold text-white">{warehouse.name}</h3>
-                          <span className="text-white/60 text-xs">{warehouseTypeLabel[wType]}</span>
+                          <h3 className="font-bold text-white text-lg leading-tight">{warehouse.name}</h3>
+                          <span className="text-white/70 text-sm font-medium">{warehouseTypeLabel[wType]}</span>
                         </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-white font-bold text-lg">
-                          {wTotalKg > 0 && <span>{wTotalKg.toFixed(1)} кг</span>}
-                          {wTotalKg > 0 && wTotalPcs > 0 && <span className="text-white/50"> · </span>}
-                          {wTotalPcs > 0 && <span>{Math.round(wTotalPcs)} шт</span>}
-                          {wTotalKg === 0 && wTotalPcs === 0 && <span>0 кг</span>}
-                        </div>
-                        {totalSum > 0 && <div className="text-white/70 text-xs">{totalSum.toFixed(0)} ₴</div>}
                       </div>
                     </div>
+                    <div className="relative flex items-end justify-between mt-4">
+                      <div>
+                        <div className="text-white font-bold text-2xl leading-none tracking-tight">
+                          {wTotalKg > 0 && <span>{wTotalKg.toFixed(1)}<span className="text-lg font-medium text-white/70 ml-1">кг</span></span>}
+                          {wTotalKg > 0 && wTotalPcs > 0 && <span className="text-white/40 mx-1.5">·</span>}
+                          {wTotalPcs > 0 && <span>{Math.round(wTotalPcs)}<span className="text-lg font-medium text-white/70 ml-1">шт</span></span>}
+                          {wTotalKg === 0 && wTotalPcs === 0 && <span className="text-white/50 text-lg">порожньо</span>}
+                        </div>
+                      </div>
+                      {totalSum > 0 && (
+                        <div className="bg-white/15 backdrop-blur-sm rounded-lg px-2.5 py-1">
+                          <div className="text-white font-bold text-base">{totalSum.toFixed(0)} ₴</div>
+                        </div>
+                      )}
+                    </div>
                   </div>
+
+                  {/* Тіло картки */}
                   <div className="p-4">
-                    {!warehouse.stockItems?.length ? (
-                      <div className="text-xs text-gray-400 text-center py-4 border border-dashed border-gray-200 rounded-lg">Порожньо</div>
+                    {!items.length ? (
+                      <div className="text-sm text-gray-400 text-center py-6 border border-dashed border-gray-200 rounded-xl">
+                        <div className="text-2xl mb-1.5 opacity-40">📭</div>Порожньо
+                      </div>
                     ) : (
                       <>
                         <div className="space-y-2 mb-3">
-                          {warehouse.stockItems.slice(0, 4).map((item: any) => (
-                            <div key={item.id} className="flex justify-between items-center text-sm">
-                              <div className="flex items-center gap-1.5 min-w-0">
-                                <span className={`shrink-0 text-xs px-1.5 py-0.5 rounded font-medium ${item.form === 'FORM_1' ? 'bg-blue-50 text-blue-600' : 'bg-orange-50 text-orange-600'}`}>
-                                  {item.form === 'FORM_1' ? 'Ф1' : 'Ф2'}
+                          {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                          {topItems.map((item: any) => {
+                            const qty = Number(item.quantity);
+                            return (
+                              <div key={item.id} className="flex justify-between items-baseline gap-2">
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <span className={`shrink-0 text-xs px-1.5 py-0.5 rounded-md font-bold ${item.form === 'FORM_1' ? 'bg-blue-50 text-blue-600' : 'bg-orange-50 text-orange-600'}`}>
+                                    {item.form === 'FORM_1' ? 'Ф1' : 'Ф2'}
+                                  </span>
+                                  <span className="text-gray-600 text-sm truncate font-medium">{item.product.name}</span>
+                                </div>
+                                <span className="font-bold text-gray-800 text-sm shrink-0">
+                                  {qty.toFixed(item.product.unit === 'шт' ? 0 : 3)}
+                                  <span className="text-xs font-normal text-gray-400 ml-0.5">{item.product.unit}</span>
                                 </span>
-                                <span className="text-gray-600 truncate">{item.product.name}</span>
                               </div>
-                              <span className="font-semibold text-gray-800 shrink-0 ml-2">
-                                {Number(item.quantity).toFixed(3)}
-                                <span className="text-xs font-normal text-gray-400 ml-0.5">{item.product.unit}</span>
-                              </span>
-                            </div>
-                          ))}
-                          {warehouse.stockItems.length > 4 && (
-                            <div className="text-xs text-gray-400 text-center py-1">+{warehouse.stockItems.length - 4} позицій...</div>
+                            );
+                          })}
+                          {items.length > 4 && (
+                            <div className="text-[11px] text-gray-400 text-center pt-1 font-medium">+{items.length - 4} позицій</div>
                           )}
                         </div>
-                        <div className="text-xs text-blue-400 text-center group-hover:text-blue-500 transition-colors">Натисни для деталей →</div>
+                        <div className="flex items-center justify-center gap-1 text-sm font-semibold text-blue-500 group-hover:text-blue-600 group-hover:gap-2 transition-all pt-1 border-t border-gray-50">
+                          Деталі <span className="transition-transform group-hover:translate-x-0.5">→</span>
+                        </div>
                       </>
                     )}
                   </div>
@@ -1032,10 +1323,10 @@ export default function WarehousePage() {
                 return (
                   <div key={m.id} className="p-4">
                     <div className="flex items-start justify-between gap-2 mb-1">
-                      <div className="font-medium text-gray-800 text-sm">🐟 {m.product?.name || '—'}</div>
+                      <div className="font-medium text-gray-800 text-base">🐟 {m.product?.name || '—'}</div>
                       <span className="font-bold text-gray-800 shrink-0">{qty.toFixed(3)} {m.product?.unit || 'кг'}</span>
                     </div>
-                    <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-400 mt-0.5">
+                    <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-sm text-gray-400 mt-0.5">
                       <span>{m.warehouse?.name}</span>
                       {m.supplier?.name && <span className="text-purple-600">🏭 {m.supplier.name}</span>}
                       {price > 0 && <span className="text-green-600 font-medium">{price.toFixed(2)} ₴/кг · {(qty * price).toFixed(2)} ₴</span>}
@@ -1043,17 +1334,17 @@ export default function WarehousePage() {
                         {m.form === 'FORM_1' ? 'Ф1' : 'Ф2'}
                       </span>
                     </div>
-                    {m.note && <div className="mt-1 text-xs text-amber-600 bg-amber-50 rounded px-2 py-1">💬 {m.note}</div>}
-                    <div className="text-xs text-gray-400 mt-1">{new Date(m.createdAt).toLocaleDateString('uk-UA')}</div>
+                    {m.note && <div className="mt-1 text-sm text-amber-600 bg-amber-50 rounded px-2 py-1">💬 {m.note}</div>}
+                    <div className="text-sm text-gray-400 mt-1">{new Date(m.createdAt).toLocaleDateString('uk-UA')}</div>
                   </div>
                 );
               })}
             </div>
             {/* Десктопний вид */}
             <div className="hidden sm:block overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-base">
                 <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr className="text-left text-xs text-gray-500">
+                  <tr className="text-left text-sm text-gray-500">
                     <th className="px-4 py-3 font-semibold">Дата</th>
                     <th className="px-4 py-3 font-semibold">Продукт</th>
                     <th className="px-4 py-3 font-semibold">Склад</th>
@@ -1072,27 +1363,27 @@ export default function WarehousePage() {
                     const qty = Math.abs(Number(m.quantity));
                     return (
                       <tr key={m.id} className="hover:bg-green-50/30 transition-colors">
-                        <td className="px-4 py-2.5 text-xs text-gray-400 whitespace-nowrap">{new Date(m.createdAt).toLocaleDateString('uk-UA')}</td>
-                        <td className="px-4 py-2.5 font-medium text-gray-800 text-xs">🐟 {m.product?.name || '—'}</td>
-                        <td className="px-4 py-2.5 text-xs text-gray-500">{m.warehouse?.name}</td>
-                        <td className="px-4 py-2.5 text-xs">
+                        <td className="px-4 py-2.5 text-sm text-gray-400 whitespace-nowrap">{new Date(m.createdAt).toLocaleDateString('uk-UA')}</td>
+                        <td className="px-4 py-2.5 font-medium text-gray-800 text-sm">🐟 {m.product?.name || '—'}</td>
+                        <td className="px-4 py-2.5 text-sm text-gray-500">{m.warehouse?.name}</td>
+                        <td className="px-4 py-2.5 text-sm">
                           {m.supplier?.name
                             ? <span className="bg-purple-50 text-purple-600 px-2 py-0.5 rounded">{m.supplier.name}</span>
                             : <span className="text-gray-300">—</span>}
                         </td>
-                        <td className="px-4 py-2.5 text-right font-semibold text-gray-800 text-xs">{qty.toFixed(3)} {m.product?.unit || 'кг'}</td>
-                        <td className="px-4 py-2.5 text-right text-xs">
+                        <td className="px-4 py-2.5 text-right font-semibold text-gray-800 text-sm">{qty.toFixed(3)} {m.product?.unit || 'кг'}</td>
+                        <td className="px-4 py-2.5 text-right text-sm">
                           {price > 0 ? <span className="font-medium text-gray-700">{price.toFixed(2)} ₴</span> : <span className="text-gray-300">—</span>}
                         </td>
-                        <td className="px-4 py-2.5 text-right text-xs">
+                        <td className="px-4 py-2.5 text-right text-sm">
                           {price > 0 ? <span className="font-semibold text-green-600">{(qty * price).toFixed(2)} ₴</span> : <span className="text-gray-300">—</span>}
                         </td>
                         <td className="px-4 py-2.5">
-                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${m.form === 'FORM_1' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${m.form === 'FORM_1' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
                             {m.form === 'FORM_1' ? 'Ф1' : 'Ф2'}
                           </span>
                         </td>
-                        <td className="px-4 py-2.5 text-xs max-w-[160px]">
+                        <td className="px-4 py-2.5 text-sm max-w-[160px]">
                           {m.note
                             ? <span className="text-amber-700 bg-amber-50 px-2 py-0.5 rounded">{m.note}</span>
                             : <span className="text-gray-300">—</span>}
@@ -1120,31 +1411,31 @@ export default function WarehousePage() {
                 <div key={m.id} className="p-4">
                   <div className="flex items-start justify-between gap-2 mb-1.5">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${movementTypeColor[m.type as MovementType]}`}>
+                      <span className={`text-sm px-2 py-0.5 rounded-full font-medium ${movementTypeColor[m.type as MovementType]}`}>
                         {movementTypeIcon[m.type as MovementType]} {movementTypeLabel[m.type as MovementType]}
                       </span>
                       {m.form && (
-                        <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${m.form === 'FORM_1' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
+                        <span className={`text-sm px-1.5 py-0.5 rounded font-medium ${m.form === 'FORM_1' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
                           {m.form === 'FORM_1' ? 'Ф1' : 'Ф2'}
                         </span>
                       )}
                     </div>
                     <span className="font-bold text-gray-800 shrink-0">{Number(m.quantity).toFixed(3)}</span>
                   </div>
-                  <div className="font-medium text-gray-700 text-sm">🐟 {m.product?.name || '—'}</div>
-                  <div className="text-xs text-gray-400 mt-0.5">
+                  <div className="font-medium text-gray-700 text-base">🐟 {m.product?.name || '—'}</div>
+                  <div className="text-sm text-gray-400 mt-0.5">
                     {m.warehouse?.name}{m.toWarehouse && ` → ${m.toWarehouse.name}`}
                     <span className="mx-1">·</span>{new Date(m.createdAt).toLocaleDateString('uk-UA')}
                   </div>
-                  {m.note && <div className="text-xs text-gray-400 mt-0.5 italic">{m.note}</div>}
+                  {m.note && <div className="text-sm text-gray-400 mt-0.5 italic">{m.note}</div>}
                 </div>
               ))}
             </div>
             {/* Десктопний вид */}
             <div className="hidden sm:block overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-base">
                 <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr className="text-left text-xs text-gray-500">
+                  <tr className="text-left text-sm text-gray-500">
                     <th className="px-4 py-3 font-medium">Тип</th>
                     <th className="px-4 py-3 font-medium">Продукт</th>
                     <th className="px-4 py-3 font-medium">Склад</th>
@@ -1158,25 +1449,25 @@ export default function WarehousePage() {
                   {movements.map((m: any) => (
                     <tr key={m.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-3">
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${movementTypeColor[m.type as MovementType]}`}>
+                        <span className={`text-sm px-2 py-0.5 rounded-full font-medium ${movementTypeColor[m.type as MovementType]}`}>
                           {movementTypeIcon[m.type as MovementType]} {movementTypeLabel[m.type as MovementType]}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-gray-700 font-medium">🐟 {m.product?.name || '—'}</td>
-                      <td className="px-4 py-3 text-gray-500 text-xs">
+                      <td className="px-4 py-3 text-gray-500 text-sm">
                         <div>{m.warehouse?.name}</div>
                         {m.toWarehouse && <div className="text-gray-400">→ {m.toWarehouse.name}</div>}
                       </td>
                       <td className="px-4 py-3 text-right font-semibold text-gray-800">{Number(m.quantity).toFixed(3)}</td>
                       <td className="px-4 py-3 text-right">
                         {m.form ? (
-                          <span className={`text-xs px-2 py-0.5 rounded-full ${m.form === 'FORM_1' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
+                          <span className={`text-sm px-2 py-0.5 rounded-full ${m.form === 'FORM_1' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
                             {m.form === 'FORM_1' ? 'Ф1' : 'Ф2'}
                           </span>
                         ) : '—'}
                       </td>
-                      <td className="px-4 py-3 text-right text-gray-400 text-xs max-w-[120px] truncate">{m.note || '—'}</td>
-                      <td className="px-4 py-3 text-right text-gray-400 text-xs">{new Date(m.createdAt).toLocaleDateString('uk-UA')}</td>
+                      <td className="px-4 py-3 text-right text-gray-400 text-sm max-w-[120px] truncate">{m.note || '—'}</td>
+                      <td className="px-4 py-3 text-right text-gray-400 text-sm">{new Date(m.createdAt).toLocaleDateString('uk-UA')}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1296,13 +1587,19 @@ export default function WarehousePage() {
 
       {selectedWarehouse && (
         <WarehouseModal warehouse={selectedWarehouse} onClose={() => setSelectedWarehouseId(null)}
-          onMovement={() => { setSelectedWarehouseId(null); setShowMovement(true); }} />
+          onMovement={() => { setSelectedWarehouseId(null); setShowMovement(true); }}
+          onProduction={(item) => { setSelectedWarehouseId(null); setProductionItem(item); setShowProduction(true); }} />
       )}
       {showMovement && (
         <MovementModal onClose={() => { setShowMovement(false); refetchStock(); }} />
       )}
+      {showInvoice && (
+        <SupplierInvoiceModal onClose={() => { setShowInvoice(false); refetchStock(); }} />
+      )}
       {showProduction && (
-        <ProductionModal onClose={() => { setShowProduction(false); refetchStock(); }} />
+        <ProductionModal
+          initialItem={productionItem ?? undefined}
+          onClose={() => { setShowProduction(false); setProductionItem(null); refetchStock(); }} />
       )}
       {showReturn && (
         <ReturnModal onClose={() => { setShowReturn(false); refetchStock(); }} />

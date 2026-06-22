@@ -16,6 +16,7 @@ import { UpdateStatusDto } from './dto/update-status.dto';
 import { UpdateItemsDto } from './dto/update-items.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
 import { GetOrdersDto } from './dto/get-orders.dto';
+import { BazaarReturnDto } from './dto/bazaar-return.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
@@ -83,6 +84,16 @@ export class OrdersController {
     @Request() req,
   ) {
     return this.ordersService.updateStatus(id, dto, req.user.id, req.user.role);
+  }
+
+  @Roles(UserRole.ADMIN)
+  @Patch(':id/bazaar-return')
+  recordBazaarReturn(
+    @Param('id') id: string,
+    @Body() dto: BazaarReturnDto,
+    @Request() req,
+  ) {
+    return this.ordersService.recordBazaarReturn(id, dto, req.user.id, req.user.role);
   }
 
   @Patch(':id/items')

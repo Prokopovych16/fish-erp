@@ -15,11 +15,14 @@ const warehouseTypeIcon: Record<WarehouseType, string> = {
   RAW_MATERIAL: '🐟', IN_PRODUCTION: '⚙️', FINISHED_GOODS: '📦', FRIDGE: '❄️', SUPPLIES: '🧴',
 };
 
-export function ProductionModal({ onClose }: { onClose: () => void }) {
+export function ProductionModal({ onClose, initialItem }: {
+  onClose: () => void;
+  initialItem?: { warehouseId: string; stockItemId: string; quantity: string };
+}) {
   const queryClient = useQueryClient();
 
   const [inputs, setInputs] = useState([
-    { warehouseId: '', stockItemId: '', quantity: '' },
+    initialItem ?? { warehouseId: '', stockItemId: '', quantity: '' },
   ]);
   const [outputs, setOutputs] = useState([
     { productId: '', quantity: '' },

@@ -20,7 +20,8 @@ export class DocumentsService {
       },
     });
     if (!order) throw new NotFoundException('Заявку не знайдено');
-    if (!order.completedAt)
+    // Базарні заявки друкують накладну на видачу ДО завершення (видача товару — це і є момент друку)
+    if (!order.completedAt && !(order as any).isBazaar)
       throw new NotFoundException('Заявка ще не завершена');
     return order;
   }
@@ -39,6 +40,184 @@ export class DocumentsService {
       pages.forEach((page) => merged.addPage(page));
     }
     return Buffer.from(await merged.save());
+  }
+
+  // Базар, видача (крок 1): накладна + декларація якості, без ТТН — товар не їде до клієнта, а видається базарнику
+  async generateBazaarIssuance(orderId: string): Promise<Buffer> {
+    const [invoice, quality] = await Promise.all([
+      this.generateInvoice(orderId),
+      this.generateQuality(orderId),
+    ]);
+    const { PDFDocument } = await import('pdf-lib');
+    const merged = await PDFDocument.create();
+    for (const pdfBuffer of [invoice, quality]) {
+      const pdf = await PDFDocument.load(pdfBuffer);
+      const pages = await merged.copyPages(pdf, pdf.getPageIndices());
+      pages.forEach((page) => merged.addPage(page));
+    }
+    return Buffer.from(await merged.save());
+  }
+
+  // Базар, розрахунок (крок 2): видано / повернено / продано і сума до сплати
+  async generateBazaarSettlement(orderId: string): Promise<Buffer> {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      include: { client: true, items: { include: { product: true } } },
+    });
+    if (!order) throw new NotFoundException('Заявку не знайдено');
+    if (!(order as any).isBazaar) throw new NotFoundException('Це не базарна заявка');
+    if (!order.completedAt) throw new NotFoundException('Повернення ще не оформлено');
+
+    const company = await this.settings.getAll();
+    const displayNumber = (order as any).numberForm ?? order.number;
+
+    let totalNoVat = 0;
+    const itemsRows = order.items
+      .map((item, index) => {
+        const issued = Number(item.plannedWeight);
+        const returned = Number((item as any).returnedWeight ?? 0);
+        const sold = Math.max(issued - returned, 0);
+        const price = Number(item.pricePerKg ?? 0);
+        const sum = Math.round(sold * price * 100) / 100;
+        totalNoVat += sum;
+        return `
+        <tr>
+          <td>${index + 1}</td>
+          <td style="text-align:left; padding-left:4px">${item.product.name}</td>
+          <td>${item.product.unit}</td>
+          <td>${issued.toFixed(3)}</td>
+          <td>${returned.toFixed(3)}</td>
+          <td class="sold-cell">${sold.toFixed(3)}</td>
+          <td>${price > 0 ? price.toFixed(2) : '—'}</td>
+          <td>${price > 0 ? sum.toFixed(2) : '—'}</td>
+        </tr>
+      `;
+      })
+      .join('');
+
+    const totalWithVat = Number((totalNoVat * 1.2).toFixed(2));
+    const vat = Number((totalWithVat - totalNoVat).toFixed(2));
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <style>
+          * { box-sizing: border-box; margin: 0; padding: 0; }
+          body { font-family: Arial, sans-serif; font-size: 12px; color: #000; }
+          .header-block { margin-bottom: 10px; font-size: 12px; line-height: 1.6; }
+          .header-row { display: flex; margin-bottom: 3px; }
+          .header-label { font-weight: bold; width: 130px; flex-shrink: 0; }
+          .header-value { flex: 1; }
+          .divider { border-top: 1px solid #ccc; margin: 5px 0; }
+          h2 { text-align: center; font-size: 16px; font-weight: bold; margin: 12px 0 2px; }
+          .subtitle { text-align: center; font-size: 12px; color: #555; margin-bottom: 4px; }
+          .dates-row { display: flex; justify-content: center; gap: 24px; font-size: 11px; margin-bottom: 14px; }
+          .dates-row b { color: #000; }
+          table { width: 100%; border-collapse: collapse; }
+          th { background: #2d3748; color: #fff; padding: 6px 4px; border: 1px solid #2d3748; text-align: center; font-size: 10.5px; font-weight: bold; }
+          td { padding: 5px 4px; border: 1px solid #999; text-align: center; font-size: 11.5px; }
+          .sold-cell { font-weight: bold; background: #f0fdf4; color: #15803d; }
+          tbody tr:nth-child(even) { background: #fafafa; }
+          .totals-block { margin-top: 0; }
+          .totals-block table { border-collapse: collapse; width: 100%; }
+          .totals-block .label { text-align: right; font-size: 12px; padding: 4px 6px; border: none; }
+          .totals-block .value { text-align: right; font-weight: bold; font-size: 12px; width: 100px; border: 1px solid #999; padding: 4px 6px; }
+          .total-final .label { font-weight: bold; font-size: 14px; }
+          .total-final .value { font-weight: bold; font-size: 15px; border: 2px solid #15803d; background: #f0fdf4; color: #15803d; }
+          .sum-words { margin-top: 10px; font-size: 12px; line-height: 1.6; }
+          .legend { display: flex; gap: 16px; margin-top: 10px; font-size: 10px; color: #555; }
+          .legend span { display: flex; align-items: center; gap: 4px; }
+          .legend .dot { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+          .signatures { display: flex; justify-content: space-between; margin-top: 24px; font-size: 12px; }
+          .sig-block { width: 47%; }
+          .sig-line { border-bottom: 1px solid #000; margin: 20px 0 3px; }
+          .stamp { text-align: right; font-size: 11px; color: #aaa; margin-top: 8px; }
+        </style>
+      </head>
+      <body>
+        <div class="header-block">
+          <div class="header-row">
+            <span class="header-label">Постачальник:</span>
+            <span class="header-value">${company.companyName ?? ''}</span>
+          </div>
+          <div class="divider"></div>
+          <div class="header-row">
+            <span class="header-label">Базарник:</span>
+            <span class="header-value">${order.client.name}</span>
+          </div>
+        </div>
+
+        <h2>Розрахунок за базар № ${displayNumber}</h2>
+        <p class="subtitle">видано — повернено — продано</p>
+        <div class="dates-row">
+          <span>Видано: <b>${this.formatDateLong(new Date(order.createdAt))}</b></span>
+          <span>Розрахунок: <b>${this.formatDateLong(new Date(order.completedAt))}</b></span>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th style="width:24px">№</th>
+              <th>Товар</th>
+              <th style="width:36px">Од.</th>
+              <th style="width:62px">Видано</th>
+              <th style="width:68px">Повернено</th>
+              <th style="width:62px">Продано</th>
+              <th style="width:72px">Ціна без ПДВ</th>
+              <th style="width:80px">Сума без ПДВ</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${itemsRows}
+          </tbody>
+        </table>
+
+        <div class="legend">
+          <span><span class="dot" style="background:#f0fdf4; border:1px solid #15803d;"></span> Продано = Видано − Повернено (за це сума до сплати)</span>
+        </div>
+
+        <div class="totals-block" style="margin-top:10px;">
+          <table>
+            <tr>
+              <td class="label" colspan="7">Разом без ПДВ:</td>
+              <td class="value">${totalNoVat.toFixed(2)}</td>
+            </tr>
+            <tr>
+              <td class="label" colspan="7">ПДВ:</td>
+              <td class="value">${vat.toFixed(2)}</td>
+            </tr>
+            <tr class="total-final">
+              <td class="label" colspan="7">До сплати з ПДВ:</td>
+              <td class="value">${totalWithVat.toFixed(2)}</td>
+            </tr>
+          </table>
+        </div>
+
+        <div class="sum-words">
+          <b>До сплати:</b> ${this.numberToWords(totalWithVat)}
+        </div>
+
+        ${order.note ? `<div style="margin-top:8px; font-size:10px; color:#555;">Примітка: ${order.note}</div>` : ''}
+
+        <div class="signatures">
+          <div class="sig-block">
+            <div>Видав (постачальник)</div>
+            <div class="sig-line"></div>
+          </div>
+          <div class="sig-block">
+            <div>Прийняв (базарник)</div>
+            <div class="sig-line"></div>
+          </div>
+        </div>
+
+        <div class="stamp">М.П.</div>
+      </body>
+      </html>
+    `;
+
+    return this.generatePdf(html);
   }
 
   private calculateTotal(items: any[]) {
@@ -95,10 +274,10 @@ export class DocumentsService {
   }
 
   private getInvoiceDate(order: any): Date {
-    // Якщо вказана дата накладної — використовуємо її, інакше completedAt
+    // Якщо вказана дата накладної — використовуємо її, інакше completedAt, інакше дата створення (для базарів до завершення)
     return order.invoiceDate
       ? new Date(order.invoiceDate)
-      : new Date(order.completedAt);
+      : new Date(order.completedAt ?? order.createdAt);
   }
 
   // Число прописом (гривні)
@@ -1045,6 +1224,131 @@ export class DocumentsService {
   <thead>
     <tr>
       <th style="text-align:left">Клієнт / Група</th>
+      <th style="width:52px">Накл.</th>
+      <th style="width:90px">Сума загальна, грн</th>
+      <th style="width:85px">Сума без ПДВ, грн</th>
+      <th style="width:75px">ПДВ, грн</th>
+    </tr>
+  </thead>
+  <tbody>${summaryRows}</tbody>
+  <tfoot>
+    <tr class="summary-footer">
+      <td style="text-align:right; padding-right:10px;">ВСЬОГО:</td>
+      <td>${data.rows.length}</td>
+      <td style="text-align:right">${data.grandWithVat.toFixed(2)}</td>
+      <td style="text-align:right">${data.grandNoVat.toFixed(2)}</td>
+      <td style="text-align:right">${data.grandVat.toFixed(2)}</td>
+    </tr>
+  </tfoot>
+</table>
+</body></html>`;
+
+    return this.generatePdf(html);
+  }
+
+  async generateSupplierRegistry(data: {
+    rows: {
+      number: any;
+      supplier: string;
+      form: string;
+      totalNoVat: number;
+      totalWithVat: number;
+      vat: number;
+      invoiceDate: Date;
+    }[];
+    grandNoVat: number;
+    grandWithVat: number;
+    grandVat: number;
+    from: string;
+    to: string;
+  }): Promise<Buffer> {
+    const rows = data.rows
+      .map(
+        (r, idx) => `
+    <tr>
+      <td>${idx + 1}</td>
+      <td>${r.number}</td>
+      <td>${new Date(r.invoiceDate).toLocaleDateString('uk-UA')}</td>
+      <td style="text-align:left">${r.supplier}</td>
+      <td style="text-align:right">${r.totalWithVat.toFixed(2)}</td>
+      <td style="text-align:right">${r.totalNoVat.toFixed(2)}</td>
+      <td style="text-align:right">${r.vat.toFixed(2)}</td>
+    </tr>`,
+      )
+      .join('');
+
+    const periodFrom = data.from ? new Date(data.from).toLocaleDateString('uk-UA') : '—';
+    const periodTo = data.to ? new Date(data.to).toLocaleDateString('uk-UA') : '—';
+
+    const supplierSummaryMap: Record<string, { totalWithVat: number; totalNoVat: number; count: number }> = {};
+    for (const r of data.rows) {
+      if (!supplierSummaryMap[r.supplier]) {
+        supplierSummaryMap[r.supplier] = { totalWithVat: 0, totalNoVat: 0, count: 0 };
+      }
+      supplierSummaryMap[r.supplier].totalWithVat += r.totalWithVat;
+      supplierSummaryMap[r.supplier].totalNoVat += r.totalNoVat;
+      supplierSummaryMap[r.supplier].count++;
+    }
+    const summaryRows = Object.entries(supplierSummaryMap)
+      .sort(([a], [b]) => a.localeCompare(b, 'uk'))
+      .map(([name, s]) => {
+        const withVat = Number(s.totalWithVat.toFixed(2));
+        const noVat = Number(s.totalNoVat.toFixed(2));
+        const vat = Number((withVat - noVat).toFixed(2));
+        return `<tr>
+      <td style="text-align:left">${name}</td>
+      <td>${s.count}</td>
+      <td style="text-align:right">${withVat.toFixed(2)}</td>
+      <td style="text-align:right">${noVat.toFixed(2)}</td>
+      <td style="text-align:right">${vat.toFixed(2)}</td>
+    </tr>`;
+      })
+      .join('');
+
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; font-size: 11px; color: #000; }
+  h2 { text-align: center; font-size: 14px; font-weight: bold; margin-bottom: 4px; }
+  .subtitle { text-align: center; font-size: 10px; color: #555; margin-bottom: 14px; }
+  table { width: 100%; border-collapse: collapse; }
+  th { background: #f0f0f0; padding: 5px 6px; border: 1px solid #999; text-align: center; font-size: 10px; }
+  td { padding: 4px 6px; border: 1px solid #ccc; font-size: 10px; text-align: center; }
+  tbody tr:nth-child(even) { background: #fafafa; }
+  tfoot tr td { font-weight: bold; background: #f0f0f0; border-top: 2px solid #666; }
+  .section-title { font-size: 12px; font-weight: bold; margin: 18px 0 6px; }
+  .summary-footer td { font-weight: bold; background: #fff3e0; border-top: 2px solid #e65100; }
+</style></head><body>
+<h2>Реєстр надходжень від постачальників</h2>
+<p class="subtitle">Період: ${periodFrom} — ${periodTo} · ${data.rows.length} накладних</p>
+<table>
+  <thead>
+    <tr>
+      <th style="width:28px">№</th>
+      <th style="width:48px">№ накл.</th>
+      <th style="width:66px">Дата накладної</th>
+      <th style="text-align:left">Назва організації</th>
+      <th style="width:86px">Сума загальна, грн</th>
+      <th style="width:82px">Сума без ПДВ, грн</th>
+      <th style="width:72px">ПДВ, грн</th>
+    </tr>
+  </thead>
+  <tbody>${rows}</tbody>
+  <tfoot>
+    <tr>
+      <td colspan="4" style="text-align:right; padding-right:10px;">ВСЬОГО:</td>
+      <td style="text-align:right">${data.grandWithVat.toFixed(2)}</td>
+      <td style="text-align:right">${data.grandNoVat.toFixed(2)}</td>
+      <td style="text-align:right">${data.grandVat.toFixed(2)}</td>
+    </tr>
+  </tfoot>
+</table>
+
+<p class="section-title">Зведення по постачальниках</p>
+<table>
+  <thead>
+    <tr>
+      <th style="text-align:left">Постачальник</th>
       <th style="width:52px">Накл.</th>
       <th style="width:90px">Сума загальна, грн</th>
       <th style="width:85px">Сума без ПДВ, грн</th>

@@ -68,6 +68,7 @@ export default function StatisticsPage() {
 
   const getDateRange = () => {
     const to = new Date();
+    to.setDate(to.getDate() + 1); // +1 день, щоб "завтра" теж було видно на графіку по днях
     const from = new Date();
     if (period === 'custom' && customFrom && customTo) {
       return { from: new Date(customFrom).toISOString(), to: new Date(customTo + 'T23:59:59').toISOString(), prevFrom: '', prevTo: '' };

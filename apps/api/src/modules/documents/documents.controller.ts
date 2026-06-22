@@ -2,6 +2,7 @@ import { Controller, Get, Param, Query, Res, UseGuards } from '@nestjs/common';
 import { Response } from 'express';
 import { DocumentsService } from './documents.service';
 import { OrdersService } from '../orders/orders.service';
+import { SupplierInvoicesService } from '../supplier-invoices/supplier-invoices.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
@@ -14,6 +15,7 @@ export class DocumentsController {
   constructor(
     private documentsService: DocumentsService,
     private ordersService: OrdersService, // ← НОВЕ
+    private supplierInvoicesService: SupplierInvoicesService,
   ) {}
 
   @Get('order/:id/ttn')
@@ -60,6 +62,28 @@ export class DocumentsController {
     res.end(pdf);
   }
 
+  @Get('order/:id/bazaar-issuance')
+  async getBazaarIssuance(@Param('id') id: string, @Res() res: Response) {
+    const pdf = await this.documentsService.generateBazaarIssuance(id);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="bazaar-issuance-${id}.pdf"`,
+      'Content-Length': pdf.length,
+    });
+    res.end(pdf);
+  }
+
+  @Get('order/:id/bazaar-settlement')
+  async getBazaarSettlement(@Param('id') id: string, @Res() res: Response) {
+    const pdf = await this.documentsService.generateBazaarSettlement(id);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="bazaar-settlement-${id}.pdf"`,
+      'Content-Length': pdf.length,
+    });
+    res.end(pdf);
+  }
+
   @Get('client/:clientId/pricelist')
   async getPriceList(
     @Param('clientId') clientId: string,
@@ -92,6 +116,24 @@ export class DocumentsController {
     res.set({
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename="registry-${from}-${to}.pdf"`,
+      'Content-Length': pdf.length,
+    });
+    res.end(pdf);
+  }
+
+  // ← НОВЕ: Реєстр накладних постачальників
+  @Get('reports/supplier-registry')
+  async getSupplierRegistry(
+    @Query('from') from: string,
+    @Query('to') to: string,
+    @Query('supplierId') supplierId: string,
+    @Res() res: Response,
+  ) {
+    const data = await this.supplierInvoicesService.getRegistry({ from, to, supplierId });
+    const pdf = await this.documentsService.generateSupplierRegistry(data);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="supplier-registry-${from}-${to}.pdf"`,
       'Content-Length': pdf.length,
     });
     res.end(pdf);

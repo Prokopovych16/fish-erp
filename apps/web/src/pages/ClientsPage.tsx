@@ -535,7 +535,15 @@ function ClientDetailsModal({ client, onClose, onEdit, isAdmin, allClients }: {
                 </div>
                 <div className="flex flex-wrap gap-3 mt-1 text-xs text-gray-400">
                   {client.edrpou && <span>📋 {client.edrpou}</span>}
-                  {client.contact && <span>📞 {client.contact}</span>}
+                  {client.contact && (
+                    <span className="flex items-center gap-1.5">
+                      📞 {client.contact}
+                      <a href={`tel:${client.contact.replace(/[^\d+]/g, '')}`} onClick={(e) => e.stopPropagation()}
+                        className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-green-100 text-green-600 hover:bg-green-200 transition-colors" title="Зателефонувати">
+                        📲
+                      </a>
+                    </span>
+                  )}
                   {client.address && <span className="hidden sm:inline">📍 {client.address}</span>}
                 </div>
               </div>
@@ -711,7 +719,7 @@ export default function ClientsPage() {
   const [showBulkPrice, setShowBulkPrice] = useState(false);
   const [showGroups, setShowGroups] = useState(false);
 
-  const { data: clients = [], isLoading } = useQuery({
+  const { data: clients = [], isLoading } = useQuery<Client[]>({
     queryKey: ['clients'],
     queryFn: () => api.get('/clients').then((r) => r.data),
   });
@@ -731,98 +739,138 @@ export default function ClientsPage() {
     return matchSearch && matchActive;
   });
 
+  const groupCount = new Set(activeClients.filter(c => c.group).map(c => c.group!.id)).size;
+
   return (
-    <div className="space-y-4">
-      {/* Заголовок */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-gray-800">Клієнти</h1>
-          <p className="text-xs text-gray-400 mt-0.5">
-            Активних: {activeClients.length}
-            {inactiveClients.length > 0 && ` · Неактивних: ${inactiveClients.length}`}
-          </p>
+    <div className="space-y-5">
+      {/* Шапка-дашборд */}
+      <div className="bg-gradient-to-br from-slate-50 via-white to-purple-50/40 rounded-2xl sm:rounded-3xl border border-gray-100 p-3.5 sm:p-5 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl bg-gradient-to-br from-purple-500 to-pink-600 flex items-center justify-center text-lg sm:text-xl shadow-md shadow-purple-200">🤝</div>
+            <div>
+              <h1 className="text-lg sm:text-xl font-bold text-gray-800 tracking-tight">Клієнти</h1>
+              <p className="text-xs sm:text-sm text-gray-400">База клієнтів, групи компаній та прайс-листи</p>
+            </div>
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            {isAdmin && inactiveClients.length > 0 && (
+              <button onClick={() => setShowInactive(v => !v)}
+                className={`text-sm px-3.5 py-2 rounded-xl border transition-colors font-medium ${showInactive ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'}`}>
+                {showInactive ? 'Сховати архів' : `Архів (${inactiveClients.length})`}
+              </button>
+            )}
+            {isAdmin && (
+              <button onClick={() => setShowGroups(true)}
+                className="bg-white border border-purple-200 text-purple-600 text-sm px-3.5 py-2 rounded-xl hover:bg-purple-50 transition-all font-medium shadow-sm">
+                🏢 Групи
+              </button>
+            )}
+            {isAdmin && (
+              <button onClick={() => setShowBulkPrice(true)}
+                className="bg-white border border-emerald-200 text-emerald-600 text-sm px-3.5 py-2 rounded-xl hover:bg-emerald-50 transition-all font-medium shadow-sm">
+                💰 Масова зміна цін
+              </button>
+            )}
+            {isAdmin && (
+              <button onClick={() => setShowCreate(true)}
+                className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-sm px-4 py-2 rounded-xl hover:opacity-90 transition-all font-semibold shadow-md shadow-blue-200">
+                + Новий клієнт
+              </button>
+            )}
+          </div>
         </div>
-        <div className="flex gap-2 flex-wrap">
-          {isAdmin && inactiveClients.length > 0 && (
-            <button onClick={() => setShowInactive(v => !v)}
-              className={`text-sm px-3 py-1.5 rounded-lg border transition-colors ${showInactive ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
-              {showInactive ? 'Сховати архів' : `Архів (${inactiveClients.length})`}
-            </button>
-          )}
-          {isAdmin && (
-            <button onClick={() => setShowGroups(true)}
-              className="bg-purple-600 text-white text-sm px-3 py-1.5 rounded-lg hover:bg-purple-700 transition-colors font-semibold">
-              🏢 Групи
-            </button>
-          )}
-          {isAdmin && (
-            <button onClick={() => setShowBulkPrice(true)}
-              className="bg-green-600 text-white text-sm px-3 py-1.5 rounded-lg hover:bg-green-700 transition-colors font-semibold">
-              💰 Масова зміна цін
-            </button>
-          )}
-          {isAdmin && (
-            <button onClick={() => setShowCreate(true)}
-              className="bg-blue-600 text-white text-sm px-4 py-1.5 rounded-lg hover:bg-blue-700 transition-colors">
-              + Новий клієнт
-            </button>
-          )}
+
+        {/* Міні-статистика */}
+        <div className="grid grid-cols-3 gap-2 sm:gap-3 mt-4 sm:mt-5">
+          <div className="bg-white/70 backdrop-blur-sm rounded-xl sm:rounded-2xl border border-gray-100 px-2.5 sm:px-4 py-2.5 sm:py-3 flex items-center gap-2 sm:gap-3">
+            <div className="w-9 h-9 rounded-xl bg-emerald-50 flex items-center justify-center text-base shrink-0">✓</div>
+            <div className="min-w-0">
+              <div className="text-[10px] text-gray-400 uppercase tracking-wide font-semibold">Активних</div>
+              <div className="font-bold text-gray-800 text-lg leading-tight">{activeClients.length}</div>
+            </div>
+          </div>
+          <div className="bg-white/70 backdrop-blur-sm rounded-xl sm:rounded-2xl border border-gray-100 px-2.5 sm:px-4 py-2.5 sm:py-3 flex items-center gap-2 sm:gap-3">
+            <div className="w-9 h-9 rounded-xl bg-purple-50 flex items-center justify-center text-base shrink-0">🏢</div>
+            <div className="min-w-0">
+              <div className="text-[10px] text-gray-400 uppercase tracking-wide font-semibold">Груп компаній</div>
+              <div className="font-bold text-gray-800 text-lg leading-tight">{groupCount}</div>
+            </div>
+          </div>
+          <div className="bg-white/70 backdrop-blur-sm rounded-xl sm:rounded-2xl border border-gray-100 px-2.5 sm:px-4 py-2.5 sm:py-3 flex items-center gap-2 sm:gap-3">
+            <div className="w-9 h-9 rounded-xl bg-gray-50 flex items-center justify-center text-base shrink-0">🗃️</div>
+            <div className="min-w-0">
+              <div className="text-[10px] text-gray-400 uppercase tracking-wide font-semibold">В архіві</div>
+              <div className="font-bold text-gray-800 text-lg leading-tight">{inactiveClients.length}</div>
+            </div>
+          </div>
         </div>
       </div>
 
       {/* Пошук */}
       <div className="relative">
-        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">🔍</span>
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300 text-sm">🔍</span>
         <input value={search} onChange={(e) => setSearch(e.target.value)}
           placeholder="Пошук за назвою або ЄДРПОУ..."
-          className="w-full border border-gray-300 rounded-lg pl-8 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          className="w-full border border-gray-200 rounded-xl pl-8 pr-8 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white shadow-sm" />
         {search && (
-          <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">×</button>
+          <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-600">×</button>
         )}
       </div>
 
       {/* Список */}
       {isLoading ? (
-        <div className="text-center text-gray-400 py-12">Завантаження...</div>
+        <div className="text-center text-gray-400 py-16">
+          <div className="inline-block w-6 h-6 border-2 border-gray-200 border-t-purple-500 rounded-full animate-spin mb-3" />
+          <div className="text-sm">Завантаження...</div>
+        </div>
       ) : filtered.length === 0 ? (
-        <div className="text-center text-gray-400 py-16 border-2 border-dashed border-gray-200 rounded-xl">
-          <div className="text-4xl mb-3">🤝</div>
-          <div className="font-medium text-gray-500">{search ? 'Клієнтів не знайдено' : 'Клієнтів ще немає'}</div>
+        <div className="text-center text-gray-400 py-16 border-2 border-dashed border-gray-200 rounded-2xl">
+          <div className="text-5xl mb-3 opacity-40">🤝</div>
+          <div className="font-semibold text-gray-500">{search ? 'Клієнтів не знайдено' : 'Клієнтів ще немає'}</div>
           {isAdmin && !search && (
-            <button onClick={() => setShowCreate(true)} className="mt-3 text-blue-500 text-sm hover:text-blue-700">+ Додати першого клієнта</button>
+            <button onClick={() => setShowCreate(true)} className="mt-2 text-blue-500 text-sm hover:text-blue-700 font-medium">+ Додати першого клієнта</button>
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map((client: Client) => (
             <div key={client.id} onClick={() => setDetailsClient(client)}
-              className={`bg-white rounded-xl border p-4 cursor-pointer hover:shadow-md hover:border-blue-200 transition-all group ${client.isActive ? 'border-gray-200' : 'border-gray-100 opacity-60'}`}>
+              className={`bg-white rounded-2xl border p-4 cursor-pointer transition-all duration-200 group ${client.isActive ? 'border-gray-100 hover:border-purple-200 hover:shadow-lg hover:-translate-y-0.5' : 'border-gray-100 opacity-50'}`}>
               <div className="flex items-start gap-3">
-                <div className={`w-10 h-10 rounded-lg ${getAvatarColor(client.name)} flex items-center justify-center text-white font-bold text-sm shrink-0 group-hover:scale-105 transition-transform`}>
+                <div className={`w-12 h-12 rounded-2xl ${getAvatarColor(client.name)} flex items-center justify-center text-white font-bold text-base shrink-0 shadow-sm group-hover:scale-105 transition-transform`}>
                   {client.name.charAt(0).toUpperCase()}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-semibold text-gray-800 group-hover:text-blue-600 transition-colors truncate">{client.name}</span>
-                    {!client.isActive && <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded shrink-0">архів</span>}
+                    <span className="font-bold text-gray-800 group-hover:text-purple-600 transition-colors truncate">{client.name}</span>
+                    {!client.isActive && <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full font-semibold shrink-0">архів</span>}
                   </div>
                   {client.group && (
-                    <div className="mt-0.5">
-                      <span className="text-[10px] bg-purple-50 text-purple-600 px-1.5 py-0.5 rounded font-medium">🏢 {client.group.name}</span>
+                    <div className="mt-1">
+                      <span className="text-[10px] bg-purple-50 text-purple-600 px-2 py-0.5 rounded-full font-semibold">🏢 {client.group.name}</span>
                     </div>
                   )}
-                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1.5">
                     {client.edrpou && <span className="text-xs text-gray-400">📋 {client.edrpou}</span>}
-                    {client.contact && <span className="text-xs text-gray-400">📞 {client.contact}</span>}
+                    {client.contact && (
+                      <span className="text-xs text-gray-400 flex items-center gap-1.5">
+                        📞 {client.contact}
+                        <a href={`tel:${client.contact.replace(/[^\d+]/g, '')}`} onClick={(e) => e.stopPropagation()}
+                          className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-green-100 text-green-600 hover:bg-green-200 transition-colors" title="Зателефонувати">
+                          📲
+                        </a>
+                      </span>
+                    )}
                   </div>
                   {client.address && <div className="text-xs text-gray-400 mt-0.5 truncate">📍 {client.address}</div>}
                 </div>
               </div>
-              <div className="mt-3 pt-2 border-t border-gray-100 flex items-center justify-between">
-                <span className="text-xs text-gray-400">Натисни для деталей і прайсу</span>
+              <div className="mt-3 pt-2.5 border-t border-gray-50 flex items-center justify-between">
+                <span className="text-[11px] text-gray-400 font-medium">Деталі та прайс →</span>
                 {isAdmin && (
                   <button onClick={(e) => { e.stopPropagation(); toggleMutation.mutate(client.id); }}
-                    className={`text-xs px-2 py-1 rounded-lg transition-colors ${client.isActive ? 'text-red-400 hover:bg-red-50' : 'text-green-500 hover:bg-green-50'}`}>
+                    className={`text-[11px] px-2 py-1 rounded-lg font-medium transition-colors ${client.isActive ? 'text-red-400 hover:bg-red-50' : 'text-emerald-500 hover:bg-emerald-50'}`}>
                     {client.isActive ? 'Деактивувати' : 'Активувати'}
                   </button>
                 )}

@@ -79,12 +79,42 @@ model User {
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
 
-  createdOrders  Order[]    @relation("CreatedBy")
-  assignedOrders Order[]    @relation("AssignedTo")
-  auditLogs      AuditLog[]
+  createdOrders     Order[]           @relation("CreatedBy")
+  assignedOrders    Order[]           @relation("AssignedTo")
+  auditLogs         AuditLog[]
+  tasksAssigned     Task[]            @relation("TaskAssignedTo")
+  tasksCreated      Task[]            @relation("TaskCreatedBy")
+  supplierInvoices  SupplierInvoice[]
 
   @@index([role, isActive])
   @@index([email])
+}
+
+enum TaskPriority {
+  LOW
+  NORMAL
+  HIGH
+}
+
+model Task {
+  id           String       @id @default(uuid())
+  title        String
+  description  String?
+  date         DateTime     // день, на який заплановано справу
+  priority     TaskPriority @default(NORMAL)
+  isDone       Boolean      @default(false)
+  doneAt       DateTime?
+  assignedToId String
+  createdById  String
+  recipeStageIds String[] @default([]) // прикріплені етапи з Рецептури
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  assignedTo User @relation("TaskAssignedTo", fields: [assignedToId], references: [id])
+  createdBy  User @relation("TaskCreatedBy", fields: [createdById], references: [id])
+
+  @@index([assignedToId, date])
+  @@index([date])
 }
 
 model RolePermission {
@@ -120,15 +150,32 @@ model Client {
   bankAccount    String? // р/р для накладних
   groupId   String?
 
-  group          ClientGroup?    @relation(fields: [groupId], references: [id])
-  deliveryPoints DeliveryPoint[]
-  prices         ClientPrice[]
-  orders         Order[]
-  returns        ClientReturn[]
+  group              ClientGroup?           @relation(fields: [groupId], references: [id])
+  deliveryPoints     DeliveryPoint[]
+  prices             ClientPrice[]
+  orders             Order[]
+  returns            ClientReturn[]
+  bazaarAssortment   BazaarAssortmentItem[]
 
   @@index([isActive])
   @@index([name])
   @@index([groupId])
+}
+
+// ─── Сталий асортимент для базару (зберігається на клієнта) ───────────────────
+model BazaarAssortmentItem {
+  id          String   @id @default(uuid())
+  clientId    String
+  productId   String
+  displayUnit String?
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  client  Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, productId])
+  @@index([clientId])
 }
 
 model ProductGroup {
@@ -154,12 +201,16 @@ model Product {
   packagingType   String?  // в/у | баночка | вагова | упаковка | відро | контейнер
   groupId   String?  // взаємозамінна група продуктів
 
-  group          ProductGroup?      @relation(fields: [groupId], references: [id])
-  prices         ClientPrice[]
-  orderItems     OrderItem[]
-  stockItems     StockItem[]
-  stockMovements StockMovement[]
-  returnItems    ClientReturnItem[] // ← зворотній зв'язок
+  group                ProductGroup?         @relation(fields: [groupId], references: [id])
+  prices               ClientPrice[]
+  orderItems           OrderItem[]
+  stockItems           StockItem[]
+  stockMovements       StockMovement[]
+  returnItems          ClientReturnItem[] // ← зворотній зв'язок
+  supplierInvoiceItems SupplierInvoiceItem[]
+  bomAsOutput          ProductBOM[]          @relation("BOMOutput") // з чого зроблений цей товар
+  bomAsInput           ProductBOM[]          @relation("BOMInput")  // у що переробляється цей товар
+  bazaarAssortmentOf   BazaarAssortmentItem[]
 
   @@index([isActive])
   @@index([name])
@@ -189,9 +240,10 @@ model Warehouse {
   isActive    Boolean       @default(true)
   createdAt   DateTime      @default(now())
 
-  stockItems  StockItem[]
-  movements   StockMovement[]
-  returnItems ClientReturnItem[] // ← зворотній зв'язок
+  stockItems       StockItem[]
+  movements        StockMovement[]
+  returnItems      ClientReturnItem[] // ← зворотній зв'язок
+  supplierInvoices SupplierInvoice[]
 
   @@index([type, isActive])
 }
@@ -204,8 +256,9 @@ model Supplier {
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
 
-  stockItems     StockItem[]
-  stockMovements StockMovement[]
+  stockItems       StockItem[]
+  stockMovements   StockMovement[]
+  supplierInvoices SupplierInvoice[]
 
   @@index([isActive])
 }
@@ -218,18 +271,21 @@ model StockItem {
   quantity    Decimal  @db.Decimal(10, 3)
   pricePerKg  Decimal? @db.Decimal(10, 2)
   supplierId  String?
+  invoiceId   String?
   note        String?
   arrivedAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
-  product   Product   @relation(fields: [productId], references: [id])
-  supplier  Supplier? @relation(fields: [supplierId], references: [id])
+  warehouse Warehouse        @relation(fields: [warehouseId], references: [id])
+  product   Product          @relation(fields: [productId], references: [id])
+  supplier  Supplier?        @relation(fields: [supplierId], references: [id])
+  invoice   SupplierInvoice? @relation(fields: [invoiceId], references: [id])
 
   @@index([warehouseId, productId])
   @@index([warehouseId, form])
   @@index([productId, form])
   @@index([arrivedAt])
+  @@index([invoiceId])
 }
 
 model StockMovement {
@@ -243,18 +299,59 @@ model StockMovement {
   pricePerKg  Decimal?     @db.Decimal(10, 2)
   orderId     String?
   supplierId  String?
+  invoiceId   String?
   createdAt   DateTime     @default(now())
 
-  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
-  product   Product   @relation(fields: [productId], references: [id])
-  order     Order?    @relation(fields: [orderId], references: [id])
-  supplier  Supplier? @relation(fields: [supplierId], references: [id])
+  warehouse Warehouse        @relation(fields: [warehouseId], references: [id])
+  product   Product          @relation(fields: [productId], references: [id])
+  order     Order?           @relation(fields: [orderId], references: [id])
+  supplier  Supplier?        @relation(fields: [supplierId], references: [id])
+  invoice   SupplierInvoice? @relation(fields: [invoiceId], references: [id])
 
   @@index([warehouseId, createdAt])
   @@index([productId, createdAt])
   @@index([type, createdAt])
   @@index([orderId])
   @@index([createdAt])
+  @@index([invoiceId])
+}
+
+// ─── Накладні постачальників ──────────────────────────────────────────────────
+
+model SupplierInvoice {
+  id            String   @id @default(uuid())
+  supplierId    String
+  invoiceNumber String?
+  invoiceDate   DateTime
+  form          Form     @default(FORM_1)
+  warehouseId   String
+  note          String?
+  createdById   String
+  createdAt     DateTime @default(now())
+
+  supplier  Supplier              @relation(fields: [supplierId], references: [id])
+  warehouse Warehouse             @relation(fields: [warehouseId], references: [id])
+  createdBy User                  @relation(fields: [createdById], references: [id])
+  items     SupplierInvoiceItem[]
+  stockItems     StockItem[]
+  stockMovements StockMovement[]
+
+  @@index([supplierId])
+  @@index([invoiceDate])
+}
+
+model SupplierInvoiceItem {
+  id         String  @id @default(uuid())
+  invoiceId  String
+  productId  String
+  quantity   Decimal @db.Decimal(10, 3)
+  pricePerKg Decimal @db.Decimal(10, 2) // ціна з ПДВ, як на оригіналі накладної
+
+  invoice SupplierInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  product Product         @relation(fields: [productId], references: [id])
+
+  @@index([invoiceId])
+  @@index([productId])
 }
 
 model DeliveryPoint {
@@ -295,7 +392,8 @@ model Order {
   printedAt       DateTime?
   deliveryPointId String?
   deliveryPoint   DeliveryPoint? @relation(fields: [deliveryPointId], references: [id])
-  returns ClientReturn[] 
+  returns ClientReturn[]
+  isBazaar        Boolean     @default(false) // видача товару на базар з подальшим розрахунком за різницею
 
   client     Client          @relation(fields: [clientId], references: [id])
   createdBy  User            @relation("CreatedBy", fields: [createdById], references: [id])
@@ -320,6 +418,7 @@ model OrderItem {
   productId     String
   plannedWeight Decimal  @db.Decimal(10, 3)
   actualWeight  Decimal? @db.Decimal(10, 3)
+  returnedWeight Decimal? @db.Decimal(10, 3) // скільки повернув базарник (для isBazaar заявок)
   pricePerKg    Decimal? @db.Decimal(10, 2)
   displayUnit   String?
   sortOrder     Int      @default(0)
@@ -506,4 +605,58 @@ model StoreProspect {
   @@index([oblast])
   @@index([chain])
   @@index([isWorking])
+}
+
+// ─── Рецептура ─────────────────────────────────────────────────────────────
+
+model RecipeSheet {
+  id          String   @id @default(uuid())
+  name        String   // напр. "Скумбрія"
+  icon        String?  // emoji
+  description String?
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  stages RecipeStage[]
+
+  @@index([sortOrder])
+}
+
+model RecipeStage {
+  id             String   @id @default(uuid())
+  recipeSheetId  String
+  name           String   // напр. "Розморожування"
+  content        String?  @db.Text // HTML
+  tempInfo       String?  // напр. "-18°C"
+  timeInfo       String?  // напр. "24 години"
+  ingredients    Json?    // пропорції: [{ name: "Сіль", amount: "80 г/л" }, ...]
+  isCriticalPoint Boolean @default(false) // контрольна точка HACCP
+  sortOrder      Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  recipeSheet RecipeSheet @relation(fields: [recipeSheetId], references: [id], onDelete: Cascade)
+
+  @@index([recipeSheetId, sortOrder])
+}
+
+// ─── Технологічні карти (BOM) для прогнозу закупівлі сировини ─────────────────
+
+model ProductBOM {
+  id              String   @id @default(uuid())
+  outputProductId String   // що виробляємо
+  inputProductId  String   // з чого (сировина або попередній крок)
+  yieldPct        Decimal  @db.Decimal(5, 2) // % виходу: скільки кг output з 1 кг input
+  leadDays        Int      @default(0)       // днів на цей крок виробництва
+  note            String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  outputProduct Product @relation("BOMOutput", fields: [outputProductId], references: [id], onDelete: Cascade)
+  inputProduct  Product @relation("BOMInput", fields: [inputProductId], references: [id], onDelete: Cascade)
+
+  @@unique([outputProductId, inputProductId])
+  @@index([outputProductId])
+  @@index([inputProductId])
 }

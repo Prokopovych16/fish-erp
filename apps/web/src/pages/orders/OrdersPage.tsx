@@ -202,10 +202,11 @@ function ShortageModal({ data, onClose, onTransferred, userRole }: {
 }
 
 // ─── OrderDetailsModal ────────────────────────────────────────────────────────
-function OrderDetailsModal({ order, onClose, onStatusChange, onUpdateWeights, onEdit, onDelete, userRole }: {
+function OrderDetailsModal({ order, onClose, onStatusChange, onUpdateWeights, onOpenBazaarReturn, onEdit, onDelete, userRole }: {
   order: Order; onClose: () => void;
   onStatusChange: (id: string, status: OrderStatus) => void;
   onUpdateWeights: (order: Order) => void;
+  onOpenBazaarReturn?: (order: Order) => void;
   onEdit?: () => void;
   onDelete?: (id: string) => void;
   userRole: string;
@@ -214,6 +215,7 @@ function OrderDetailsModal({ order, onClose, onStatusChange, onUpdateWeights, on
   const [printed, setPrinted] = useState(!!(order as any).printedAt);
   const displayNumber = (order as any).numberForm ?? order.number;
   const deliveryPoint = (order as any).deliveryPoint;
+  const isBazaar = !!(order as any).isBazaar;
   const total = order.items.reduce((s, i) => {
     if (i.product.unit === 'шт' && !i.actualWeight) return s;
     return s + Number(i.actualWeight ?? i.plannedWeight) * Number(i.pricePerKg ?? 0);
@@ -253,7 +255,7 @@ function OrderDetailsModal({ order, onClose, onStatusChange, onUpdateWeights, on
     }
   };
 
-  const handlePrint = async (type: 'ttn' | 'quality' | 'invoice') => {
+  const handlePrint = async (type: 'ttn' | 'quality' | 'invoice' | 'bazaar-issuance' | 'bazaar-settlement') => {
     try {
       const r = await api.get(`/documents/order/${order.id}/${type}`, { responseType: 'blob' });
       const url = window.URL.createObjectURL(new Blob([r.data], { type: 'application/pdf' }));
@@ -282,7 +284,21 @@ function OrderDetailsModal({ order, onClose, onStatusChange, onUpdateWeights, on
           → В Очікує
         </button>
       )}
-      {order.status === 'PENDING' && (
+      {order.status === 'PENDING' && isBazaar && (
+        <>
+          <button onClick={() => handlePrint('bazaar-issuance')}
+            className="w-full bg-orange-50 text-orange-700 border border-orange-200 text-sm px-3 py-2.5 rounded-xl hover:bg-orange-100 font-semibold">
+            📄 Накладна на видачу + декларація
+          </button>
+          {onOpenBazaarReturn && (
+            <button onClick={() => { onOpenBazaarReturn(order); onClose(); }}
+              className="w-full bg-orange-600 text-white text-sm px-3 py-2.5 rounded-xl hover:bg-orange-700 font-semibold">
+              📦 Оформити повернення і розрахунок
+            </button>
+          )}
+        </>
+      )}
+      {order.status === 'PENDING' && !isBazaar && (
         <button onClick={() => { onStatusChange(order.id, 'IN_PROGRESS'); onClose(); }}
           className="w-full bg-blue-600 text-white text-sm px-3 py-2.5 rounded-xl hover:bg-blue-700 font-semibold">
           ▶ Взяти в роботу
@@ -300,7 +316,19 @@ function OrderDetailsModal({ order, onClose, onStatusChange, onUpdateWeights, on
           </button>
         </>
       )}
-      {order.status === 'DONE' && userRole === 'ADMIN' && (
+      {order.status === 'DONE' && userRole === 'ADMIN' && isBazaar && (
+        <>
+          <button onClick={() => handlePrint('bazaar-settlement')}
+            className="w-full bg-green-600 text-white text-sm px-3 py-2.5 rounded-xl hover:bg-green-700 font-bold">
+            🧾 Розрахунок (видано/повернено/продано)
+          </button>
+          <button onClick={() => handlePrint('bazaar-issuance')}
+            className="w-full bg-blue-600 text-white text-sm px-3 py-2.5 rounded-xl hover:bg-blue-700 font-semibold">
+            📄 Накладна на видачу + декларація
+          </button>
+        </>
+      )}
+      {order.status === 'DONE' && userRole === 'ADMIN' && !isBazaar && (
         <>
           <button onClick={handlePrintAll}
             className="w-full bg-green-600 text-white text-sm px-3 py-2.5 rounded-xl hover:bg-green-700 font-bold">
@@ -316,7 +344,7 @@ function OrderDetailsModal({ order, onClose, onStatusChange, onUpdateWeights, on
       )}
       {userRole === 'ADMIN' && (
         <>
-          {(order.status === 'DONE' || order.status === 'IN_PROGRESS') && (
+          {!isBazaar && (order.status === 'DONE' || order.status === 'IN_PROGRESS') && (
             <button onClick={() => { onUpdateWeights(order); onClose(); }}
               className="w-full border border-yellow-200 text-yellow-700 text-sm px-3 py-2.5 rounded-xl hover:bg-yellow-50 font-semibold">
               ⚖️ Редагувати вагу
@@ -328,13 +356,13 @@ function OrderDetailsModal({ order, onClose, onStatusChange, onUpdateWeights, on
               ✏️ Редагувати
             </button>
           )}
-          {order.status === 'PENDING' && (
+          {!isBazaar && order.status === 'PENDING' && (
             <button onClick={() => { onStatusChange(order.id, 'DRAFT'); onClose(); }}
               className="w-full border border-slate-200 text-slate-600 text-sm px-3 py-2.5 rounded-xl hover:bg-slate-50 font-semibold">
               ← В Чернетки
             </button>
           )}
-          {order.status === 'DONE' && (
+          {!isBazaar && order.status === 'DONE' && (
             <button onClick={() => { onStatusChange(order.id, 'IN_PROGRESS'); onClose(); }}
               className="w-full border border-gray-200 text-gray-600 text-sm px-3 py-2.5 rounded-xl hover:bg-gray-50 font-semibold">
               ↩ Повернути
@@ -343,7 +371,7 @@ function OrderDetailsModal({ order, onClose, onStatusChange, onUpdateWeights, on
         </>
       )}
       {userRole === 'ADMIN' && <div className="border-t border-gray-200 my-1" />}
-      {userRole === 'ADMIN' && ['PENDING', 'IN_PROGRESS'].includes(order.status) && (
+      {!isBazaar && userRole === 'ADMIN' && ['PENDING', 'IN_PROGRESS'].includes(order.status) && (
         <button onClick={() => { onStatusChange(order.id, 'CANCELLED'); onClose(); }}
           className="w-full border border-red-200 text-red-500 text-sm px-3 py-2.5 rounded-xl hover:bg-red-50 font-semibold">
           ✕ Скасувати
@@ -700,12 +728,12 @@ function WeightsModal({ order, onClose, onSave, userRole }: {
 }
 
 // ─── CreateOrderModal ─────────────────────────────────────────────────────────
-function CreateOrderModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+function CreateOrderModal({ onClose, onCreated, defaultBazaar }: { onClose: () => void; onCreated: () => void; defaultBazaar?: boolean }) {
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuthStore();
   const isInspector = currentUser?.role === 'INSPECTOR';
   const [clientId, setClientId] = useState('');
-  const [form, setForm] = useState<Form>('FORM_1');
+  const [form, setForm] = useState<Form>(defaultBazaar ? 'FORM_2' : 'FORM_1');
   const [note, setNote] = useState('');
   const [driverName, setDriverName] = useState('');
   const [carNumber, setCarNumber] = useState('');
@@ -717,6 +745,7 @@ function CreateOrderModal({ onClose, onCreated }: { onClose: () => void; onCreat
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [isDraft, setIsDraft] = useState(false);
+  const [isBazaar, setIsBazaar] = useState(!!defaultBazaar);
   const [customNumber, setCustomNumber] = useState('');
   const [customDate, setCustomDate] = useState(new Date().toISOString().slice(0, 10));
   const [resolvedReturnIds, setResolvedReturnIds] = useState<Set<string>>(new Set());
@@ -746,8 +775,17 @@ function CreateOrderModal({ onClose, onCreated }: { onClose: () => void; onCreat
     enabled: !!clientId,
   });
 
-  const handleClientChange = (id: string) => {
+  const handleClientChange = async (id: string) => {
     setClientId(id); setDeliveryPointId(''); setAddingPoint(false); setNewPointName('');
+    // Для базару — підвантажуємо сталий асортимент, збережений для цього клієнта раніше
+    if (isBazaar && id) {
+      try {
+        const { data } = await api.get(`/bazaar-assortment/${id}`);
+        if (Array.isArray(data) && data.length > 0) {
+          setItems(data.map((a: any) => ({ productId: a.productId, plannedWeight: '', displayUnit: a.displayUnit || a.product?.unit || 'кг' })));
+        }
+      } catch {}
+    }
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -918,6 +956,7 @@ function CreateOrderModal({ onClose, onCreated }: { onClose: () => void; onCreat
         clientId, form, note, driverName, carNumber,
         deliveryPointId: deliveryPointId || undefined,
         status: isDraft ? 'DRAFT' : 'PENDING',
+        isBazaar: isBazaar || undefined,
         numberForm: customNumber ? Number(customNumber) : undefined,
         plannedDate: customDate || undefined,
         invoiceDate: invoiceDate || undefined,
@@ -925,6 +964,14 @@ function CreateOrderModal({ onClose, onCreated }: { onClose: () => void; onCreat
           ? items.filter((i) => i.productId && i.plannedWeight).map((i) => ({ productId: i.productId, plannedWeight: Number(i.plannedWeight), displayUnit: i.displayUnit }))
           : items.map((i) => ({ productId: i.productId, plannedWeight: Number(i.plannedWeight), displayUnit: i.displayUnit })),
       });
+      // Для базару — зберігаємо асортимент цього клієнта на сервері, щоб наступного разу він підвантажився сам
+      if (isBazaar && clientId) {
+        try {
+          await api.put(`/bazaar-assortment/${clientId}`, {
+            items: items.filter((i) => i.productId).map((i) => ({ productId: i.productId, displayUnit: i.displayUnit })),
+          });
+        } catch {}
+      }
       onCreated(); onClose();
     } catch (e: any) {
       const msg = e.response?.data?.message;
@@ -932,6 +979,9 @@ function CreateOrderModal({ onClose, onCreated }: { onClose: () => void; onCreat
         const parsed = JSON.parse(msg);
         if (parsed.type === 'DUPLICATE_NUMBER') {
           setError(`⚠️ Накладна №${parsed.numberForm} вже існує. Змініть номер або очистіть поле для автоматичного.`);
+        } else if (parsed.type === 'STOCK_SHORTAGE') {
+          const lines = parsed.shortages.map((s: any) => `${s.productName}: треба ${s.needed.toFixed(3)}, є ${s.available.toFixed(3)}`);
+          setError(`⚠️ Недостатньо товару на складі:\n${lines.join('\n')}`);
         } else {
           setError(msg || 'Помилка створення');
         }
@@ -946,7 +996,7 @@ function CreateOrderModal({ onClose, onCreated }: { onClose: () => void; onCreat
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[92vh] flex flex-col overflow-hidden">
         <div className="px-5 py-4 border-b flex items-center justify-between shrink-0">
-          <div><h2 className="font-bold text-gray-800 text-lg">Нова заявка</h2><p className="text-xs text-gray-400 mt-0.5">Заповніть дані</p></div>
+          <div><h2 className="font-bold text-gray-800 text-lg">{isBazaar ? '🏖️ Новий базар' : 'Нова заявка'}</h2><p className="text-xs text-gray-400 mt-0.5">{isBazaar ? 'Видача товару базарнику — списується зі складу одразу' : 'Заповніть дані'}</p></div>
           <div className="flex items-center gap-2">
             <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
             <button onClick={() => fileInputRef.current?.click()} disabled={imageLoading}
@@ -1188,17 +1238,29 @@ function CreateOrderModal({ onClose, onCreated }: { onClose: () => void; onCreat
               </div>
             </div>
           </div>
-          <div onClick={() => setIsDraft(!isDraft)}
-            className={`flex items-center gap-3 p-3.5 rounded-xl border-2 cursor-pointer select-none ${isDraft ? 'border-slate-400 bg-slate-50' : 'border-gray-200 bg-gray-50 hover:border-gray-300'}`}>
-            <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 ${isDraft ? 'bg-slate-600 border-slate-600' : 'border-gray-300 bg-white'}`}>
-              {isDraft && <span className="text-white text-xs font-bold">✓</span>}
+          <div onClick={() => { setIsBazaar(!isBazaar); if (!isBazaar) setIsDraft(false); }}
+            className={`flex items-center gap-3 p-3.5 rounded-xl border-2 cursor-pointer select-none ${isBazaar ? 'border-orange-400 bg-orange-50' : 'border-gray-200 bg-gray-50 hover:border-gray-300'}`}>
+            <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 ${isBazaar ? 'bg-orange-500 border-orange-500' : 'border-gray-300 bg-white'}`}>
+              {isBazaar && <span className="text-white text-xs font-bold">✓</span>}
             </div>
             <div>
-              <div className={`text-sm font-semibold ${isDraft ? 'text-slate-700' : 'text-gray-700'}`}>📋 Зберегти як чернетку</div>
-              <div className="text-xs text-gray-400 mt-0.5">Заявка буде в окремому стовпчику — заповни пізніше</div>
+              <div className={`text-sm font-semibold ${isBazaar ? 'text-orange-700' : 'text-gray-700'}`}>🏖️ Це базар</div>
+              <div className="text-xs text-gray-400 mt-0.5">Видача товару з негайним списанням зі складу; повернення і розрахунок — пізніше, окремо</div>
             </div>
           </div>
-          {error && <div className="text-red-500 text-sm bg-red-50 border border-red-100 px-4 py-3 rounded-xl">⚠️ {error}</div>}
+          {!isBazaar && (
+            <div onClick={() => setIsDraft(!isDraft)}
+              className={`flex items-center gap-3 p-3.5 rounded-xl border-2 cursor-pointer select-none ${isDraft ? 'border-slate-400 bg-slate-50' : 'border-gray-200 bg-gray-50 hover:border-gray-300'}`}>
+              <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 ${isDraft ? 'bg-slate-600 border-slate-600' : 'border-gray-300 bg-white'}`}>
+                {isDraft && <span className="text-white text-xs font-bold">✓</span>}
+              </div>
+              <div>
+                <div className={`text-sm font-semibold ${isDraft ? 'text-slate-700' : 'text-gray-700'}`}>📋 Зберегти як чернетку</div>
+                <div className="text-xs text-gray-400 mt-0.5">Заявка буде в окремому стовпчику — заповни пізніше</div>
+              </div>
+            </div>
+          )}
+          {error && <div className="text-red-500 text-sm bg-red-50 border border-red-100 px-4 py-3 rounded-xl whitespace-pre-line">⚠️ {error}</div>}
         </div>
         <div className="border-t bg-gray-50 px-5 py-4 shrink-0 space-y-3">
           {(totalWeight > 0 || clientId) && (
@@ -1208,13 +1270,14 @@ function CreateOrderModal({ onClose, onCreated }: { onClose: () => void; onCreat
               {totalWeight > 0 && <div className="flex items-center gap-1.5"><span className="text-gray-400">Вага:</span><b className="text-gray-700">{totalWeight.toFixed(3)}</b></div>}
               {totalSum > 0 && <div className="flex items-center gap-1.5"><span className="text-gray-400">Сума (з ПДВ):</span><b className="text-green-600 text-sm">{(totalSum * 1.2).toFixed(2)} ₴</b></div>}
               {isDraft && <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-semibold">📋 Чернетка</span>}
+              {isBazaar && <span className="bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-semibold">🏖️ Базар</span>}
             </div>
           )}
           <div className="flex gap-2">
             <button onClick={onClose} className="flex-1 border border-gray-200 text-gray-600 text-sm px-4 py-2.5 rounded-xl hover:bg-gray-100">Скасувати</button>
             <button onClick={handleCreate} disabled={loading}
-              className={`flex-1 text-white text-sm px-4 py-2.5 rounded-xl disabled:opacity-50 font-bold ${isDraft ? 'bg-slate-600 hover:bg-slate-700' : 'bg-blue-600 hover:bg-blue-700'}`}>
-              {loading ? 'Створюю...' : isDraft ? '📋 Зберегти чернетку' : '✓ Створити заявку'}
+              className={`flex-1 text-white text-sm px-4 py-2.5 rounded-xl disabled:opacity-50 font-bold ${isBazaar ? 'bg-orange-600 hover:bg-orange-700' : isDraft ? 'bg-slate-600 hover:bg-slate-700' : 'bg-blue-600 hover:bg-blue-700'}`}>
+              {loading ? 'Створюю...' : isBazaar ? '🏖️ Видати на базар' : isDraft ? '📋 Зберегти чернетку' : '✓ Створити заявку'}
             </button>
           </div>
         </div>
@@ -1228,6 +1291,10 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
   const queryClient = useQueryClient();
   const displayNumber = (order as any).numberForm ?? order.number;
   const isDone = order.status === 'DONE';
+  const isBazaar = !!(order as any).isBazaar;
+  // Базар можна редагувати завжди, навіть після розрахунку — різниця зі складом коригується автоматично.
+  // Звичайну заявку після DONE редагувати не можна (треба спочатку повернути до "В роботі").
+  const itemsLocked = isDone && !isBazaar;
 
   const [clientId, setClientId] = useState(order.clientId);
   const [numberFormVal, setNumberFormVal] = useState(String((order as any).numberForm ?? ''));
@@ -1246,6 +1313,7 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
       productId: i.productId,
       plannedWeight: String(i.plannedWeight),
       actualWeight: i.actualWeight != null ? String(i.actualWeight) : '',
+      returnedWeight: i.returnedWeight != null ? String(i.returnedWeight) : '',
       displayUnit: (i as any).displayUnit || i.product?.unit || 'кг',
       pricePerKg: i.pricePerKg != null ? String(Number(i.pricePerKg)) : '',
     })),
@@ -1288,7 +1356,7 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
 
   const handleSave = async () => {
     if (!clientId) return setError('Оберіть клієнта');
-    if (!isDone && items.some((i) => !i.productId || !i.plannedWeight)) return setError('Заповніть всі позиції');
+    if (!itemsLocked && items.some((i) => !i.productId || !i.plannedWeight)) return setError('Заповніть всі позиції');
     setLoading(true); setError('');
     try {
       await api.patch(`/orders/${order.id}`, {
@@ -1300,18 +1368,27 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
         note: note || undefined,
         plannedDate: plannedDate || undefined,
         invoiceDate: invoiceDate || undefined,
-        ...(!isDone && {
+        ...(!itemsLocked && {
           items: items
             .filter((i) => i.productId && i.plannedWeight)
             .map((i) => ({
               productId: i.productId,
               plannedWeight: Number(i.plannedWeight),
               actualWeight: i.actualWeight ? Number(i.actualWeight) : undefined,
+              returnedWeight: isBazaar && i.returnedWeight !== '' ? Number(i.returnedWeight) : undefined,
               displayUnit: i.displayUnit,
               pricePerKg: i.pricePerKg && Number(i.pricePerKg) > 0 ? Number(i.pricePerKg) : undefined,
             })),
         }),
       });
+      // Базар: позиції могли змінитись — оновлюємо збережений асортимент клієнта
+      if (isBazaar && !itemsLocked) {
+        try {
+          await api.put(`/bazaar-assortment/${clientId}`, {
+            items: items.filter((i) => i.productId).map((i) => ({ productId: i.productId, displayUnit: i.displayUnit })),
+          });
+        } catch {}
+      }
       queryClient.invalidateQueries({ queryKey: ['orders'] });
       onSaved();
       onClose();
@@ -1321,6 +1398,9 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
         const parsed = JSON.parse(msg);
         if (parsed.type === 'DUPLICATE_NUMBER') {
           setError(`⚠️ Накладна №${parsed.numberForm} вже існує. Змініть номер.`);
+        } else if (parsed.type === 'STOCK_SHORTAGE') {
+          const lines = parsed.shortages.map((s: any) => `${s.productName}: треба ${s.needed.toFixed(3)}, є ${s.available.toFixed(3)}`);
+          setError(`⚠️ Недостатньо товару на складі:\n${lines.join('\n')}`);
         } else {
           setError(msg || 'Помилка збереження');
         }
@@ -1418,12 +1498,19 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
                 </span>
               )}
             </div>
-            {isDone ? (
+            {itemsLocked ? (
               <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 text-xs text-yellow-700">
-                ⚠️ Позиції виконаної заявки не можна змінювати. Поверніть заявку до "В роботі" для редагування позицій.
+                {isBazaar
+                  ? '⚠️ Розрахунок по базару вже зроблено — кількість позицій змінити неможливо.'
+                  : '⚠️ Позиції виконаної заявки не можна змінювати. Поверніть заявку до "В роботі" для редагування позицій.'}
               </div>
             ) : (
               <div className="space-y-2">
+                {isBazaar && (
+                  <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 text-xs text-orange-700 mb-2">
+                    🏖️ Це базар: товар уже видано зі складу{isDone ? ' і вже зроблено розрахунок' : ''}. Якщо зміниш кількість{isDone ? ' (видано чи повернено)' : ''} — різниця автоматично довантажиться/повернеться на склад.
+                  </div>
+                )}
                 {items.map((item, idx) => {
                   const clientPrice = getPriceForProduct(item.productId);
                   const unit = getUnit(item.productId);
@@ -1456,6 +1543,9 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
                           </select>
                         </div>
                         <div className="flex items-center gap-1 pl-7">
+                          {isBazaar && isDone && (
+                            <span className="text-[10px] text-gray-400 shrink-0">видано</span>
+                          )}
                           {/* FIX 2: прибираємо повзунок */}
                           <input type="number" step="0.001" min="0" value={item.plannedWeight}
                             onChange={(e) => setItems((prev) => prev.map((p, i) => i === idx ? { ...p, plannedWeight: e.target.value } : p))}
@@ -1472,6 +1562,22 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
                           <button onClick={() => setItems((prev) => prev.filter((_, i) => i !== idx))}
                             className="text-red-400 hover:text-red-600 text-lg leading-none shrink-0 px-1">×</button>
                         </div>
+                        {isBazaar && isDone && (
+                          <div className="flex items-center gap-1 pl-7">
+                            <span className="text-[10px] text-orange-500 shrink-0 w-[51px]">повернено</span>
+                            <input type="number" step="0.001" min="0" max={item.plannedWeight || undefined} value={item.returnedWeight}
+                              onChange={(e) => setItems((prev) => prev.map((p, i) => i === idx ? { ...p, returnedWeight: e.target.value } : p))}
+                              placeholder="0.000"
+                              style={{ MozAppearance: 'textfield' } as any}
+                              className="flex-1 sm:flex-none sm:w-20 border border-orange-200 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-orange-400 bg-orange-50/40 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" />
+                            <span className="text-[10px] text-gray-400">{item.displayUnit}</span>
+                            {item.returnedWeight !== '' && (
+                              <span className="text-[10px] font-semibold text-orange-600 ml-1">
+                                продано: {Math.max(Number(item.plannedWeight || 0) - Number(item.returnedWeight || 0), 0).toFixed(3)}
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
                       {item.productId && (
                         <div className="mt-2 pl-7 space-y-1">
@@ -1502,14 +1608,14 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
                     </div>
                   );
                 })}
-                <button onClick={() => setItems((prev) => [...prev, { productId: '', plannedWeight: '', actualWeight: '', displayUnit: 'кг' }])}
+                <button onClick={() => setItems((prev) => [...prev, { productId: '', plannedWeight: '', actualWeight: '', returnedWeight: '', displayUnit: 'кг', pricePerKg: '' }])}
                   className="w-full border border-dashed border-gray-300 text-gray-500 text-sm py-2.5 rounded-xl hover:border-blue-400 hover:text-blue-600 transition-colors">
                   + Додати позицію
                 </button>
               </div>
             )}
           </div>
-          {error && <div className="text-red-500 text-sm bg-red-50 px-3 py-2 rounded-lg">{error}</div>}
+          {error && <div className="text-red-500 text-sm bg-red-50 px-3 py-2 rounded-lg whitespace-pre-line">{error}</div>}
         </div>
         <div className="px-5 pb-5 pt-4 border-t flex gap-2 shrink-0">
           <button onClick={onClose} className="flex-1 border border-gray-200 text-gray-600 text-sm px-4 py-2.5 rounded-xl hover:bg-gray-50">Скасувати</button>
@@ -1575,17 +1681,19 @@ function OrderCardContent({ order, userRole }: { order: Order; userRole: string 
 }
 
 // ─── DraggableOrderCard ────────────────────────────────────────────────────────
-function DraggableOrderCard({ order, onStatusChange, onUpdateWeights, onOpenDetails, onEdit, onDelete, userRole }: {
+function DraggableOrderCard({ order, onStatusChange, onUpdateWeights, onOpenDetails, onOpenBazaarReturn, onEdit, onDelete, userRole }: {
   order: Order;
   onStatusChange: (id: string, status: OrderStatus) => void;
   onUpdateWeights: (order: Order) => void;
   onOpenDetails: (order: Order) => void;
+  onOpenBazaarReturn: (order: Order) => void;
   onEdit: (order: Order) => void;
   onDelete: (id: string) => void;
   userRole: string;
 }) {
   const isDraft = order.status === 'DRAFT';
-  const canDrag = userRole === 'ADMIN' || (!isDraft && order.status !== 'DONE');
+  const isBazaar = !!(order as any).isBazaar;
+  const canDrag = !isBazaar && (userRole === 'ADMIN' || (!isDraft && order.status !== 'DONE'));
 
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: order.id,
@@ -1613,6 +1721,7 @@ function DraggableOrderCard({ order, onStatusChange, onUpdateWeights, onOpenDeta
               <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="font-bold text-gray-800 text-sm">№{(order as any).numberForm ?? order.number}</span>
                 <FormBadge form={order.form} />
+                {isBazaar && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700 font-bold">🏖️ Базар</span>}
                 {!!(order as any).printedAt && <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-600 font-bold">✓</span>}
                 {isDraft && <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-semibold">чернетка</span>}
               </div>
@@ -1629,7 +1738,9 @@ function DraggableOrderCard({ order, onStatusChange, onUpdateWeights, onOpenDeta
                 <div key={item.id} className="flex justify-between text-xs text-gray-600">
                   <span className="truncate mr-2">{item.product.name}</span>
                   <span className="shrink-0">
-                    {item.actualWeight
+                    {isBazaar && item.returnedWeight != null
+                      ? <span className="text-orange-600 font-bold">продано {(Number(item.plannedWeight) - Number(item.returnedWeight)).toFixed(3)} {displayUnit}</span>
+                      : item.actualWeight
                       ? <span className="text-green-600 font-bold">{Number(item.actualWeight).toFixed(3)} {displayUnit}</span>
                       : <span className="text-gray-500">{Number(item.plannedWeight).toFixed(3)} {displayUnit}</span>}
                   </span>
@@ -1638,7 +1749,7 @@ function DraggableOrderCard({ order, onStatusChange, onUpdateWeights, onOpenDeta
             })}
           </div>
           <div className="text-[10px] text-gray-400 border-t border-gray-100 pt-2 mt-2.5 flex gap-3">
-            <span>План: <span className="font-semibold text-gray-600">{order.items.reduce((s, i) => s + Number(i.plannedWeight), 0).toFixed(3)}</span></span>
+            <span>{isBazaar ? 'Видано' : 'План'}: <span className="font-semibold text-gray-600">{order.items.reduce((s, i) => s + Number(i.plannedWeight), 0).toFixed(3)}</span></span>
             {order.items.reduce((s, i) => s + Number(i.actualWeight ?? 0), 0) > 0 && (
               <span>Факт: <span className="font-bold text-green-600">{order.items.reduce((s, i) => s + Number(i.actualWeight ?? 0), 0).toFixed(3)}</span></span>
             )}
@@ -1652,7 +1763,11 @@ function DraggableOrderCard({ order, onStatusChange, onUpdateWeights, onOpenDeta
             <button onClick={() => onStatusChange(order.id, 'PENDING')}
               className="flex-1 bg-slate-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-slate-700 font-semibold">→ В Очікує</button>
           )}
-          {order.status === 'PENDING' && (
+          {order.status === 'PENDING' && isBazaar && (
+            <button onClick={() => onOpenBazaarReturn(order)}
+              className="flex-1 bg-orange-500 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-orange-600 font-semibold">📦 Повернення і розрахунок</button>
+          )}
+          {order.status === 'PENDING' && !isBazaar && (
             <>
               <button onClick={() => onStatusChange(order.id, 'IN_PROGRESS')}
                 className="flex-1 bg-blue-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-blue-700 font-semibold">Взяти в роботу</button>
@@ -1670,7 +1785,11 @@ function DraggableOrderCard({ order, onStatusChange, onUpdateWeights, onOpenDeta
                 className="flex-1 bg-green-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-green-700 font-semibold">✓ Готово</button>
             </>
           )}
-          {order.status === 'DONE' && userRole === 'ADMIN' && (
+          {order.status === 'DONE' && userRole === 'ADMIN' && isBazaar && (
+            <button onClick={() => onOpenDetails(order)}
+              className="flex-1 bg-blue-50 text-blue-700 text-xs px-2 py-1.5 rounded-lg hover:bg-blue-100 font-semibold">📄 Документи / Розрахунок</button>
+          )}
+          {order.status === 'DONE' && userRole === 'ADMIN' && !isBazaar && (
             <div className="flex gap-1 flex-wrap w-full">
               <button onClick={() => onOpenDetails(order)}
                 className="flex-1 bg-blue-50 text-blue-700 text-xs px-2 py-1.5 rounded-lg hover:bg-blue-100 font-semibold">📄 Документи</button>
@@ -1699,12 +1818,13 @@ function DraggableOrderCard({ order, onStatusChange, onUpdateWeights, onOpenDeta
 }
 
 // ─── DroppableColumn ──────────────────────────────────────────────────────────
-function DroppableColumn({ id, title, icon, color, orders, onStatusChange, onUpdateWeights, onOpenDetails, onEdit, onDelete, userRole }: {
+function DroppableColumn({ id, title, icon, color, orders, onStatusChange, onUpdateWeights, onOpenDetails, onOpenBazaarReturn, onEdit, onDelete, userRole }: {
   id: string; title: string; icon: string; color: string;
   orders: Order[];
   onStatusChange: (id: string, status: OrderStatus) => void;
   onUpdateWeights: (order: Order) => void;
   onOpenDetails: (order: Order) => void;
+  onOpenBazaarReturn: (order: Order) => void;
   onEdit: (order: Order) => void;
   onDelete: (id: string) => void;
   userRole: string;
@@ -1737,11 +1857,137 @@ function DroppableColumn({ id, title, icon, color, orders, onStatusChange, onUpd
             onStatusChange={onStatusChange}
             onUpdateWeights={onUpdateWeights}
             onOpenDetails={onOpenDetails}
+            onOpenBazaarReturn={onOpenBazaarReturn}
             onEdit={onEdit}
             onDelete={onDelete}
             userRole={userRole}
           />
         ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── BazaarReturnModal — оформлення повернення з базару і розрахунок різниці ──
+function BazaarReturnModal({ order, onClose, onSettled }: { order: Order; onClose: () => void; onSettled: () => void }) {
+  const [returns, setReturns] = useState<Record<string, string>>(
+    Object.fromEntries(order.items.map((i) => [i.id, ''])),
+  );
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [settled, setSettled] = useState(false);
+  const displayNumber = (order as any).numberForm ?? order.number;
+
+  const rows = order.items.map((item) => {
+    const issued = Number(item.plannedWeight);
+    const returnedStr = returns[item.id];
+    const returned = returnedStr === '' ? null : Number(returnedStr);
+    const sold = returned != null ? Math.max(issued - returned, 0) : null;
+    const price = Number(item.pricePerKg ?? 0);
+    const sum = sold != null && price > 0 ? sold * price : null;
+    return { item, issued, returned, sold, price, sum };
+  });
+
+  const totalSum = rows.reduce((s, r) => s + (r.sum ?? 0), 0);
+  const allFilled = rows.every((r) => r.returned != null && r.returned >= 0 && r.returned <= r.issued);
+
+  const handleSubmit = async () => {
+    if (!allFilled) return setError('Вкажіть повернену кількість для всіх позицій (від 0 до виданого)');
+    setLoading(true); setError('');
+    try {
+      await api.patch(`/orders/${order.id}/bazaar-return`, {
+        items: rows.map((r) => ({ itemId: r.item.id, returnedWeight: r.returned })),
+      });
+      setSettled(true);
+      onSettled();
+    } catch (e: any) {
+      setError(e.response?.data?.message || 'Помилка оформлення повернення');
+    } finally { setLoading(false); }
+  };
+
+  const handlePrintSettlement = async () => {
+    try {
+      const r = await api.get(`/documents/order/${order.id}/bazaar-settlement`, { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([r.data], { type: 'application/pdf' }));
+      window.open(url, '_blank');
+      setTimeout(() => window.URL.revokeObjectURL(url), 60000);
+    } catch { alert('Помилка генерації'); }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[92vh] flex flex-col overflow-hidden">
+        <div className="px-5 py-4 border-b flex items-center justify-between shrink-0 bg-orange-50">
+          <div>
+            <h2 className="font-bold text-gray-800 text-lg">🏖️ Повернення з базару №{displayNumber}</h2>
+            <p className="text-xs text-gray-500 mt-0.5">{order.client.name}</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+        </div>
+
+        {!settled ? (
+          <>
+            <div className="overflow-y-auto flex-1 p-5 space-y-3">
+              <p className="text-xs text-gray-500">Впиши, скільки базарник привіз назад. Продано = видано − повернено — за це й рахується сума до сплати.</p>
+              {rows.map(({ item, issued, returned, sold, sum }) => {
+                const displayUnit = (item as any).displayUnit || item.product.unit;
+                return (
+                  <div key={item.id} className="rounded-xl border border-gray-200 p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-semibold text-gray-800">{item.product.name}</span>
+                      <span className="text-xs text-gray-400">видано: <b className="text-gray-700">{issued.toFixed(3)} {displayUnit}</b></span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs text-gray-500 shrink-0 w-20">Повернено</label>
+                      <input type="number" min="0" max={issued} step="0.001"
+                        value={returns[item.id]}
+                        onChange={(e) => setReturns((prev) => ({ ...prev, [item.id]: e.target.value }))}
+                        placeholder="0.000"
+                        className="flex-1 border border-gray-300 rounded-lg px-2.5 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-orange-400" />
+                      <span className="text-xs text-gray-400 shrink-0">{displayUnit}</span>
+                    </div>
+                    {returned != null && sold != null && (
+                      <div className="flex items-center justify-between text-xs bg-orange-50 border border-orange-100 rounded-lg px-2.5 py-1.5">
+                        <span className="text-orange-700 font-medium">Продано: {sold.toFixed(3)} {displayUnit}</span>
+                        {sum != null ? <span className="font-bold text-orange-700">{sum.toFixed(2)} ₴ (без ПДВ)</span> : <span className="text-gray-400">ціна не задана</span>}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              {error && <div className="text-red-500 text-sm bg-red-50 border border-red-100 px-4 py-3 rounded-xl">⚠️ {error}</div>}
+            </div>
+            <div className="border-t bg-gray-50 px-5 py-4 shrink-0 space-y-3">
+              {totalSum > 0 && (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-500">До сплати (з ПДВ):</span>
+                  <span className="font-bold text-orange-700 text-lg">{(totalSum * 1.2).toFixed(2)} ₴</span>
+                </div>
+              )}
+              <div className="flex gap-2">
+                <button onClick={onClose} className="flex-1 border border-gray-200 text-gray-600 text-sm px-4 py-2.5 rounded-xl hover:bg-gray-100">Скасувати</button>
+                <button onClick={handleSubmit} disabled={loading || !allFilled}
+                  className="flex-1 bg-orange-600 text-white text-sm px-4 py-2.5 rounded-xl hover:bg-orange-700 disabled:opacity-50 font-bold">
+                  {loading ? 'Зберігаю...' : '✓ Зафіксувати і розрахувати'}
+                </button>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="p-6 space-y-4 text-center">
+            <div className="text-4xl">✅</div>
+            <div className="font-bold text-gray-800">Повернення оформлено, заявку завершено</div>
+            {totalSum > 0 && <div className="text-2xl font-bold text-orange-700">{(totalSum * 1.2).toFixed(2)} ₴</div>}
+            <button onClick={handlePrintSettlement}
+              className="w-full bg-green-600 text-white text-sm px-4 py-2.5 rounded-xl hover:bg-green-700 font-bold">
+              🧾 Роздрукувати розрахунок
+            </button>
+            <button onClick={onClose}
+              className="w-full border border-gray-200 text-gray-600 text-sm px-4 py-2.5 rounded-xl hover:bg-gray-50">
+              Готово
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1755,6 +2001,8 @@ export default function OrdersPage() {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [detailsOrder, setDetailsOrder] = useState<Order | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [showCreateBazaar, setShowCreateBazaar] = useState(false);
+  const [bazaarReturnOrder, setBazaarReturnOrder] = useState<Order | null>(null);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [activeOrder, setActiveOrder] = useState<Order | null>(null);
   const [shortageData, setShortageData] = useState<{
@@ -1870,10 +2118,16 @@ export default function OrdersPage() {
             </div>
           )}
           {user?.role === 'ADMIN' && (
-            <button onClick={() => setShowCreate(true)}
-              className="bg-blue-600 text-white text-sm px-4 py-1.5 rounded-xl hover:bg-blue-700 font-semibold shadow-sm">
-              + Нова заявка
-            </button>
+            <>
+              <button onClick={() => setShowCreateBazaar(true)}
+                className="bg-orange-500 text-white text-sm px-4 py-1.5 rounded-xl hover:bg-orange-600 font-semibold shadow-sm">
+                🏖️ Базар
+              </button>
+              <button onClick={() => setShowCreate(true)}
+                className="bg-blue-600 text-white text-sm px-4 py-1.5 rounded-xl hover:bg-blue-700 font-semibold shadow-sm">
+                + Нова заявка
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -1891,6 +2145,7 @@ export default function OrdersPage() {
               onStatusChange={(id, status) => statusMutation.mutate({ id, status })}
               onUpdateWeights={setSelectedOrder}
               onOpenDetails={setDetailsOrder}
+              onOpenBazaarReturn={setBazaarReturnOrder}
               onEdit={setEditingOrder}
               onDelete={(id) => { if (window.confirm('Видалити заявку? Це незворотно.')) deleteMutation.mutate(id); }}
               userRole={user?.role || ''}
@@ -1916,10 +2171,19 @@ export default function OrdersPage() {
         <CreateOrderModal onClose={() => setShowCreate(false)}
           onCreated={() => queryClient.invalidateQueries({ queryKey: ['orders'] })} />
       )}
+      {showCreateBazaar && (
+        <CreateOrderModal defaultBazaar onClose={() => setShowCreateBazaar(false)}
+          onCreated={() => queryClient.invalidateQueries({ queryKey: ['orders'] })} />
+      )}
+      {bazaarReturnOrder && (
+        <BazaarReturnModal order={bazaarReturnOrder} onClose={() => setBazaarReturnOrder(null)}
+          onSettled={() => { queryClient.invalidateQueries({ queryKey: ['orders'] }); queryClient.invalidateQueries({ queryKey: ['stock'] }); }} />
+      )}
       {detailsOrder && (
         <OrderDetailsModal order={detailsOrder} onClose={() => setDetailsOrder(null)}
           onStatusChange={(id, status) => { statusMutation.mutate({ id, status }); setDetailsOrder(null); }}
           onUpdateWeights={(order) => { setSelectedOrder(order); setDetailsOrder(null); }}
+          onOpenBazaarReturn={(order) => { setBazaarReturnOrder(order); setDetailsOrder(null); }}
           onEdit={() => { setEditingOrder(detailsOrder); setDetailsOrder(null); }}
           onDelete={(id) => { if (window.confirm('Видалити заявку? Це незворотно.')) deleteMutation.mutate(id); }}
           userRole={user?.role || ''} />

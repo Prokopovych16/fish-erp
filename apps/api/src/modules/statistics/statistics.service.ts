@@ -160,7 +160,21 @@ export class StatisticsService {
       byDay[date].revenue += order.items.reduce((s, item) => s + this.calcItemRevenue(item), 0);
     }
 
-    return Object.values(byDay);
+    // Заповнюємо нулями всі дні в діапазоні (включно з "завтра", якщо воно входить в `to`) —
+    // інакше дні без виконаних заявок просто відсутні на графіку.
+    if (from && to) {
+      const cursor = new Date(from);
+      cursor.setHours(0, 0, 0, 0);
+      const end = new Date(to);
+      end.setHours(0, 0, 0, 0);
+      while (cursor <= end) {
+        const key = cursor.toISOString().split('T')[0];
+        if (!byDay[key]) byDay[key] = { date: key, count: 0, revenue: 0 };
+        cursor.setDate(cursor.getDate() + 1);
+      }
+    }
+
+    return Object.values(byDay).sort((a, b) => a.date.localeCompare(b.date));
   }
 
   // ============================================================

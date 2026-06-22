@@ -26,6 +26,11 @@ class UpdateOrderItemDto {
   actualWeight?: number;
 
   @IsOptional()
+  @IsNumber()
+  @Min(0)
+  returnedWeight?: number;
+
+  @IsOptional()
   @IsString()
   displayUnit?: string;
 

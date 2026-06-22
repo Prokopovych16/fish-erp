@@ -22,34 +22,43 @@ function WorkerDashboard() {
   );
 
   const hour = new Date().getHours();
-  const greeting = hour < 12 ? 'Доброго ранку' : hour < 17 ? 'Добрий день' : 'Добрий вечір';
+  const greeting = hour < 6 ? 'Доброї ночі' : hour < 12 ? 'Доброго ранку' : hour < 18 ? 'Добрий день' : 'Добрий вечір';
+  const greetIcon = hour < 6 ? '🌙' : hour < 12 ? '🌅' : hour < 18 ? '☀️' : '🌆';
+  const headerGradient = hour < 6 ? 'from-slate-800 via-slate-900 to-indigo-950'
+    : hour < 12 ? 'from-cyan-500 via-blue-600 to-indigo-700'
+    : hour < 18 ? 'from-blue-600 via-blue-700 to-indigo-800'
+    : 'from-purple-700 via-indigo-800 to-slate-900';
+  const todayLabel = new Date().toLocaleDateString('uk-UA', { weekday: 'long', day: 'numeric', month: 'long' });
 
   return (
     <div className="space-y-4 pb-8 max-w-lg mx-auto">
       {/* Шапка */}
-      <div className="relative bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 rounded-2xl p-5 overflow-hidden">
+      <div className={`relative bg-gradient-to-br ${headerGradient} rounded-3xl p-5 overflow-hidden shadow-lg`}>
         <div className="absolute -top-8 -right-8 w-40 h-40 bg-white/5 rounded-full" />
         <div className="absolute -bottom-12 -right-4 w-56 h-56 bg-white/5 rounded-full" />
+        <div className="absolute top-4 right-5 text-3xl opacity-70">{greetIcon}</div>
 
         <div className="relative">
-          <div className="text-blue-200 text-sm mb-0.5">{greeting} 👋</div>
-          <div className="text-white text-xl font-bold mb-4">{user?.name}</div>
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-12 h-12 rounded-2xl bg-white/15 backdrop-blur-sm flex items-center justify-center text-white font-bold text-lg shrink-0 shadow-inner">
+              {user?.name?.charAt(0).toUpperCase() || '👤'}
+            </div>
+            <div className="min-w-0">
+              <div className="text-white/70 text-xs mb-0.5 capitalize">{todayLabel}</div>
+              <div className="text-white text-lg font-bold leading-tight">{greeting}, {user?.name}!</div>
+            </div>
+          </div>
 
           <div className="grid grid-cols-3 gap-2">
             {[
-              { icon: '⚡', label: 'В роботі', value: activeOrders.length, highlight: activeOrders.length > 0 },
-              { icon: '🕐', label: 'Очікують', value: pendingOrders.length, highlight: false },
-              { icon: '✅', label: 'Сьогодні', value: todayDone.length, highlight: false },
+              { icon: '⚡', label: 'В роботі', value: activeOrders.length, cls: activeOrders.length > 0 ? 'bg-amber-400/25 border-amber-300/30' : 'bg-white/10 border-white/10' },
+              { icon: '🕐', label: 'Очікують', value: pendingOrders.length, cls: 'bg-sky-400/15 border-sky-300/20' },
+              { icon: '✅', label: 'Сьогодні', value: todayDone.length, cls: 'bg-emerald-400/15 border-emerald-300/20' },
             ].map((s) => (
-              <div
-                key={s.label}
-                className={`rounded-xl p-3 text-center ${
-                  s.highlight ? 'bg-yellow-400/20 border border-yellow-300/30' : 'bg-white/10'
-                }`}
-              >
+              <div key={s.label} className={`rounded-2xl p-3 text-center border ${s.cls}`}>
                 <div className="text-lg mb-0.5">{s.icon}</div>
                 <div className="text-white text-2xl font-bold leading-none">{s.value}</div>
-                <div className="text-blue-200 text-xs mt-1">{s.label}</div>
+                <div className="text-white/70 text-xs mt-1">{s.label}</div>
               </div>
             ))}
           </div>
@@ -63,15 +72,16 @@ function WorkerDashboard() {
       {/* В роботі */}
       {activeOrders.length > 0 && (
         <div>
-          <div className="flex items-center gap-2 mb-2">
-            <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse" />
-            <span className="text-sm font-semibold text-gray-700">В роботі зараз ({activeOrders.length})</span>
+          <div className="flex items-center gap-2 mb-2.5">
+            <div className="w-2.5 h-2.5 bg-amber-400 rounded-full animate-pulse shadow-sm shadow-amber-300" />
+            <span className="text-sm font-bold text-gray-700">В роботі зараз</span>
+            <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-bold">{activeOrders.length}</span>
           </div>
           <div className="space-y-3">
             {activeOrders.map((order: any) => {
               const totalWeight = order.items.reduce((s: number, i: any) => s + Number(i.plannedWeight), 0);
               return (
-                <div key={order.id} className="bg-white border-2 border-yellow-200 rounded-2xl p-4 shadow-sm">
+                <div key={order.id} className="bg-white border-2 border-amber-200 rounded-3xl p-4 shadow-md shadow-amber-100/50">
                   <div className="flex items-start justify-between mb-3">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -87,20 +97,20 @@ function WorkerDashboard() {
                         <div className="text-xs text-gray-400 mt-0.5">📍 {order.deliveryPoint.name}</div>
                       )}
                     </div>
-                    <div className="bg-yellow-50 border border-yellow-200 rounded-xl px-3 py-2 text-center shrink-0 ml-3">
-                      <div className="text-yellow-700 font-bold text-xl leading-none">{totalWeight.toFixed(1)}</div>
-                      <div className="text-yellow-500 text-[10px]">кг</div>
+                    <div className="bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 rounded-2xl px-3 py-2 text-center shrink-0 ml-3">
+                      <div className="text-amber-700 font-bold text-xl leading-none">{totalWeight.toFixed(1)}</div>
+                      <div className="text-amber-500 text-[10px] font-semibold">кг</div>
                     </div>
                   </div>
 
-                  <div className="space-y-2 border-t border-yellow-100 pt-3">
+                  <div className="space-y-2 border-t border-amber-100 pt-3">
                     {order.items.map((item: any, idx: number) => {
                       const du = item.displayUnit || item.product.unit;
                       const planned = Number(item.plannedWeight);
                       return (
                         <div key={item.id} className="flex items-center justify-between">
                           <div className="flex items-center gap-2 min-w-0">
-                            <div className="w-5 h-5 rounded-full bg-yellow-100 text-yellow-700 flex items-center justify-center text-[10px] font-bold shrink-0">
+                            <div className="w-5 h-5 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center text-[10px] font-bold shrink-0">
                               {idx + 1}
                             </div>
                             <span className="text-sm text-gray-700 truncate">{item.product.name}</span>
@@ -114,7 +124,7 @@ function WorkerDashboard() {
                   </div>
 
                   {order.note && (
-                    <div className="mt-3 bg-yellow-50 border border-yellow-100 rounded-xl px-3 py-2 text-xs text-gray-600">
+                    <div className="mt-3 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2 text-xs text-gray-600">
                       💬 {order.note}
                     </div>
                   )}
@@ -128,17 +138,18 @@ function WorkerDashboard() {
       {/* Очікують */}
       {pendingOrders.length > 0 && (
         <div>
-          <div className="flex items-center gap-2 mb-2">
-            <div className="w-2 h-2 bg-gray-400 rounded-full" />
-            <span className="text-sm font-semibold text-gray-700">Очікують виконання ({pendingOrders.length})</span>
+          <div className="flex items-center gap-2 mb-2.5">
+            <div className="w-2.5 h-2.5 bg-sky-400 rounded-full" />
+            <span className="text-sm font-bold text-gray-700">Очікують виконання</span>
+            <span className="text-xs bg-sky-100 text-sky-700 px-2 py-0.5 rounded-full font-bold">{pendingOrders.length}</span>
           </div>
           <div className="space-y-2">
             {pendingOrders.map((order: any) => {
               const totalWeight = order.items.reduce((s: number, i: any) => s + Number(i.plannedWeight), 0);
               return (
-                <div key={order.id} className="bg-white border border-gray-200 rounded-xl px-4 py-3 flex items-center justify-between">
+                <div key={order.id} className="bg-white border border-gray-100 rounded-2xl px-4 py-3 flex items-center justify-between shadow-sm hover:shadow-md transition-shadow">
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center text-gray-600 text-xs font-bold shrink-0">
+                    <div className="w-9 h-9 rounded-xl bg-sky-50 flex items-center justify-center text-sky-600 text-xs font-bold shrink-0">
                       №{order.numberForm ?? order.number}
                     </div>
                     <div className="min-w-0">
@@ -159,10 +170,10 @@ function WorkerDashboard() {
       )}
 
       {!isLoading && activeOrders.length === 0 && pendingOrders.length === 0 && (
-        <div className="text-center py-16">
-          <div className="text-5xl mb-4">🎉</div>
-          <div className="font-semibold text-gray-700 text-lg">Все виконано!</div>
-          <div className="text-gray-400 text-sm mt-1">Нових заявок поки немає</div>
+        <div className="text-center py-16 bg-gradient-to-br from-emerald-50 to-teal-50 rounded-3xl border border-emerald-100">
+          <div className="text-6xl mb-4">🎉</div>
+          <div className="font-bold text-gray-700 text-lg">Все виконано!</div>
+          <div className="text-gray-400 text-sm mt-1">Нових заявок поки немає — гарного відпочинку</div>
         </div>
       )}
     </div>

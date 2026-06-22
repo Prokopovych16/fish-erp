@@ -13,10 +13,12 @@ export const ROUTES: RouteConfig[] = [
   { path: '/archive',    label: '🗂 Архів',          roles: ['ADMIN', 'ACCOUNTANT', 'INSPECTOR'] },
   { path: '/warehouse',  label: '🏭 Склади',         roles: ['ADMIN', 'INSPECTOR'] },
   { path: '/production-calc', label: '💎 Калькулятор', roles: ['ADMIN', 'INSPECTOR'] },
+  { path: '/forecast',   label: '📦 Прогноз закупівлі', roles: ['ADMIN'] },
   { path: '/clients',    label: '🤝 Клієнти',        roles: ['ADMIN', 'ACCOUNTANT', 'INSPECTOR'] },
   { path: '/products',   label: '🐟 Продукція',      roles: ['ADMIN', 'ACCOUNTANT', 'INSPECTOR'] },
   { path: '/statistics', label: '📈 Статистика',     roles: ['ADMIN', 'ACCOUNTANT', 'INSPECTOR'] },
   { path: '/settings',   label: '⚙️ Налаштування',   roles: ['ADMIN'] },
   { path: '/audit',      label: '🔍 Аудит',          roles: ['ADMIN', 'INSPECTOR'] },
-  { path: '/stores',     label: '🏪 Магазини',        roles: ['ADMIN', 'INSPECTOR'] },
+  { path: '/recipes',    label: '📖 Рецептура',      roles: ['ADMIN', 'INSPECTOR'] },
+  { path: '/tasks',      label: '✅ Справи',        roles: ['ADMIN', 'WORKER', 'ACCOUNTANT', 'INSPECTOR'] },
 ];

@@ -61,63 +61,67 @@ function OutputRow({ output, costPerKg }: { output: CalcOutput; costPerKg: numbe
   const marginBg = marginPct >= 20 ? 'bg-green-50 border-green-200' : marginPct >= 10 ? 'bg-yellow-50 border-yellow-200' : 'bg-red-50 border-red-200';
 
   return (
-    <div className="py-3 border-b border-gray-100 last:border-0 space-y-2">
+    <div className="rounded-2xl border border-gray-100 bg-gray-50/40 p-3.5 space-y-3">
       {/* Назва продукту */}
-      <div className="flex items-center gap-2">
-        <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold shrink-0 ${
-          output.form === 'FORM_1' ? 'bg-blue-100 text-blue-600' : 'bg-orange-100 text-orange-600'
-        }`}>
-          {output.form === 'FORM_1' ? 'Ф1' : 'Ф2'}
-        </span>
+      <div className="flex items-center gap-2.5">
+        <div className="w-9 h-9 rounded-xl bg-white border border-gray-200 flex items-center justify-center text-base shrink-0">🐟</div>
         <div className="min-w-0 flex-1">
-          <div className="font-semibold text-gray-800 text-sm truncate">{output.productName}</div>
-          <div className="text-[10px] text-gray-400">
-            {Number(output.quantity).toFixed(3)} кг · собів. {costPerKg.toFixed(2)} ₴/кг
+          <div className="flex items-center gap-1.5">
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-bold shrink-0 ${
+              output.form === 'FORM_1' ? 'bg-blue-100 text-blue-600' : 'bg-orange-100 text-orange-600'
+            }`}>
+              {output.form === 'FORM_1' ? 'Ф1' : 'Ф2'}
+            </span>
+            <span className="font-bold text-gray-800 text-sm truncate">{output.productName}</span>
+          </div>
+          <div className="text-xs text-gray-400 mt-0.5">
+            {Number(output.quantity).toFixed(3)} кг · собівартість {costPerKg.toFixed(2)} ₴/кг
           </div>
         </div>
       </div>
 
       {/* Метрики + дія */}
-      <div className="grid grid-cols-4 gap-2 items-center">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 items-stretch">
         {/* Націнка % */}
-        <div className="flex items-center gap-1">
-          <input
-            type="number" step="0.1" min="0"
-            value={markup}
-            onChange={(e) => setMarkup(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && isDirty && handleSave()}
-            placeholder="0"
-            className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white font-semibold"
-          />
-          <span className="text-xs text-gray-400 shrink-0">%</span>
+        <div className="bg-white border border-gray-200 rounded-xl px-2.5 py-2">
+          <div className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide mb-1">Націнка</div>
+          <div className="flex items-center gap-1">
+            <input
+              type="number" step="0.1" min="0"
+              value={markup}
+              onChange={(e) => setMarkup(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && isDirty && handleSave()}
+              placeholder="0"
+              className="w-full min-w-0 focus:outline-none text-sm text-right font-bold text-gray-800"
+            />
+            <span className="text-xs text-gray-400 shrink-0">%</span>
+          </div>
         </div>
 
         {/* Ціна продажу */}
-        <div className="text-center">
+        <div className="bg-purple-50 border border-purple-100 rounded-xl px-2.5 py-2 text-center">
+          <div className="text-[10px] text-purple-400 font-semibold uppercase tracking-wide mb-1">Ціна/кг</div>
           <div className="font-bold text-purple-700 text-sm">{salePrice.toFixed(2)} ₴</div>
-          <div className="text-[10px] text-gray-400">ціна/кг</div>
         </div>
 
         {/* Маржа */}
-        <div className={`rounded-lg border px-1.5 py-1 text-center ${marginBg}`}>
-          <div className={`font-bold text-sm ${marginColor}`}>{marginPct.toFixed(1)}%</div>
-          <div className="text-[10px] text-gray-500">{marginPerKg.toFixed(2)} ₴</div>
+        <div className={`rounded-xl border px-2.5 py-2 text-center ${marginBg}`}>
+          <div className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide mb-1">Маржа %</div>
+          <div className={`font-bold text-sm ${marginColor}`}>{marginPct.toFixed(1)}% <span className="text-[10px] font-normal text-gray-400">({marginPerKg.toFixed(2)}₴)</span></div>
         </div>
 
         {/* Загальна маржа або кнопка зберегти */}
-        <div>
-          {isDirty ? (
-            <button onClick={handleSave} disabled={saving}
-              className="w-full bg-purple-600 text-white text-xs px-2 py-2 rounded-lg hover:bg-purple-700 disabled:opacity-50 transition-colors font-bold">
-              {saving ? '...' : 'Зберегти'}
-            </button>
-          ) : (
-            <div className="text-right">
-              <div className={`font-bold text-sm ${marginColor}`}>{marginTotal.toFixed(2)} ₴</div>
-              <div className="text-[10px] text-gray-400">маржа</div>
-            </div>
-          )}
-        </div>
+        {isDirty ? (
+          <button onClick={handleSave} disabled={saving}
+            className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-xs px-2 py-2 rounded-xl hover:opacity-90 disabled:opacity-50 transition-all font-bold shadow-sm">
+            {saving ? '...' : '✓ Зберегти'}
+          </button>
+        ) : (
+          <div className="bg-emerald-50 border border-emerald-100 rounded-xl px-2.5 py-2 text-center">
+            <div className="text-[10px] text-emerald-500 font-semibold uppercase tracking-wide mb-1">Маржа загалом</div>
+            <div className={`font-bold text-sm ${marginColor}`}>{marginTotal.toFixed(2)} ₴</div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -149,35 +153,38 @@ function CalcCard({ calc, onDelete }: { calc: ProductionCalc; onDelete: (id: str
 
   return (
     <div className={`bg-white rounded-2xl border overflow-hidden shadow-sm transition-all ${
-      expanded ? 'border-purple-200' : 'border-gray-200'
+      expanded ? 'border-purple-200 shadow-md' : 'border-gray-100 hover:border-gray-200 hover:shadow-md'
     }`}>
       {/* Шапка */}
       <div
         onClick={() => setExpanded(!expanded)}
-        className={`px-5 py-4 cursor-pointer transition-colors flex items-center justify-between gap-4 ${
-          expanded ? 'bg-purple-600' : 'bg-gray-50 hover:bg-gray-100'
+        className={`px-4 sm:px-5 py-3.5 sm:py-4 cursor-pointer transition-colors flex items-center justify-between gap-3 sm:gap-4 ${
+          expanded ? 'bg-gradient-to-r from-purple-600 to-indigo-600' : 'bg-gray-50/70 hover:bg-gray-100/70'
         }`}
       >
         {/* Ліва частина: дата + теги */}
-        <div className="flex items-center gap-4 flex-wrap min-w-0">
-          <div className="shrink-0">
-            <div className={`font-bold text-sm ${expanded ? 'text-white' : 'text-gray-800'}`}>{date}</div>
-            {calc.note && (
-              <div className={`text-xs mt-0.5 ${expanded ? 'text-purple-200' : 'text-gray-400'}`}>{calc.note}</div>
-            )}
+        <div className="flex items-center gap-3 sm:gap-4 flex-wrap min-w-0">
+          <div className="shrink-0 flex items-center gap-2.5">
+            <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-base shrink-0 ${expanded ? 'bg-white/20' : 'bg-white border border-gray-200'}`}>⚙️</div>
+            <div>
+              <div className={`font-bold text-sm ${expanded ? 'text-white' : 'text-gray-800'}`}>{date}</div>
+              {calc.note && (
+                <div className={`text-xs mt-0.5 truncate max-w-[160px] ${expanded ? 'text-purple-200' : 'text-gray-400'}`}>{calc.note}</div>
+              )}
+            </div>
           </div>
-          <div className="flex items-center gap-1.5 flex-wrap">
+          <div className="hidden md:flex items-center gap-1.5 flex-wrap">
             {calc.inputs.map((inp) => (
               <span key={inp.id} className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                expanded ? 'bg-purple-500 text-white' : 'bg-gray-200 text-gray-600'
+                expanded ? 'bg-white/15 text-white' : 'bg-gray-100 text-gray-600'
               }`}>
                 {inp.productName} {Number(inp.quantity).toFixed(1)} кг{inp.supplierName ? ` · ${inp.supplierName}` : ''}
               </span>
             ))}
-            <span className={`text-xs ${expanded ? 'text-purple-300' : 'text-gray-300'}`}>→</span>
+            <span className={`text-xs ${expanded ? 'text-purple-200' : 'text-gray-300'}`}>→</span>
             {calc.outputs.map((out) => (
-              <span key={out.id} className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                expanded ? 'bg-purple-500 text-white' : 'bg-purple-100 text-purple-700'
+              <span key={out.id} className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
+                expanded ? 'bg-white/25 text-white' : 'bg-purple-50 text-purple-700'
               }`}>
                 {out.productName} {Number(out.quantity).toFixed(1)} кг
               </span>
@@ -186,13 +193,13 @@ function CalcCard({ calc, onDelete }: { calc: ProductionCalc; onDelete: (id: str
         </div>
 
         {/* Права частина: статистика */}
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           <div className="hidden sm:flex items-center gap-3">
             <div className="text-center">
               <div className={`text-[10px] font-semibold uppercase tracking-wide ${expanded ? 'text-purple-200' : 'text-gray-400'}`}>Собівартість</div>
               <div className={`font-bold text-sm ${expanded ? 'text-white' : 'text-purple-700'}`}>{costPerKg.toFixed(2)} ₴/кг</div>
             </div>
-            <div className={`w-px h-7 ${expanded ? 'bg-purple-400' : 'bg-gray-200'}`} />
+            <div className={`w-px h-7 ${expanded ? 'bg-white/20' : 'bg-gray-200'}`} />
             <div className="text-center">
               <div className={`text-[10px] font-semibold uppercase tracking-wide ${expanded ? 'text-purple-200' : 'text-gray-400'}`}>Вихід</div>
               <div className={`font-bold text-sm ${expanded ? yieldColorExpanded : yieldColorCollapsed}`}>
@@ -201,10 +208,10 @@ function CalcCard({ calc, onDelete }: { calc: ProductionCalc; onDelete: (id: str
             </div>
             {hasMarkups && (
               <>
-                <div className={`w-px h-7 ${expanded ? 'bg-purple-400' : 'bg-gray-200'}`} />
+                <div className={`w-px h-7 ${expanded ? 'bg-white/20' : 'bg-gray-200'}`} />
                 <div className="text-center">
                   <div className={`text-[10px] font-semibold uppercase tracking-wide ${expanded ? 'text-purple-200' : 'text-gray-400'}`}>Маржа</div>
-                  <div className={`font-bold text-sm ${expanded ? 'text-green-300' : 'text-green-600'}`}>
+                  <div className={`font-bold text-sm ${expanded ? 'text-emerald-300' : 'text-emerald-600'}`}>
                     {totalMargin.toFixed(2)} ₴
                   </div>
                 </div>
@@ -213,7 +220,7 @@ function CalcCard({ calc, onDelete }: { calc: ProductionCalc; onDelete: (id: str
           </div>
           <button
             onClick={(e) => { e.stopPropagation(); onDelete(calc.id); }}
-            className={`text-sm px-1 transition-colors ${expanded ? 'text-purple-300 hover:text-white' : 'text-gray-400 hover:text-red-500'}`}>
+            className={`w-7 h-7 rounded-lg flex items-center justify-center text-sm transition-colors ${expanded ? 'text-purple-200 hover:text-white hover:bg-white/10' : 'text-gray-400 hover:text-red-500 hover:bg-red-50'}`}>
             🗑
           </button>
           <span className={`text-base transition-transform duration-200 inline-block ${expanded ? 'rotate-180' : ''} ${expanded ? 'text-white' : 'text-gray-400'}`}>
@@ -222,115 +229,120 @@ function CalcCard({ calc, onDelete }: { calc: ProductionCalc; onDelete: (id: str
         </div>
       </div>
 
+      {/* Теги на мобільних — окремим рядком */}
+      <div className={`md:hidden flex items-center gap-1.5 flex-wrap px-4 py-2.5 ${expanded ? 'bg-purple-700/90' : 'bg-gray-50/40 border-t border-gray-100'}`}>
+        {calc.inputs.map((inp) => (
+          <span key={inp.id} className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${expanded ? 'bg-white/15 text-white' : 'bg-gray-100 text-gray-600'}`}>
+            {inp.productName} {Number(inp.quantity).toFixed(1)} кг
+          </span>
+        ))}
+        <span className={`text-[11px] ${expanded ? 'text-purple-200' : 'text-gray-300'}`}>→</span>
+        {calc.outputs.map((out) => (
+          <span key={out.id} className={`text-[11px] px-2 py-0.5 rounded-full font-semibold ${expanded ? 'bg-white/25 text-white' : 'bg-purple-50 text-purple-700'}`}>
+            {out.productName} {Number(out.quantity).toFixed(1)} кг
+          </span>
+        ))}
+      </div>
+
       {/* Розгорнутий вміст */}
       {expanded && (
-        <div className="p-5 space-y-5">
+        <div className="p-4 sm:p-5 space-y-5 bg-gray-50/30">
 
           {/* Таблиця сировини */}
           <div>
-            <div className="flex items-center gap-2 mb-2">
-              <span className="w-5 h-5 rounded-full bg-red-100 text-red-600 flex items-center justify-center text-[10px] font-bold shrink-0">↑</span>
-              <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Сировина</span>
+            <div className="flex items-center gap-2 mb-2.5">
+              <span className="w-7 h-7 rounded-xl bg-red-100 text-red-600 flex items-center justify-center text-xs font-bold shrink-0">↑</span>
+              <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Сировина · Витрати</span>
             </div>
-            <div className="bg-red-50 border border-red-100 rounded-xl overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-[10px] text-gray-400 uppercase tracking-wide border-b border-red-100">
-                    <th className="px-3 py-2.5 text-left font-semibold">Продукт</th>
-                    <th className="px-3 py-2.5 text-left font-semibold">Постачальник</th>
-                    <th className="px-3 py-2.5 text-right font-semibold">Кількість</th>
-                    <th className="px-3 py-2.5 text-right font-semibold">Ціна/кг</th>
-                    <th className="px-3 py-2.5 text-right font-semibold">Вартість</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {calc.inputs.map((inp) => (
-                    <tr key={inp.id} className="border-t border-red-100 hover:bg-red-100/30">
-                      {/* Продукт */}
-                      <td className="px-3 py-2.5">
-                        <div className="flex items-center gap-2">
-                          <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold shrink-0 ${
-                            inp.form === 'FORM_1' ? 'bg-blue-100 text-blue-600' : 'bg-orange-100 text-orange-600'
-                          }`}>
-                            {inp.form === 'FORM_1' ? 'Ф1' : 'Ф2'}
-                          </span>
-                          <span className="font-semibold text-gray-700">{inp.productName}</span>
-                        </div>
-                      </td>
-                      {/* Постачальник */}
-                      <td className="px-3 py-2.5">
-                        {inp.supplierName
-                          ? <span className="bg-purple-50 text-purple-600 px-2 py-0.5 rounded-lg text-xs font-medium">{inp.supplierName}</span>
-                          : <span className="text-gray-300 text-xs">—</span>
-                        }
-                      </td>
-                      {/* Кількість */}
-                      <td className="px-3 py-2.5 text-right font-semibold text-gray-700">
-                        {Number(inp.quantity).toFixed(3)} кг
-                      </td>
-                      {/* Ціна/кг */}
-                      <td className="px-3 py-2.5 text-right text-gray-500">
-                        {Number(inp.pricePerKg).toFixed(2)} ₴
-                      </td>
-                      {/* Вартість */}
-                      <td className="px-3 py-2.5 text-right font-bold text-red-600">
-                        {Number(inp.totalCost).toFixed(2)} ₴
-                      </td>
+            <div className="bg-white border border-red-100 rounded-2xl overflow-hidden shadow-sm">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-[10px] text-gray-400 uppercase tracking-wide bg-red-50/60 border-b border-red-100">
+                      <th className="px-3.5 py-2.5 text-left font-bold">Продукт</th>
+                      <th className="px-3.5 py-2.5 text-left font-bold">Постачальник</th>
+                      <th className="px-3.5 py-2.5 text-right font-bold">Кількість</th>
+                      <th className="px-3.5 py-2.5 text-right font-bold">Ціна/кг</th>
+                      <th className="px-3.5 py-2.5 text-right font-bold">Вартість</th>
                     </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr className="border-t border-red-200 bg-red-100/60">
-                    <td className="px-3 py-2 font-bold text-gray-700" colSpan={4}>Всього витрат</td>
-                    <td className="px-3 py-2 text-right font-bold text-red-700">{totalInputCost.toFixed(2)} ₴</td>
-                  </tr>
-                </tfoot>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {calc.inputs.map((inp) => (
+                      <tr key={inp.id} className="hover:bg-red-50/30 transition-colors">
+                        {/* Продукт */}
+                        <td className="px-3.5 py-3">
+                          <div className="flex items-center gap-2">
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-bold shrink-0 ${
+                              inp.form === 'FORM_1' ? 'bg-blue-100 text-blue-600' : 'bg-orange-100 text-orange-600'
+                            }`}>
+                              {inp.form === 'FORM_1' ? 'Ф1' : 'Ф2'}
+                            </span>
+                            <span className="font-semibold text-gray-700">{inp.productName}</span>
+                          </div>
+                        </td>
+                        {/* Постачальник */}
+                        <td className="px-3.5 py-3">
+                          {inp.supplierName
+                            ? <span className="bg-purple-50 text-purple-600 px-2 py-0.5 rounded-lg text-xs font-medium">{inp.supplierName}</span>
+                            : <span className="text-gray-300 text-xs">—</span>
+                          }
+                        </td>
+                        {/* Кількість */}
+                        <td className="px-3.5 py-3 text-right font-semibold text-gray-700">
+                          {Number(inp.quantity).toFixed(3)} кг
+                        </td>
+                        {/* Ціна/кг */}
+                        <td className="px-3.5 py-3 text-right text-gray-500">
+                          {Number(inp.pricePerKg).toFixed(2)} ₴
+                        </td>
+                        {/* Вартість */}
+                        <td className="px-3.5 py-3 text-right font-bold text-red-600">
+                          {Number(inp.totalCost).toFixed(2)} ₴
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t-2 border-red-100 bg-red-50/60">
+                      <td className="px-3.5 py-2.5 font-bold text-gray-700" colSpan={4}>Всього витрат</td>
+                      <td className="px-3.5 py-2.5 text-right font-bold text-red-700">{totalInputCost.toFixed(2)} ₴</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
             </div>
           </div>
 
-          {/* Рядок з інфо про вихід */}
-          <div className="flex items-center gap-3">
-            <div className="flex-1 border-t border-dashed border-gray-200" />
-            <div className="flex items-center gap-3 bg-purple-50 border border-purple-200 rounded-xl px-4 py-2 text-xs flex-wrap justify-center">
-              <span className="text-gray-500">
-                Сировина: <b className="text-gray-700">{totalInputQty.toFixed(2)} кг</b>
-              </span>
-              <span className="text-gray-300">·</span>
-              <span className="text-gray-500">
-                Вихід: <b className={yieldPct >= 80 ? 'text-green-600' : 'text-orange-500'}>{yieldPct.toFixed(1)}%</b>
-              </span>
-              <span className="text-gray-300">·</span>
-              <span className="text-gray-500">
-                Готової: <b className="text-gray-700">{totalOutputQty.toFixed(2)} кг</b>
-              </span>
-              <span className="text-gray-300">·</span>
-              <span className="text-gray-500">
-                Собівартість: <b className="text-purple-700">{costPerKg.toFixed(2)} ₴/кг</b>
-              </span>
+          {/* Зведення про вихід */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            <div className="bg-white border border-gray-100 rounded-xl px-3 py-2.5 text-center shadow-sm">
+              <div className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide mb-0.5">Сировина</div>
+              <div className="font-bold text-gray-800 text-sm">{totalInputQty.toFixed(2)} кг</div>
             </div>
-            <div className="flex-1 border-t border-dashed border-gray-200" />
+            <div className={`bg-white border rounded-xl px-3 py-2.5 text-center shadow-sm ${yieldPct >= 80 ? 'border-emerald-100' : 'border-orange-100'}`}>
+              <div className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide mb-0.5">Вихід</div>
+              <div className={`font-bold text-sm ${yieldPct >= 80 ? 'text-emerald-600' : 'text-orange-500'}`}>{yieldPct.toFixed(1)}%</div>
+            </div>
+            <div className="bg-white border border-gray-100 rounded-xl px-3 py-2.5 text-center shadow-sm">
+              <div className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide mb-0.5">Готової</div>
+              <div className="font-bold text-gray-800 text-sm">{totalOutputQty.toFixed(2)} кг</div>
+            </div>
+            <div className="bg-purple-50 border border-purple-100 rounded-xl px-3 py-2.5 text-center shadow-sm">
+              <div className="text-[10px] text-purple-400 font-semibold uppercase tracking-wide mb-0.5">Собівартість</div>
+              <div className="font-bold text-purple-700 text-sm">{costPerKg.toFixed(2)} ₴/кг</div>
+            </div>
           </div>
 
-          {/* Таблиця готової продукції */}
+          {/* Готова продукція · Ціноутворення */}
           <div>
-            <div className="flex items-center gap-2 mb-2">
-              <span className="w-5 h-5 rounded-full bg-green-100 text-green-600 flex items-center justify-center text-[10px] font-bold shrink-0">↓</span>
+            <div className="flex items-center gap-2 mb-2.5">
+              <span className="w-7 h-7 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center text-xs font-bold shrink-0">↓</span>
               <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Готова продукція · Ціноутворення</span>
             </div>
-            <div className="border border-gray-200 rounded-xl overflow-hidden">
-              <div className="grid grid-cols-12 gap-3 px-4 py-2 bg-gray-50 border-b border-gray-200 text-[10px] text-gray-400 font-bold uppercase tracking-wide">
-                <div className="col-span-4">Продукт</div>
-                <div className="col-span-2 text-right">Націнка %</div>
-                <div className="col-span-2 text-right">Ціна продажу</div>
-                <div className="col-span-2 text-center">Маржа</div>
-                <div className="col-span-2 text-right">Загалом</div>
-              </div>
-              <div className="px-4">
-                {calc.outputs.map((output) => (
-                  <OutputRow key={output.id} output={output} costPerKg={costPerKg} />
-                ))}
-              </div>
+            <div className="space-y-2.5">
+              {calc.outputs.map((output) => (
+                <OutputRow key={output.id} output={output} costPerKg={costPerKg} />
+              ))}
             </div>
           </div>
 
@@ -408,30 +420,35 @@ const stats = useMemo(() => {
 
   return (
     <div className="space-y-5">
-      {/* Заголовок + таби */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-gray-800">Калькулятор виробництва</h1>
-          <p className="text-xs text-gray-400 mt-0.5">Собівартість · Ціноутворення · Маржа</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="flex rounded-lg border border-gray-200 overflow-hidden text-sm">
-            <button onClick={() => setActiveTab('calcs')}
-              className={`px-3 py-1.5 font-medium ${activeTab === 'calcs' ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
-              📋 Розрахунки
-            </button>
-            <button onClick={() => setActiveTab('ai')}
-              className={`px-3 py-1.5 font-medium ${activeTab === 'ai' ? 'bg-purple-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
-              🤖 AI Ціни
-            </button>
+      {/* Шапка-дашборд */}
+      <div className="bg-gradient-to-br from-slate-50 via-white to-purple-50/40 rounded-2xl sm:rounded-3xl border border-gray-100 p-3.5 sm:p-5 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2 sm:gap-2.5">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center text-lg sm:text-xl shadow-md shadow-purple-200 shrink-0">💎</div>
+            <div>
+              <h1 className="text-lg sm:text-xl font-bold text-gray-800 tracking-tight">Калькулятор виробництва</h1>
+              <p className="text-xs sm:text-sm text-gray-400">Собівартість · Ціноутворення · Маржа</p>
+            </div>
           </div>
-          {activeTab === 'calcs' && (
-            <button onClick={() => setShowFilters(v => !v)}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm transition-colors ${showFilters || hasFilters ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
-              🔍 Фільтри
-              {hasFilters && <span className="bg-white text-purple-600 text-xs px-1.5 py-0.5 rounded-full font-bold">{[search, dateFrom, dateTo].filter(Boolean).length}</span>}
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            <div className="flex rounded-xl border border-gray-200 overflow-hidden text-sm bg-white shadow-sm">
+              <button onClick={() => setActiveTab('calcs')}
+                className={`px-3 py-2 font-medium transition-colors ${activeTab === 'calcs' ? 'bg-gray-900 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
+                📋 Розрахунки
+              </button>
+              <button onClick={() => setActiveTab('ai')}
+                className={`px-3 py-2 font-medium transition-colors ${activeTab === 'ai' ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
+                🤖 AI Ціни
+              </button>
+            </div>
+            {activeTab === 'calcs' && (
+              <button onClick={() => setShowFilters(v => !v)}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl border text-sm font-medium transition-all ${showFilters || hasFilters ? 'bg-gray-900 text-white border-gray-900 shadow-md' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'}`}>
+                🔍 Фільтри
+                {hasFilters && <span className="bg-white text-gray-900 text-xs px-1.5 py-0.5 rounded-full font-bold">{[search, dateFrom, dateTo].filter(Boolean).length}</span>}
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -440,29 +457,29 @@ const stats = useMemo(() => {
 
       {/* Все нижче — тільки для вкладки Розрахунки */}
       {activeTab === 'calcs' && showFilters && (
-        <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 space-y-3">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div>
-              <label className="block text-xs text-gray-500 font-semibold uppercase tracking-wide mb-1.5">
+              <label className="block text-xs text-gray-400 font-semibold uppercase tracking-wide mb-1.5">
                 Пошук по продукту або постачальнику
               </label>
               <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
                 placeholder="Назва..."
-                className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 font-semibold uppercase tracking-wide mb-1.5">Від</label>
+              <label className="block text-xs text-gray-400 font-semibold uppercase tracking-wide mb-1.5">Від</label>
               <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
-                className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 font-semibold uppercase tracking-wide mb-1.5">До</label>
+              <label className="block text-xs text-gray-400 font-semibold uppercase tracking-wide mb-1.5">До</label>
               <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
-                className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
             </div>
           </div>
           {hasFilters && (
-            <button onClick={resetFilters} className="text-xs text-red-500 hover:text-red-700 transition-colors">
+            <button onClick={resetFilters} className="text-xs text-red-500 hover:text-red-700 font-medium transition-colors">
               × Скинути фільтри
             </button>
           )}
@@ -473,28 +490,31 @@ const stats = useMemo(() => {
 {stats && (
   <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
     {/* Партій */}
-    <div className="bg-white border border-gray-200 rounded-xl px-4 py-3">
-      <div className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide mb-1">Партій</div>
-      <div className="font-bold text-xl text-gray-800">{stats.count}</div>
+    <div className="bg-white border border-gray-100 shadow-sm rounded-2xl px-4 py-3 flex items-center gap-3">
+      <div className="w-9 h-9 rounded-xl bg-gray-50 flex items-center justify-center text-base shrink-0">📦</div>
+      <div className="min-w-0">
+        <div className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide">Партій</div>
+        <div className="font-bold text-lg text-gray-800 leading-tight">{stats.count}</div>
+      </div>
     </div>
 
     {/* Найкращий вихід */}
-    <div className="bg-white border border-green-200 rounded-xl px-4 py-3">
-      <div className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide mb-1">Найкращий вихід</div>
-      <div className="font-bold text-lg text-green-600">{stats.bestYield.pct.toFixed(1)}%</div>
-      <div className="text-[10px] text-gray-500 mt-0.5 truncate">{stats.bestYield.name}</div>
+    <div className="bg-white border border-emerald-100 shadow-sm rounded-2xl px-4 py-3">
+      <div className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide mb-1">🏆 Найкращий вихід</div>
+      <div className="font-bold text-lg text-emerald-600">{stats.bestYield.pct.toFixed(1)}%</div>
+      <div className="text-[10px] text-gray-400 mt-0.5 truncate">{stats.bestYield.name}</div>
     </div>
 
     {/* Найгірший вихід */}
-    <div className="bg-white border border-red-200 rounded-xl px-4 py-3">
-      <div className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide mb-1">Найгірший вихід</div>
+    <div className="bg-white border border-red-100 shadow-sm rounded-2xl px-4 py-3">
+      <div className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide mb-1">⚠️ Найгірший вихід</div>
       <div className="font-bold text-lg text-red-500">{stats.worstYield.pct.toFixed(1)}%</div>
-      <div className="text-[10px] text-gray-500 mt-0.5 truncate">{stats.worstYield.name}</div>
+      <div className="text-[10px] text-gray-400 mt-0.5 truncate">{stats.worstYield.name}</div>
     </div>
 
     {/* Без націнки */}
-    <div className={`bg-white rounded-xl px-4 py-3 border ${
-      stats.withoutMarkup > 0 ? 'border-orange-200' : 'border-gray-200'
+    <div className={`bg-white shadow-sm rounded-2xl px-4 py-3 border ${
+      stats.withoutMarkup > 0 ? 'border-orange-100' : 'border-gray-100'
     }`}>
       <div className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide mb-1">Без ціни продажу</div>
       {stats.withoutMarkup > 0 ? (
@@ -504,7 +524,7 @@ const stats = useMemo(() => {
         </>
       ) : (
         <>
-          <div className="font-bold text-lg text-green-600">✓ Всі</div>
+          <div className="font-bold text-lg text-emerald-600">✓ Всі</div>
           <div className="text-[10px] text-gray-400 mt-0.5">ціни встановлено</div>
         </>
       )}

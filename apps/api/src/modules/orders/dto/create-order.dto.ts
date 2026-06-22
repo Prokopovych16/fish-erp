@@ -1,4 +1,4 @@
-import { IsString, IsEnum, IsOptional, IsArray, ValidateNested, IsNumber, Min } from 'class-validator';
+import { IsString, IsEnum, IsOptional, IsArray, ValidateNested, IsNumber, Min, IsBoolean } from 'class-validator';
 import { Type } from 'class-transformer';
 import { Form } from '@prisma/client';
 
@@ -61,4 +61,8 @@ export class CreateOrderDto {
   @IsOptional()
   @IsString()
   invoiceDate?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  isBazaar?: boolean;
 }

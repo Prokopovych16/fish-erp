@@ -120,6 +120,35 @@ export class ClientsService {
     return { message: 'Ціни збережено' };
   }
 
+  async bulkUpsertPrices(dto: {
+    clientIds: string[];
+    prices: { productId: string; price: number; form: string }[];
+  }) {
+    const operations = dto.clientIds.flatMap((clientId) =>
+      dto.prices.map((item) =>
+        this.prisma.clientPrice.upsert({
+          where: {
+            clientId_productId_form: {
+              clientId,
+              productId: item.productId,
+              form: item.form as any,
+            },
+          },
+          update: { price: item.price },
+          create: {
+            clientId,
+            productId: item.productId,
+            price: item.price,
+            form: item.form as any,
+          },
+        }),
+      ),
+    );
+
+    await this.prisma.$transaction(operations);
+    return { message: 'Ціни оновлено', clientsCount: dto.clientIds.length };
+  }
+
   async deletePrice(clientId: string, productId: string, form: string) {
     return this.prisma.clientPrice.deleteMany({
       where: { clientId, productId, form: form as any },

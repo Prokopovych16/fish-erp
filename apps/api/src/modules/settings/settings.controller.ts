@@ -1,4 +1,5 @@
-import { Controller, Get, Put, Body, UseGuards } from '@nestjs/common';
+import { Controller, Get, Put, Body, UseGuards, Res } from '@nestjs/common';
+import { Response } from 'express';
 import { SettingsService } from './settings.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -14,6 +15,20 @@ export class SettingsController {
   @Get()
   getAll() {
     return this.settingsService.getAll();
+  }
+
+  // GET /api/settings/backup — завантажити дамп БД (тільки ADMIN)
+  @Roles(UserRole.ADMIN)
+  @Get('backup')
+  async backup(@Res() res: Response) {
+    const dump = await this.settingsService.backupDatabase();
+    const date = new Date().toISOString().slice(0, 10);
+    res.set({
+      'Content-Type': 'application/sql',
+      'Content-Disposition': `attachment; filename="fish-erp-backup-${date}.sql"`,
+      'Content-Length': dump.length,
+    });
+    res.end(dump);
   }
 
   // PUT /api/settings — зберегти налаштування (тільки ADMIN)

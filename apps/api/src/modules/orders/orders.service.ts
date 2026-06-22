@@ -179,8 +179,19 @@ export class OrdersService {
       }
     }
 
-    // Визначаємо статус — чернетка або звичайна
-    const status = dto.status === 'DRAFT' ? 'DRAFT' : 'PENDING';
+    // Визначаємо статус — чернетка або звичайна (базар чернеткою бути не може — видача реальна, одразу PENDING)
+    const isBazaar = !!dto.isBazaar;
+    const status = !isBazaar && dto.status === 'DRAFT' ? 'DRAFT' : 'PENDING';
+
+    // Базар: товар фізично видається одразу при створенні — перевіряємо наявність ДО створення заявки,
+    // щоб не лишити "порожню" заявку, якщо сировини не вистачає.
+    if (isBazaar) {
+      await this.checkStockAvailability(
+        (dto.items ?? [])
+          .filter((item) => Number(item.plannedWeight) > 0)
+          .map((item) => ({ productId: item.productId, qty: Number(item.plannedWeight) })),
+      );
+    }
 
     const order = await this.prisma.order.create({
       data: {
@@ -188,6 +199,7 @@ export class OrdersService {
         form: dto.form,
         numberForm: finalNumberForm,
         status: status as any,
+        isBazaar,
         createdById: userId,
         plannedDate: dto.plannedDate ? new Date(dto.plannedDate) : null,
         invoiceDate: dto.invoiceDate ? new Date(dto.invoiceDate) : null,
@@ -213,20 +225,314 @@ export class OrdersService {
       },
     });
 
+    // Видача на базар — списуємо зі складу одразу (це фактична видача товару, не "план")
+    if (isBazaar) {
+      await this.deductFifoForItems(
+        order.items
+          .filter((item) => Number(item.plannedWeight) > 0)
+          .map((item) => ({ productId: item.productId, productName: item.product?.name, qty: Number(item.plannedWeight) })),
+        order.form,
+        order.id,
+        order.numberForm ?? order.number,
+      );
+    }
+
     await this.audit.log({
       userId,
-      action: 'ORDER_CREATED',
+      action: isBazaar ? 'BAZAAR_ISSUED' : 'ORDER_CREATED',
       entityId: order.id,
       newValue: {
         number: order.numberForm,
         clientId: dto.clientId,
         form: dto.form,
         status,
+        isBazaar,
         deliveryPointId: dto.deliveryPointId,
       },
     });
 
     return order;
+  }
+
+  // ─── Базар: оформлення повернення і автоматичний розрахунок ─────────────────
+  async recordBazaarReturn(
+    id: string,
+    dto: { items: { itemId: string; returnedWeight: number }[] },
+    userId: string,
+    userRole: UserRole,
+  ) {
+    if (userRole !== UserRole.ADMIN) {
+      throw new ForbiddenException('Тільки адмін може оформлювати повернення з базару');
+    }
+
+    const order = await this.findOne(id, userRole);
+
+    if (!(order as any).isBazaar) {
+      throw new BadRequestException('Це не базарна заявка');
+    }
+    if (order.status !== OrderStatus.PENDING) {
+      throw new BadRequestException('Повернення вже оформлено для цієї заявки');
+    }
+
+    const itemMap = new Map(dto.items.map((i) => [i.itemId, i.returnedWeight]));
+
+    for (const item of order.items) {
+      const returned = itemMap.get(item.id);
+      if (returned === undefined) {
+        throw new BadRequestException('Вкажіть повернену кількість для всіх позицій');
+      }
+      if (returned < 0 || returned > Number(item.plannedWeight)) {
+        throw new BadRequestException(
+          `Повернена кількість для "${item.product.name}" має бути від 0 до ${Number(item.plannedWeight)}`,
+        );
+      }
+    }
+
+    // Повертаємо на склад те, що базарник привіз назад
+    const finishedWarehouse = await this.prisma.warehouse.findFirst({
+      where: { type: 'FINISHED_GOODS', isActive: true },
+    });
+
+    for (const item of order.items) {
+      const returned = itemMap.get(item.id) ?? 0;
+
+      await this.prisma.orderItem.update({
+        where: { id: item.id },
+        data: { returnedWeight: returned },
+      });
+
+      if (returned > 0 && finishedWarehouse) {
+        await this.prisma.stockItem.create({
+          data: {
+            warehouseId: finishedWarehouse.id,
+            productId: item.productId,
+            form: order.form,
+            quantity: returned,
+            arrivedAt: new Date(),
+          },
+        });
+        await this.prisma.stockMovement.create({
+          data: {
+            type: 'IN',
+            warehouseId: finishedWarehouse.id,
+            productId: item.productId,
+            quantity: returned,
+            form: order.form,
+            note: `Повернення з базару по заявці №${order.numberForm ?? order.number}`,
+            orderId: order.id,
+          },
+        });
+      }
+    }
+
+    const updated = await this.prisma.order.update({
+      where: { id },
+      data: { status: OrderStatus.DONE, completedAt: new Date() },
+      include: {
+        client: true,
+        deliveryPoint: true,
+        items: { include: { product: true }, orderBy: { sortOrder: 'asc' } },
+      },
+    });
+
+    await this.audit.log({
+      userId,
+      action: 'BAZAAR_SETTLED',
+      entityId: id,
+      newValue: {
+        items: dto.items,
+      },
+    });
+
+    return updated;
+  }
+
+  // Перевірка наявності товару БЕЗ списання — щоб не створювати заявку,
+  // якщо сировини/товару точно не вистачить (використовується перед видачею на базар).
+  private async checkStockAvailability(
+    items: { productId: string; productName?: string; qty: number }[],
+  ): Promise<void> {
+    const relevantItems = items.filter((i) => i.qty > 0);
+    if (relevantItems.length === 0) return;
+
+    const bypassSetting = await this.prisma.systemSettings.findUnique({
+      where: { key: 'bypassStock' },
+    });
+    if (bypassSetting?.value === 'true') return;
+
+    const shipWarehouses = await this.prisma.warehouse.findMany({
+      where: { type: { in: ['FINISHED_GOODS', 'FRIDGE'] }, isActive: true },
+    });
+    if (shipWarehouses.length === 0) {
+      throw new BadRequestException(
+        'Не знайдено склад готової продукції. Створіть склад типу FINISHED_GOODS.',
+      );
+    }
+    const shipWarehouseIds = shipWarehouses.map((w) => w.id);
+
+    const shortages: { productName: string; needed: number; available: number }[] = [];
+
+    for (const item of relevantItems) {
+      const product = await this.prisma.product.findUnique({
+        where: { id: item.productId },
+        include: { group: { include: { products: { select: { id: true } } } } },
+      });
+      const productIds = [item.productId];
+      if (product?.group) {
+        for (const p of product.group.products) {
+          if (p.id !== item.productId) productIds.push(p.id);
+        }
+      }
+      const batches = await this.prisma.stockItem.findMany({
+        where: { warehouseId: { in: shipWarehouseIds }, productId: { in: productIds }, quantity: { gt: 0 } },
+      });
+      const available = batches.reduce((s, b) => s + Number(b.quantity), 0);
+
+      if (available < item.qty) {
+        shortages.push({
+          productName: item.productName ?? product?.name ?? item.productId,
+          needed: item.qty,
+          available,
+        });
+      }
+    }
+
+    if (shortages.length > 0) {
+      throw new BadRequestException(
+        JSON.stringify({
+          type: 'STOCK_SHORTAGE',
+          message: 'Недостатньо товару на складі готової продукції',
+          shortages,
+          warehouseIds: shipWarehouseIds,
+        }),
+      );
+    }
+  }
+
+  // ─── Допоміжний метод: списання товару по FIFO (зі складів готової продукції) ───
+  // Використовується і при завершенні звичайної заявки (DONE), і при видачі товару на базар.
+  // Кидає BadRequestException(STOCK_SHORTAGE) якщо товару не вистачає; мовчки виходить, якщо склад вимкнено налаштуванням.
+  private async deductFifoForItems(
+    items: { productId: string; productName?: string; qty: number }[],
+    form: Form,
+    orderId: string,
+    orderLabel: number,
+  ): Promise<void> {
+    const relevantItems = items.filter((i) => i.qty > 0);
+    if (relevantItems.length === 0) return;
+
+    const bypassSetting = await this.prisma.systemSettings.findUnique({
+      where: { key: 'bypassStock' },
+    });
+    if (bypassSetting?.value === 'true') return;
+
+    const shipWarehouses = await this.prisma.warehouse.findMany({
+      where: { type: { in: ['FINISHED_GOODS', 'FRIDGE'] }, isActive: true },
+    });
+
+    if (shipWarehouses.length === 0) {
+      throw new BadRequestException(
+        'Не знайдено склад готової продукції. Створіть склад типу FINISHED_GOODS.',
+      );
+    }
+
+    const shipWarehouseIds = shipWarehouses.map((w) => w.id);
+
+    // Допоміжна функція: повертає партії продукту + взаємозамінних продуктів групи
+    const getBatchesForItem = async (productId: string) => {
+      const product = await this.prisma.product.findUnique({
+        where: { id: productId },
+        include: {
+          group: {
+            include: {
+              products: { select: { id: true, name: true } },
+            },
+          },
+        },
+      });
+
+      const productIds = [productId];
+      if (product?.group) {
+        for (const p of product.group.products) {
+          if (p.id !== productId) productIds.push(p.id);
+        }
+      }
+
+      const batches = await this.prisma.stockItem.findMany({
+        where: {
+          warehouseId: { in: shipWarehouseIds },
+          productId: { in: productIds },
+          quantity: { gt: 0 },
+        },
+        include: { product: true },
+        orderBy: { arrivedAt: 'asc' },
+      });
+
+      return { product, batches, productIds };
+    };
+
+    const shortages: { productName: string; needed: number; available: number }[] = [];
+
+    for (const item of relevantItems) {
+      const { product, batches } = await getBatchesForItem(item.productId);
+      const available = batches.reduce((s, b) => s + Number(b.quantity), 0);
+
+      if (available < item.qty) {
+        shortages.push({
+          productName: item.productName ?? product?.name ?? item.productId,
+          needed: item.qty,
+          available,
+        });
+      }
+    }
+
+    if (shortages.length > 0) {
+      throw new BadRequestException(
+        JSON.stringify({
+          type: 'STOCK_SHORTAGE',
+          message: 'Недостатньо товару на складі готової продукції',
+          shortages,
+          warehouseIds: shipWarehouseIds,
+        }),
+      );
+    }
+
+    for (const item of relevantItems) {
+      const { batches } = await getBatchesForItem(item.productId);
+
+      const deductedByKey: Map<string, { productId: string; warehouseId: string; qty: number }> = new Map();
+      let remaining = item.qty;
+
+      for (const batch of batches) {
+        if (remaining <= 0) break;
+        const deduct = Math.min(Number(batch.quantity), remaining);
+        await this.prisma.stockItem.update({
+          where: { id: batch.id },
+          data: { quantity: { decrement: deduct } },
+        });
+        const key = `${batch.productId}:${batch.warehouseId}`;
+        const prev = deductedByKey.get(key);
+        deductedByKey.set(key, { productId: batch.productId, warehouseId: batch.warehouseId, qty: (prev?.qty ?? 0) + deduct });
+        remaining -= deduct;
+      }
+
+      for (const { productId: deductedProductId, warehouseId: deductedWarehouseId, qty: deductedQty } of deductedByKey.values()) {
+        const isSubstitute = deductedProductId !== item.productId;
+        await this.prisma.stockMovement.create({
+          data: {
+            type: 'OUT',
+            warehouseId: deductedWarehouseId,
+            productId: deductedProductId,
+            quantity: deductedQty,
+            form,
+            note: isSubstitute
+              ? `Списано (замість ${item.productId}) по заявці №${orderLabel}`
+              : `Списано по заявці №${orderLabel}`,
+            orderId,
+          },
+        });
+      }
+    }
   }
 
   async updateStatus(
@@ -262,6 +568,15 @@ export class OrdersService {
 
     if (dto.status === OrderStatus.CANCELLED && userRole !== UserRole.ADMIN) {
       throw new ForbiddenException('Тільки адмін може скасовувати заявки');
+    }
+
+    // Базарні заявки мають власний життєвий цикл (видача → повернення → розрахунок,
+    // через окремий метод recordBazaarReturn) — звичайна зміна статусу для них заборонена,
+    // щоб не зламати облік складу (товар уже списано при видачі).
+    if ((order as any).isBazaar) {
+      throw new BadRequestException(
+        'Статус базарної заявки змінюється тільки через оформлення повернення',
+      );
     }
 
     // ─── DONE → IN_PROGRESS: повернення товару ───────────────────────────────
@@ -372,129 +687,18 @@ export class OrdersService {
         return updated;
       }
 
-      const shipWarehouses = await this.prisma.warehouse.findMany({
-        where: { type: { in: ['FINISHED_GOODS', 'FRIDGE'] }, isActive: true },
-      });
-
-      if (shipWarehouses.length === 0) {
-        throw new BadRequestException(
-          'Не знайдено склад готової продукції. Створіть склад типу FINISHED_GOODS.',
-        );
-      }
-
-      const shipWarehouseIds = shipWarehouses.map((w) => w.id);
-
-      // Допоміжна функція: повертає партії продукту + взаємозамінних продуктів групи
-      const getBatchesForItem = async (productId: string) => {
-        const product = await this.prisma.product.findUnique({
-          where: { id: productId },
-          include: {
-            group: {
-              include: {
-                products: {
-                  select: { id: true, name: true },
-                },
-              },
-            },
-          },
-        });
-
-        // Збираємо productId-и для пошуку: сам продукт + інші з тієї ж групи
-        const productIds = [productId];
-        if (product?.group) {
-          for (const p of product.group.products) {
-            if (p.id !== productId) productIds.push(p.id);
-          }
-        }
-
-        const batches = await this.prisma.stockItem.findMany({
-          where: {
-            warehouseId: { in: shipWarehouseIds },
-            productId: { in: productIds },
-            quantity: { gt: 0 },
-          },
-          include: { product: true },
-          orderBy: { arrivedAt: 'asc' },
-        });
-
-        return { product, batches, productIds };
-      };
-
-      const shortages: {
-        productName: string;
-        needed: number;
-        available: number;
-      }[] = [];
-
-      for (const item of order.items) {
-        const weight = Number(item.actualWeight ?? item.plannedWeight);
-        if (weight <= 0) continue;
-
-        const { product, batches } = await getBatchesForItem(item.productId);
-        const available = batches.reduce((s, b) => s + Number(b.quantity), 0);
-
-        if (available < weight) {
-          shortages.push({
-            productName: item.product?.name ?? product?.name ?? item.productId,
-            needed: weight,
-            available,
-          });
-        }
-      }
-
-      if (shortages.length > 0) {
-        throw new BadRequestException(
-          JSON.stringify({
-            type: 'STOCK_SHORTAGE',
-            message: 'Недостатньо товару на складі готової продукції',
-            shortages,
-            warehouseIds: shipWarehouseIds,
-          }),
-        );
-      }
-
-      for (const item of order.items) {
-        const weight = Number(item.actualWeight ?? item.plannedWeight);
-        if (weight <= 0) continue;
-
-        const { batches } = await getBatchesForItem(item.productId);
-
-        // Списуємо FIFO по батчах (може бути кілька продуктів/складів групи)
-        // Відстежуємо скільки списано з кожного (продукт + склад) для StockMovement
-        const deductedByKey: Map<string, { productId: string; warehouseId: string; qty: number }> = new Map();
-        let remaining = weight;
-
-        for (const batch of batches) {
-          if (remaining <= 0) break;
-          const deduct = Math.min(Number(batch.quantity), remaining);
-          await this.prisma.stockItem.update({
-            where: { id: batch.id },
-            data: { quantity: { decrement: deduct } },
-          });
-          const key = `${batch.productId}:${batch.warehouseId}`;
-          const prev = deductedByKey.get(key);
-          deductedByKey.set(key, { productId: batch.productId, warehouseId: batch.warehouseId, qty: (prev?.qty ?? 0) + deduct });
-          remaining -= deduct;
-        }
-
-        // Створюємо StockMovement для кожного реально списаного продукту/складу
-        for (const { productId: deductedProductId, warehouseId: deductedWarehouseId, qty: deductedQty } of deductedByKey.values()) {
-          const isSubstitute = deductedProductId !== item.productId;
-          await this.prisma.stockMovement.create({
-            data: {
-              type: 'OUT',
-              warehouseId: deductedWarehouseId,
-              productId: deductedProductId,
-              quantity: deductedQty,
-              form: order.form,
-              note: isSubstitute
-                ? `Списано (замість ${item.productId}) по заявці №${order.numberForm ?? order.number}`
-                : `Списано по заявці №${order.numberForm ?? order.number}`,
-              orderId: order.id,
-            },
-          });
-        }
-      }
+      await this.deductFifoForItems(
+        order.items
+          .filter((item) => Number(item.actualWeight ?? item.plannedWeight) > 0)
+          .map((item) => ({
+            productId: item.productId,
+            productName: item.product?.name,
+            qty: Number(item.actualWeight ?? item.plannedWeight),
+          })),
+        order.form,
+        order.id,
+        order.numberForm ?? order.number,
+      );
     }
 
     const updated = await this.prisma.order.update({
@@ -598,12 +802,67 @@ export class OrdersService {
       }
     }
 
-    // Позиції — тільки якщо заявка не DONE
+    // Позиції — для звичайної заявки заблоковано після DONE.
+    // Базарна заявка — особливий випадок: можна редагувати завжди (навіть після розрахунку),
+    // бо товар там живий, реально списаний/повернутий зі складу, і інколи треба виправити помилку.
+    const isBazaarOrder = !!(order as any).isBazaar;
     if (dto.items !== undefined) {
-      if (order.status === OrderStatus.DONE) {
+      if (order.status === OrderStatus.DONE && !isBazaarOrder) {
         throw new BadRequestException(
           'Не можна змінити позиції у виконаній заявці. Поверніть заявку до "В роботі" спочатку.',
         );
+      }
+
+      if (isBazaarOrder) {
+        // Базар: рахуємо РІЗНИЦЮ по чистому ефекту на складі (видано − повернено) для кожного товару.
+        // Це коректно і для заявки, що ще очікує повернення (повернено = 0), і для вже розрахованої.
+        const oldNetByProduct = new Map<string, number>();
+        for (const item of order.items) {
+          const net = Number(item.plannedWeight) - Number((item as any).returnedWeight ?? 0);
+          oldNetByProduct.set(item.productId, (oldNetByProduct.get(item.productId) ?? 0) + net);
+        }
+        const newNetByProduct = new Map<string, number>();
+        for (const item of dto.items) {
+          const net = Number(item.plannedWeight) - Number(item.returnedWeight ?? 0);
+          newNetByProduct.set(item.productId, (newNetByProduct.get(item.productId) ?? 0) + net);
+        }
+        const productIds = new Set([...oldNetByProduct.keys(), ...newNetByProduct.keys()]);
+
+        const toDeduct: { productId: string; qty: number }[] = [];
+        const toRestock: { productId: string; qty: number }[] = [];
+        for (const productId of productIds) {
+          const diff = (newNetByProduct.get(productId) ?? 0) - (oldNetByProduct.get(productId) ?? 0);
+          if (diff > 0) toDeduct.push({ productId, qty: diff });
+          else if (diff < 0) toRestock.push({ productId, qty: -diff });
+        }
+
+        if (toDeduct.length > 0) {
+          await this.checkStockAvailability(toDeduct);
+        }
+
+        if (toRestock.length > 0) {
+          const finishedWarehouse = await this.prisma.warehouse.findFirst({
+            where: { type: 'FINISHED_GOODS', isActive: true },
+          });
+          if (finishedWarehouse) {
+            for (const { productId, qty } of toRestock) {
+              await this.prisma.stockItem.create({
+                data: { warehouseId: finishedWarehouse.id, productId, form: order.form, quantity: qty, arrivedAt: new Date() },
+              });
+              await this.prisma.stockMovement.create({
+                data: {
+                  type: 'IN', warehouseId: finishedWarehouse.id, productId, quantity: qty, form: order.form,
+                  note: `Коригування позиції базарної заявки №${order.numberForm ?? order.number} — повернення на склад`,
+                  orderId: order.id,
+                },
+              });
+            }
+          }
+        }
+
+        if (toDeduct.length > 0) {
+          await this.deductFifoForItems(toDeduct, order.form, order.id, order.numberForm ?? order.number);
+        }
       }
 
       const clientId = dto.clientId ?? order.clientId;
@@ -619,6 +878,7 @@ export class OrdersService {
           productId: item.productId,
           plannedWeight: item.plannedWeight,
           actualWeight: item.actualWeight ?? null,
+          returnedWeight: isBazaarOrder ? (item.returnedWeight ?? null) : undefined,
           pricePerKg: item.pricePerKg != null ? item.pricePerKg : (priceMap.get(item.productId) ?? null),
           displayUnit: item.displayUnit ?? null,
         })),
@@ -678,6 +938,40 @@ export class OrdersService {
   async remove(id: string, userRole: UserRole, userId: string) {
     const order = await this.findOne(id, userRole);
 
+    // Базарна заявка вже реально списала товар зі складу при видачі (і частково повернула при поверненні).
+    // При видаленні — повертаємо назад те, що лишилось фактично списаним (видано − повернено).
+    if ((order as any).isBazaar) {
+      const finishedWarehouse = await this.prisma.warehouse.findFirst({
+        where: { type: 'FINISHED_GOODS', isActive: true },
+      });
+      if (finishedWarehouse) {
+        for (const item of order.items) {
+          const netDeducted = Number(item.plannedWeight) - Number((item as any).returnedWeight ?? 0);
+          if (netDeducted <= 0) continue;
+          await this.prisma.stockItem.create({
+            data: {
+              warehouseId: finishedWarehouse.id,
+              productId: item.productId,
+              form: order.form,
+              quantity: netDeducted,
+              arrivedAt: new Date(),
+            },
+          });
+          await this.prisma.stockMovement.create({
+            data: {
+              type: 'IN',
+              warehouseId: finishedWarehouse.id,
+              productId: item.productId,
+              quantity: netDeducted,
+              form: order.form,
+              note: `Повернення зі складу через видалення базарної заявки №${order.numberForm ?? order.number}`,
+              orderId: order.id,
+            },
+          });
+        }
+      }
+    }
+
     const deleted = await this.prisma.order.update({
       where: { id },
       data: { deletedAt: new Date() },
@@ -720,13 +1014,17 @@ export class OrdersService {
 
     const where: any = {
       deletedAt: null,
-      status: 'DONE',
+      // в реєстр йдуть усі окрім скасованих — і виконані, і ще в роботі/очікують
+      status: { not: 'CANCELLED' },
+      // базарні заявки — це видача/повернення товару, а не продаж, в реєстр накладних не йдуть
+      isBazaar: false,
       ...(params.form && { form: params.form as Form }),
       ...(userRole === UserRole.INSPECTOR && { form: Form.FORM_1 }),
-      // фільтр по даті накладної, якщо немає — по completedAt
+      // фільтр по даті накладної; якщо немає — по completedAt; якщо й того немає (ще не виконана) — по даті створення
       OR: [
         { invoiceDate: dateRange },
         { invoiceDate: null, completedAt: dateRange },
+        { invoiceDate: null, completedAt: null, createdAt: dateRange },
       ],
     };
 

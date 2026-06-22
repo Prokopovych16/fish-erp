@@ -1,3 +1,15 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Рецептура — стилі для вмісту rich-text редактора */
+.prose-recipe h3 { font-size: 1.05rem; font-weight: 700; color: #1f2937; margin: 0.75rem 0 0.4rem; }
+.prose-recipe blockquote { border-left: 3px solid #93c5fd; background: #eff6ff; padding: 0.5rem 0.9rem; margin: 0.5rem 0; border-radius: 0.5rem; color: #1e40af; font-style: italic; }
+.prose-recipe ul, .prose-recipe ol { padding-left: 1.4rem; margin: 0.4rem 0; }
+.prose-recipe li { margin: 0.15rem 0; }
+.prose-recipe img { display: block; max-width: 420px !important; width: 100%; height: auto; border-radius: 12px; margin: 8px 0; }
+.prose-recipe:empty::before { content: 'Опишіть процес тут...'; color: #9ca3af; }
+
+@media (max-width: 640px) {
+  .prose-recipe img { max-width: 280px !important; }
+}

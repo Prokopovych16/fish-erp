@@ -16,6 +16,12 @@ import { ProductionCalcModule } from './modules/production-calc/production-calc.
 import { ClientReturnsModule } from './modules/client-returns/client-returns.module';
 import { CashModule } from './modules/cash/cash.module';
 import { StoresModule } from './modules/stores/stores.module';
+import { TasksModule } from './modules/tasks/tasks.module';
+import { SupplierInvoicesModule } from './modules/supplier-invoices/supplier-invoices.module';
+import { RecipesModule } from './modules/recipes/recipes.module';
+import { BomModule } from './modules/bom/bom.module';
+import { ForecastModule } from './modules/forecast/forecast.module';
+import { BazaarAssortmentModule } from './modules/bazaar-assortment/bazaar-assortment.module';
 
 @Module({
   imports: [
@@ -36,6 +42,12 @@ import { StoresModule } from './modules/stores/stores.module';
     ClientReturnsModule,
     CashModule,
     StoresModule,
+    TasksModule,
+    SupplierInvoicesModule,
+    RecipesModule,
+    BomModule,
+    ForecastModule,
+    BazaarAssortmentModule,
   ],
 })
 export class AppModule {}

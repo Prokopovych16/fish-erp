@@ -446,13 +446,21 @@ function RegistryTab() {
 function SuppliersTab() {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
+  const [supplierId, setSupplierId] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const { data: suppliers = [] } = useQuery({
+    queryKey: ['suppliers'],
+    queryFn: () => api.get('/warehouses/suppliers').then(r => r.data),
+  });
 
   const handlePrint = async () => {
     if (!from || !to) return;
     setLoading(true);
     try {
-      const r = await api.get(`/documents/reports/suppliers?from=${from}&to=${to}`, { responseType: 'blob' });
+      const params = new URLSearchParams({ from, to });
+      if (supplierId) params.append('supplierId', supplierId);
+      const r = await api.get(`/documents/reports/supplier-registry?${params}`, { responseType: 'blob' });
       const url = window.URL.createObjectURL(new Blob([r.data], { type: 'application/pdf' }));
       window.open(url, '_blank');
       setTimeout(() => window.URL.revokeObjectURL(url), 60000);
@@ -466,11 +474,21 @@ function SuppliersTab() {
         from={from} to={to}
         onFromChange={setFrom} onToChange={setTo}
         onPrint={handlePrint} loading={loading}
-        label="Роздрукувати звіт"
+        label="Роздрукувати реєстр"
+        extra={
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Постачальник</label>
+            <select value={supplierId} onChange={(e) => setSupplierId(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="">Всі постачальники</option>
+              {(suppliers as any[]).filter((s: any) => s.isActive).map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
+        }
       />
       <div className="bg-green-50 border border-green-100 rounded-xl p-4 text-sm text-green-700">
-        <p className="font-semibold mb-1">💰 Звіт по постачальниках</p>
-        <p className="text-xs text-green-600">Детальний звіт для бухгалтерії: по кожному постачальнику — продукти, кількість, ціна з ПДВ, сума. Всі суми до копійки. Загальний підсумок в кінці.</p>
+        <p className="font-semibold mb-1">💰 Реєстр накладних постачальників</p>
+        <p className="text-xs text-green-600">Та ж структура, що й реєстр клієнтів: № накладної, дата, постачальник, сума з ПДВ, без ПДВ, ПДВ. Підсумок по кожному постачальнику і загальний — все до копійки.</p>
       </div>
     </div>
   );

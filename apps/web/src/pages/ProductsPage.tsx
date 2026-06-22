@@ -338,7 +338,7 @@ export default function ProductsPage() {
   const [view, setView] = useState<'grid' | 'table'>('grid');
   const [categoryFilter, setCategoryFilter] = useState<'ALL' | Category>('ALL');
 
-  const { data: products = [], isLoading } = useQuery({
+  const { data: products = [], isLoading } = useQuery<Product[]>({
     queryKey: ['products'],
     queryFn: () => api.get('/products').then((r) => r.data),
   });
@@ -367,49 +367,74 @@ export default function ProductsPage() {
     if (!acc[key]) acc[key] = [];
     acc[key].push(p);
     return acc;
-  }, {});
+  }, {} as Record<string, Product[]>);
 
   return (
-    <div className="space-y-4">
-      {/* Заголовок */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-gray-800">Продукція</h1>
-          <p className="text-xs text-gray-400 mt-0.5">
-            Всього активних: {activeCount}
-            {fishCount > 0 && ` · 🐟 ${fishCount}`}
-            {supplyCount > 0 && ` · 🧴 ${supplyCount}`}
-            {inactiveCount > 0 && ` · архів: ${inactiveCount}`}
-          </p>
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          {activeTab === 'products' && <>
-            <div className="flex rounded-lg border border-gray-200 overflow-hidden text-sm">
-              <button onClick={() => setView('grid')} className={`px-3 py-1.5 transition-colors ${view === 'grid' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>⊞</button>
-              <button onClick={() => setView('table')} className={`px-3 py-1.5 transition-colors ${view === 'table' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>☰</button>
+    <div className="space-y-5">
+      {/* Шапка-дашборд */}
+      <div className="bg-gradient-to-br from-slate-50 via-white to-blue-50/40 rounded-2xl sm:rounded-3xl border border-gray-100 p-3.5 sm:p-5 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-600 flex items-center justify-center text-lg sm:text-xl shadow-md shadow-blue-200">🐟</div>
+            <div>
+              <h1 className="text-lg sm:text-xl font-bold text-gray-800 tracking-tight">Продукція</h1>
+              <p className="text-xs sm:text-sm text-gray-400">Каталог риби та витратних матеріалів</p>
             </div>
-            {isAdmin && inactiveCount > 0 && (
-              <button onClick={() => setShowInactive(v => !v)}
-                className={`text-sm px-3 py-1.5 rounded-lg border transition-colors ${showInactive ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
-                {showInactive ? 'Сховати архів' : `Архів (${inactiveCount})`}
-              </button>
-            )}
-            {isAdmin && (
-              <button onClick={() => setShowCreate(true)}
-                className="bg-blue-600 text-white text-sm px-4 py-1.5 rounded-lg hover:bg-blue-700 transition-colors">
-                + Новий
-              </button>
-            )}
-          </>}
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            {activeTab === 'products' && <>
+              <div className="flex rounded-xl border border-gray-200 overflow-hidden text-sm bg-white shadow-sm">
+                <button onClick={() => setView('grid')} className={`px-3 py-2 transition-colors ${view === 'grid' ? 'bg-gray-900 text-white' : 'text-gray-500 hover:bg-gray-50'}`}>⊞</button>
+                <button onClick={() => setView('table')} className={`px-3 py-2 transition-colors ${view === 'table' ? 'bg-gray-900 text-white' : 'text-gray-500 hover:bg-gray-50'}`}>☰</button>
+              </div>
+              {isAdmin && inactiveCount > 0 && (
+                <button onClick={() => setShowInactive(v => !v)}
+                  className={`text-sm px-3.5 py-2 rounded-xl border transition-colors font-medium ${showInactive ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'}`}>
+                  {showInactive ? 'Сховати архів' : `Архів (${inactiveCount})`}
+                </button>
+              )}
+              {isAdmin && (
+                <button onClick={() => setShowCreate(true)}
+                  className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-sm px-4 py-2 rounded-xl hover:opacity-90 transition-all font-semibold shadow-md shadow-blue-200">
+                  + Новий
+                </button>
+              )}
+            </>}
+          </div>
+        </div>
+
+        {/* Міні-статистика */}
+        <div className="grid grid-cols-3 gap-2 sm:gap-3 mt-4 sm:mt-5">
+          <div className="bg-white/70 backdrop-blur-sm rounded-xl sm:rounded-2xl border border-gray-100 px-2.5 sm:px-4 py-2.5 sm:py-3 flex items-center gap-2 sm:gap-3">
+            <div className="w-9 h-9 rounded-xl bg-emerald-50 flex items-center justify-center text-base shrink-0">✓</div>
+            <div className="min-w-0">
+              <div className="text-[10px] text-gray-400 uppercase tracking-wide font-semibold">Активних</div>
+              <div className="font-bold text-gray-800 text-lg leading-tight">{activeCount}</div>
+            </div>
+          </div>
+          <div className="bg-white/70 backdrop-blur-sm rounded-xl sm:rounded-2xl border border-gray-100 px-2.5 sm:px-4 py-2.5 sm:py-3 flex items-center gap-2 sm:gap-3">
+            <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center text-base shrink-0">🐟</div>
+            <div className="min-w-0">
+              <div className="text-[10px] text-gray-400 uppercase tracking-wide font-semibold">Риба</div>
+              <div className="font-bold text-gray-800 text-lg leading-tight">{fishCount}</div>
+            </div>
+          </div>
+          <div className="bg-white/70 backdrop-blur-sm rounded-xl sm:rounded-2xl border border-gray-100 px-2.5 sm:px-4 py-2.5 sm:py-3 flex items-center gap-2 sm:gap-3">
+            <div className="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center text-base shrink-0">🧴</div>
+            <div className="min-w-0">
+              <div className="text-[10px] text-gray-400 uppercase tracking-wide font-semibold">Матеріали</div>
+              <div className="font-bold text-gray-800 text-lg leading-tight">{supplyCount}</div>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Вкладки */}
-      <div className="flex rounded-xl border border-gray-200 overflow-hidden text-sm w-fit bg-white">
-        {[{ id: 'products', label: '🐟 Продукти' }, { id: 'groups', label: '🔄 Групи взаємозаміни' }].map((tab) => (
+      {/* Таби */}
+      <div className="flex gap-1.5">
+        {[{ id: 'products', label: 'Продукти', icon: '🐟' }, { id: 'groups', label: 'Групи взаємозаміни', icon: '🔄' }].map((tab) => (
           <button key={tab.id} onClick={() => setActiveTab(tab.id as 'products' | 'groups')}
-            className={`px-4 py-2 font-medium transition-colors whitespace-nowrap ${activeTab === tab.id ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
-            {tab.label}
+            className={`px-3.5 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-1.5 ${activeTab === tab.id ? 'bg-gray-900 text-white shadow-md' : 'bg-white text-gray-500 border border-gray-200 hover:bg-gray-50'}`}>
+            <span>{tab.icon}</span>{tab.label}
           </button>
         ))}
       </div>
@@ -420,22 +445,22 @@ export default function ProductsPage() {
       {/* Пошук і фільтр категорії */}
       <div className="flex gap-2 flex-wrap">
         <div className="relative flex-1 min-w-[200px]">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">🔍</span>
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300 text-sm">🔍</span>
           <input value={search} onChange={(e) => setSearch(e.target.value)}
             placeholder="Пошук за назвою..."
-            className="w-full border border-gray-300 rounded-lg pl-8 pr-8 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            className="w-full border border-gray-200 rounded-xl pl-8 pr-8 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white shadow-sm" />
           {search && (
-            <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">×</button>
+            <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-600">×</button>
           )}
         </div>
-        <div className="flex rounded-lg border border-gray-200 overflow-hidden text-sm">
+        <div className="flex rounded-xl border border-gray-200 overflow-hidden text-sm bg-white shadow-sm">
           {[
             { value: 'ALL',    label: 'Всі' },
             { value: 'FISH',   label: '🐟 Риба' },
             { value: 'SUPPLY', label: '🧴 Матеріали' },
           ].map((c) => (
             <button key={c.value} onClick={() => setCategoryFilter(c.value as 'ALL' | Category)}
-              className={`px-3 py-1.5 transition-colors whitespace-nowrap ${categoryFilter === c.value ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+              className={`px-3.5 py-2 transition-colors whitespace-nowrap font-medium ${categoryFilter === c.value ? 'bg-gray-900 text-white' : 'text-gray-500 hover:bg-gray-50'}`}>
               {c.label}
             </button>
           ))}
@@ -444,56 +469,60 @@ export default function ProductsPage() {
 
       {/* Контент */}
       {isLoading ? (
-        <div className="text-center text-gray-400 py-12">Завантаження...</div>
+        <div className="text-center text-gray-400 py-16">
+          <div className="inline-block w-6 h-6 border-2 border-gray-200 border-t-blue-500 rounded-full animate-spin mb-3" />
+          <div className="text-sm">Завантаження...</div>
+        </div>
       ) : filtered.length === 0 ? (
-        <div className="text-center text-gray-400 py-16 border-2 border-dashed border-gray-200 rounded-xl">
-          <div className="text-4xl mb-3">{categoryFilter === 'SUPPLY' ? '🧴' : '🐟'}</div>
-          <div className="font-medium text-gray-500">{search ? 'Продуктів не знайдено' : 'Продуктів ще немає'}</div>
+        <div className="text-center text-gray-400 py-16 border-2 border-dashed border-gray-200 rounded-2xl">
+          <div className="text-5xl mb-3 opacity-40">{categoryFilter === 'SUPPLY' ? '🧴' : '🐟'}</div>
+          <div className="font-semibold text-gray-500">{search ? 'Продуктів не знайдено' : 'Продуктів ще немає'}</div>
           {isAdmin && !search && (
-            <button onClick={() => setShowCreate(true)} className="mt-3 text-blue-500 text-sm hover:text-blue-700">+ Додати перший продукт</button>
+            <button onClick={() => setShowCreate(true)} className="mt-2 text-blue-500 text-sm hover:text-blue-700 font-medium">+ Додати перший продукт</button>
           )}
         </div>
       ) : view === 'grid' ? (
-        <div className="space-y-4">
+        <div className="space-y-5">
           {Object.entries(grouped)
             .sort(([a], [b]) => a.localeCompare(b, 'uk'))
             .map(([letter, prods]) => (
               <div key={letter}>
                 {!search && (
-                  <div className="flex items-center gap-2 mb-2">
+                  <div className="flex items-center gap-2 mb-2.5">
                     <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 text-xs font-bold flex items-center justify-center">{letter}</div>
                     <div className="flex-1 h-px bg-gray-100" />
-                    <span className="text-xs text-gray-400">{prods.length}</span>
+                    <span className="text-xs text-gray-400 font-medium">{prods.length}</span>
                   </div>
                 )}
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                   {prods.map((product: Product) => {
                     const cat = (product.category ?? 'FISH') as Category;
                     const cfg = CATEGORY_CONFIG[cat];
                     return (
                       <div key={product.id}
-                        className={`bg-white rounded-xl border p-3 transition-all group ${product.isActive ? 'border-gray-200 hover:border-blue-200 hover:shadow-sm' : 'border-gray-100 opacity-50'}`}>
-                        <div className="flex items-start justify-between mb-2">
-                          <span className="text-2xl">{getProductIcon(product.name, cat)}</span>
-                          <div className="flex flex-row items-end gap-1">
-                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${cfg.bg} ${cfg.color} ${cfg.border} border`}>
+                        className={`bg-white rounded-2xl border p-3.5 transition-all duration-200 group ${product.isActive ? 'border-gray-100 hover:border-blue-200 hover:shadow-lg hover:-translate-y-0.5' : 'border-gray-100 opacity-50'}`}>
+                        <div className="flex items-start justify-between mb-2.5">
+                          <div className={`w-11 h-11 rounded-2xl flex items-center justify-center text-2xl shrink-0 ${cfg.bg}`}>
+                            {getProductIcon(product.name, cat)}
+                          </div>
+                          <div className="flex flex-col items-end gap-1">
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${cfg.bg} ${cfg.color} border ${cfg.border}`}>
                               {cfg.icon} {cfg.label}
                             </span>
-                            <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">{product.unit}</span>
-                            
+                            <span className="text-[10px] bg-gray-50 text-gray-400 px-1.5 py-0.5 rounded-md font-medium">{product.unit}</span>
                           </div>
                         </div>
-                        <div className="text-sm font-medium text-gray-800 leading-tight mb-3 line-clamp-2">{product.name}</div>
-                        <div className="flex items-center justify-between">
-                          <span className={`text-xs px-1.5 py-0.5 rounded-full ${product.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                            {product.isActive ? 'Активний' : 'Архів'}
+                        <div className="text-sm font-bold text-gray-800 leading-tight mb-3 line-clamp-2 min-h-[2.5em]">{product.name}</div>
+                        <div className="flex items-center justify-between pt-2 border-t border-gray-50">
+                          <span className={`text-[11px] px-2 py-0.5 rounded-full font-semibold ${product.isActive ? 'bg-emerald-50 text-emerald-600' : 'bg-gray-100 text-gray-500'}`}>
+                            {product.isActive ? '● Активний' : 'Архів'}
                           </span>
                           {isAdmin && (
                             <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                               <button onClick={() => setEditProduct(product)}
-                                className="text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded hover:bg-blue-100">✏️</button>
+                                className="text-xs bg-blue-50 text-blue-600 w-6 h-6 rounded-lg hover:bg-blue-100 flex items-center justify-center">✏️</button>
                               <button onClick={() => toggleMutation.mutate(product.id)}
-                                className={`text-xs px-2 py-1 rounded transition-colors ${product.isActive ? 'bg-red-50 text-red-500 hover:bg-red-100' : 'bg-green-50 text-green-600 hover:bg-green-100'}`}>
+                                className={`text-xs w-6 h-6 rounded-lg transition-colors flex items-center justify-center ${product.isActive ? 'bg-red-50 text-red-500 hover:bg-red-100' : 'bg-green-50 text-green-600 hover:bg-green-100'}`}>
                                 {product.isActive ? '🗃️' : '✓'}
                               </button>
                             </div>
@@ -507,49 +536,49 @@ export default function ProductsPage() {
             ))}
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-200">
+            <thead className="bg-gradient-to-r from-gray-50 to-white border-b border-gray-100">
               <tr className="text-left text-xs text-gray-500">
-                <th className="px-4 py-3 font-medium">Продукт</th>
-                <th className="px-4 py-3 font-medium">Категорія</th>
-                <th className="px-4 py-3 font-medium">Одиниця</th>
-                <th className="px-4 py-3 font-medium">Статус</th>
-                {isAdmin && <th className="px-4 py-3 font-medium text-right">Дії</th>}
+                <th className="px-5 py-3.5 font-semibold uppercase tracking-wide text-[10px]">Продукт</th>
+                <th className="px-5 py-3.5 font-semibold uppercase tracking-wide text-[10px]">Категорія</th>
+                <th className="px-5 py-3.5 font-semibold uppercase tracking-wide text-[10px]">Одиниця</th>
+                <th className="px-5 py-3.5 font-semibold uppercase tracking-wide text-[10px]">Статус</th>
+                {isAdmin && <th className="px-5 py-3.5 font-semibold uppercase tracking-wide text-[10px] text-right">Дії</th>}
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-gray-50">
               {filtered.map((product: Product) => {
                 const cat = (product.category ?? 'FISH') as Category;
                 const cfg = CATEGORY_CONFIG[cat];
                 return (
-                  <tr key={product.id} className={`hover:bg-gray-50 transition-colors ${!product.isActive ? 'opacity-50' : ''}`}>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <span className="text-lg">{getProductIcon(product.name, cat)}</span>
-                        <span className="font-medium text-gray-800">{product.name}</span>
+                  <tr key={product.id} className={`hover:bg-gray-50/70 transition-colors ${!product.isActive ? 'opacity-50' : ''}`}>
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-base shrink-0 ${cfg.bg}`}>{getProductIcon(product.name, cat)}</div>
+                        <span className="font-semibold text-gray-800">{product.name}</span>
                       </div>
                     </td>
-                    <td className="px-4 py-3">
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium border ${cfg.bg} ${cfg.color} ${cfg.border}`}>
+                    <td className="px-5 py-3">
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-semibold border ${cfg.bg} ${cfg.color} ${cfg.border}`}>
                         {cfg.icon} {cfg.label}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
-                      <span className="bg-gray-100 px-2 py-0.5 rounded text-xs text-gray-600">{product.unit}</span>
+                    <td className="px-5 py-3">
+                      <span className="bg-gray-50 px-2 py-0.5 rounded-md text-xs text-gray-500 font-medium">{product.unit}</span>
                     </td>
-                    <td className="px-4 py-3">
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${product.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                        {product.isActive ? 'Активний' : 'Архів'}
+                    <td className="px-5 py-3">
+                      <span className={`text-[11px] px-2 py-0.5 rounded-full font-semibold ${product.isActive ? 'bg-emerald-50 text-emerald-600' : 'bg-gray-100 text-gray-500'}`}>
+                        {product.isActive ? '● Активний' : 'Архів'}
                       </span>
                     </td>
                     {isAdmin && (
-                      <td className="px-4 py-3 text-right">
+                      <td className="px-5 py-3 text-right">
                         <div className="flex items-center justify-end gap-2">
                           <button onClick={() => setEditProduct(product)}
-                            className="text-xs bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg hover:bg-blue-100">Редагувати</button>
+                            className="text-xs bg-blue-50 text-blue-700 px-3 py-1.5 rounded-xl hover:bg-blue-100 font-medium transition-colors">Редагувати</button>
                           <button onClick={() => toggleMutation.mutate(product.id)}
-                            className={`text-xs px-3 py-1.5 rounded-lg transition-colors ${product.isActive ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-green-50 text-green-600 hover:bg-green-100'}`}>
+                            className={`text-xs px-3 py-1.5 rounded-xl transition-colors font-medium ${product.isActive ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'}`}>
                             {product.isActive ? 'Деактивувати' : 'Активувати'}
                           </button>
                         </div>

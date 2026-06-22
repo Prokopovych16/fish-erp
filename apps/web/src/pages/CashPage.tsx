@@ -372,31 +372,36 @@ export default function CashPage() {
     <div className="space-y-4">
 
       {/* Заголовок */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-gray-800">💵 Готівка</h1>
-          <p className="text-xs text-gray-400 mt-0.5">Облік готівкових коштів</p>
-        </div>
-        {/* Фізична готівка в сейфі */}
-        <div className="flex gap-2">
-          <div className="rounded-xl px-4 py-2 text-right border bg-green-50 border-green-200">
-            <div className="text-[10px] font-bold uppercase tracking-wide text-green-600">🏦 Всього в сейфі</div>
-            <div className="text-lg font-bold leading-tight text-green-700">{fmt(totalInSafe)} ₴</div>
-          </div>
-          {latestFund > 0 && (
-            <div className="rounded-xl px-4 py-2 text-right border bg-orange-50 border-orange-200">
-              <div className="text-[10px] font-bold uppercase tracking-wide text-orange-500">🏭 Вироб. фонд</div>
-              <div className="text-lg font-bold leading-tight text-orange-600">{fmt(latestFund)} ₴</div>
+      <div className="bg-gradient-to-br from-slate-50 via-white to-emerald-50/40 rounded-2xl sm:rounded-3xl border border-gray-100 p-3.5 sm:p-5 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center text-lg sm:text-xl shadow-md shadow-emerald-200 shrink-0">💵</div>
+            <div>
+              <h1 className="text-lg sm:text-xl font-bold text-gray-800">Готівка</h1>
+              <p className="text-xs text-gray-400 mt-0.5">Облік готівкових коштів</p>
             </div>
-          )}
+          </div>
+          {/* Фізична готівка в сейфі */}
+          <div className="flex gap-2">
+            <div className="bg-white/70 backdrop-blur-sm rounded-xl sm:rounded-2xl border border-gray-100 px-2.5 sm:px-4 py-2.5 sm:py-3 text-right">
+              <div className="text-[10px] font-bold uppercase tracking-wide text-green-600">🏦 Всього в сейфі</div>
+              <div className="text-base sm:text-lg font-bold leading-tight text-green-700">{fmt(totalInSafe)} ₴</div>
+            </div>
+            {latestFund > 0 && (
+              <div className="bg-white/70 backdrop-blur-sm rounded-xl sm:rounded-2xl border border-gray-100 px-2.5 sm:px-4 py-2.5 sm:py-3 text-right">
+                <div className="text-[10px] font-bold uppercase tracking-wide text-orange-500">🏭 Вироб. фонд</div>
+                <div className="text-base sm:text-lg font-bold leading-tight text-orange-600">{fmt(latestFund)} ₴</div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
       {/* Вкладки */}
-      <div className="flex rounded-xl border border-gray-200 overflow-hidden text-sm w-full sm:w-fit bg-white">
+      <div className="flex rounded-xl border border-gray-200 overflow-hidden text-sm w-full sm:w-fit bg-white p-1 gap-1">
         {TABS.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
-            className={`flex-1 sm:flex-none px-3 sm:px-4 py-2 font-medium transition-colors whitespace-nowrap text-xs sm:text-sm ${tab === t.key ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
+            className={`flex-1 sm:flex-none px-3 sm:px-4 py-2 rounded-lg font-medium transition-all whitespace-nowrap text-xs sm:text-sm ${tab === t.key ? 'bg-gray-900 text-white shadow-md' : 'text-gray-600 hover:bg-gray-50'}`}>
             {t.label}
           </button>
         ))}
@@ -413,7 +418,7 @@ export default function CashPage() {
           </div>
 
           {/* Підсумок місяця */}
-          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+          <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm">
             <div className="px-4 py-3 border-b bg-gray-50">
               <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Підсумок {MONTHS_UA[month - 1]} {year}</span>
             </div>
@@ -474,11 +479,11 @@ export default function CashPage() {
           </div>
 
           {/* Список записів */}
-          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+          <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm">
             <div className="px-4 py-3 border-b flex items-center justify-between">
               <span className="text-sm font-bold text-gray-700">Записи місяця</span>
               <button onClick={() => { setAdding(true); setAddingType(undefined); }}
-                className="bg-blue-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg hover:bg-blue-700 transition-colors">
+                className="bg-gray-900 text-white text-xs font-bold px-3 py-1.5 rounded-lg hover:bg-gray-800 transition-colors shadow-sm">
                 + Додати
               </button>
             </div>
@@ -494,16 +499,21 @@ export default function CashPage() {
                   const clr = COLOR_CLS[cfg?.color ?? 'blue'];
                   const amt = Number(e.amount);
                   return (
-                    <div key={e.id} className="px-4 py-3 flex items-center gap-3 hover:bg-gray-50/60 group">
+                    <div key={e.id} className="px-4 py-3 flex items-center gap-3 hover:bg-gray-50/60 transition-colors group">
                       <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-base shrink-0 border ${clr.bg} ${clr.border}`}>
                         {cfg?.icon ?? '📝'}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-semibold text-gray-800">{cfg?.label ?? e.type}</div>
-                        <div className="text-xs text-gray-400 flex items-center gap-1.5 mt-0.5">
-                          <span>{new Date(e.date).toLocaleDateString('uk-UA', { day: 'numeric', month: 'short' })}</span>
-                          {e.note && <><span>·</span><span className="italic truncate">{e.note}</span></>}
+                        <div className="text-xs text-gray-400 mt-0.5">
+                          {new Date(e.date).toLocaleDateString('uk-UA', { day: 'numeric', month: 'short' })}
                         </div>
+                        {e.note && (
+                          <div className="flex items-start gap-1.5 mt-1.5 bg-gray-50 border border-gray-100 rounded-lg px-2.5 py-1.5 max-w-full">
+                            <span className="text-gray-300 text-base leading-none shrink-0">"</span>
+                            <span className="text-sm text-gray-600 truncate">{e.note}</span>
+                          </div>
+                        )}
                       </div>
                       <span className={`font-bold text-sm shrink-0 ${cfg?.sign === 1 ? 'text-green-600' : 'text-red-500'}`}>
                         {cfg?.sign === 1 ? '+' : '−'}{fmt(amt)} ₴
@@ -528,7 +538,7 @@ export default function CashPage() {
           {/* Картки залишку зарплат */}
           <div className="grid grid-cols-2 gap-3">
             {/* Максим */}
-            <div className="bg-white border border-blue-200 rounded-xl p-4">
+            <div className="bg-white border border-blue-100 rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow">
               <div className="flex items-center gap-2 mb-3">
                 <div className="w-9 h-9 rounded-xl bg-blue-100 flex items-center justify-center text-lg">👤</div>
                 <div>
@@ -549,7 +559,7 @@ export default function CashPage() {
               </button>
             </div>
             {/* Ольга */}
-            <div className="bg-white border border-purple-200 rounded-xl p-4">
+            <div className="bg-white border border-purple-100 rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow">
               <div className="flex items-center gap-2 mb-3">
                 <div className="w-9 h-9 rounded-xl bg-purple-100 flex items-center justify-center text-lg">👩</div>
                 <div>
@@ -573,12 +583,12 @@ export default function CashPage() {
 
           {/* Кнопка виділити */}
           <button onClick={() => setAllocSalary(true)}
-            className="w-full bg-white border border-blue-300 text-blue-700 text-sm font-bold py-3 rounded-xl hover:bg-blue-50 transition-colors flex items-center justify-center gap-2">
+            className="w-full bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 text-blue-700 text-sm font-bold py-3 rounded-2xl hover:shadow-md transition-all flex items-center justify-center gap-2">
             <span>💼</span> Виділити зарплату на місяць
           </button>
 
           {/* Готівка в сейфі (розбивка) */}
-          <div className="bg-white border border-gray-200 rounded-xl p-4">
+          <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
             <div className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">🏦 Фактична готівка в сейфі</div>
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
@@ -611,7 +621,7 @@ export default function CashPage() {
           </div>
 
           {/* Історія виплат і виділень */}
-          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+          <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm">
             <div className="px-4 py-3 border-b bg-gray-50">
               <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Історія по місяцях</span>
             </div>
@@ -659,7 +669,7 @@ export default function CashPage() {
       {tab === 'summaries' && (
         <div className="space-y-3">
           {summaries.length === 0 ? (
-            <div className="bg-white border border-gray-200 rounded-xl px-5 py-12 text-center text-gray-400 text-sm">Даних ще немає</div>
+            <div className="bg-white border border-gray-100 rounded-2xl px-5 py-12 text-center text-gray-400 text-sm shadow-sm">Даних ще немає</div>
           ) : (
             [...summaries].reverse().map(s => {
               const sal = Number(s.salaryMe) + Number(s.salaryPartner);
@@ -668,7 +678,7 @@ export default function CashPage() {
               return (
                 <button key={`${s.year}-${s.month}`}
                   onClick={() => { setYear(s.year); setMonth(s.month); setTab('entries'); }}
-                  className={`w-full text-left rounded-xl border p-4 hover:shadow-sm transition-all ${isActive ? 'border-blue-300 bg-blue-50' : 'border-gray-200 bg-white hover:bg-gray-50'}`}>
+                  className={`w-full text-left rounded-2xl border p-4 shadow-sm hover:shadow-md transition-all ${isActive ? 'border-blue-300 bg-blue-50' : 'border-gray-100 bg-white hover:bg-gray-50'}`}>
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-bold text-gray-800">{MONTHS_UA[s.month - 1]} {s.year}</span>
@@ -698,7 +708,7 @@ export default function CashPage() {
       {tab === 'stats' && (
         <div className="space-y-4">
           {summaries.length === 0 ? (
-            <div className="bg-white border border-gray-200 rounded-xl px-5 py-12 text-center text-gray-400 text-sm">Недостатньо даних</div>
+            <div className="bg-white border border-gray-100 rounded-2xl px-5 py-12 text-center text-gray-400 text-sm shadow-sm">Недостатньо даних</div>
           ) : (() => {
             const totalTurnover = totalIncome + totalExpense;
             const avgIncome = summaries.length > 0 ? totalIncome / summaries.length : 0;
@@ -708,20 +718,20 @@ export default function CashPage() {
             return (
               <>
                 {/* Загальний оборот */}
-                <div className="bg-white border border-gray-200 rounded-xl p-4">
+                <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
                   <div className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Загальний оборот готівки</div>
                   <div className="grid grid-cols-3 gap-3">
-                    <div className="bg-green-50 border border-green-100 rounded-xl p-3">
+                    <div className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-100 rounded-xl p-3">
                       <div className="text-[10px] text-green-600 font-bold uppercase mb-1">💰 Всього дохід</div>
                       <div className="text-lg font-bold text-green-700">{fmt(totalIncome)}</div>
                       <div className="text-[10px] text-green-400 mt-0.5">∅ {fmt(avgIncome)}/міс</div>
                     </div>
-                    <div className="bg-red-50 border border-red-100 rounded-xl p-3">
+                    <div className="bg-gradient-to-br from-red-50 to-rose-50 border border-red-100 rounded-xl p-3">
                       <div className="text-[10px] text-red-500 font-bold uppercase mb-1">💸 Всього витрати</div>
                       <div className="text-lg font-bold text-red-600">{fmt(totalExpense)}</div>
                       <div className="text-[10px] text-red-400 mt-0.5">∅ {fmt(avgExpense)}/міс</div>
                     </div>
-                    <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
+                    <div className="bg-gradient-to-br from-slate-50 to-gray-100 border border-gray-100 rounded-xl p-3">
                       <div className="text-[10px] text-gray-500 font-bold uppercase mb-1">🔄 Оборот</div>
                       <div className="text-lg font-bold text-gray-700">{fmt(totalTurnover)}</div>
                       <div className="text-[10px] text-gray-400 mt-0.5">{summaries.length} міс.</div>
@@ -730,7 +740,7 @@ export default function CashPage() {
                 </div>
 
                 {/* Таблиця по місяцях */}
-                <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm">
                   <div className="px-4 py-3 border-b bg-gray-50">
                     <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Оборот по місяцях</span>
                   </div>
