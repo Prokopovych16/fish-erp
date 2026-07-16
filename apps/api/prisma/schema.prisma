@@ -374,6 +374,7 @@ model Order {
   id              String      @id @default(uuid())
   number          Int         @default(autoincrement())
   numberForm      Int?
+  numberSuffix    String?
   clientId        String
   form            Form
   status          OrderStatus @default(PENDING)

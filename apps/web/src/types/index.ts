@@ -90,6 +90,7 @@ export interface OrderItem {
 export interface Order {
   id: string;
   number: number;
+  numberSuffix?: string | null;
   clientId: string;
   form: Form;
   status: OrderStatus;

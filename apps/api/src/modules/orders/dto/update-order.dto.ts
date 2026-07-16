@@ -5,6 +5,7 @@ import {
   ValidateNested,
   IsNumber,
   Min,
+  MaxLength,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -76,6 +77,11 @@ export class UpdateOrderDto {
   @IsOptional()
   @IsString()
   invoiceDate?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(10)
+  numberSuffix?: string;
 
   @IsOptional()
   @IsArray()

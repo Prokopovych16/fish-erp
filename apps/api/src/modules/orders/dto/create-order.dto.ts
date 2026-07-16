@@ -50,6 +50,10 @@ export class CreateOrderDto {
 
   @IsOptional()
   @IsString()
+  numberSuffix?: string;
+
+  @IsOptional()
+  @IsString()
   status?: string;
 
   @IsArray()

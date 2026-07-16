@@ -71,15 +71,15 @@ export class DocumentsService {
     const company = await this.settings.getAll();
     const displayNumber = (order as any).numberForm ?? order.number;
 
-    let totalNoVat = 0;
+    let totalWithVat = 0;
     const itemsRows = order.items
       .map((item, index) => {
         const issued = Number(item.plannedWeight);
         const returned = Number((item as any).returnedWeight ?? 0);
         const sold = Math.max(issued - returned, 0);
-        const price = Number(item.pricePerKg ?? 0);
+        const price = Number(item.pricePerKg ?? 0); // price вже з ПДВ
         const sum = Math.round(sold * price * 100) / 100;
-        totalNoVat += sum;
+        totalWithVat += sum;
         return `
         <tr>
           <td>${index + 1}</td>
@@ -95,7 +95,8 @@ export class DocumentsService {
       })
       .join('');
 
-    const totalWithVat = Number((totalNoVat * 1.2).toFixed(2));
+    totalWithVat = Number(totalWithVat.toFixed(2));
+    const totalNoVat = Number((totalWithVat / 1.2).toFixed(2));
     const vat = Number((totalWithVat - totalNoVat).toFixed(2));
 
     const html = `
@@ -165,8 +166,8 @@ export class DocumentsService {
               <th style="width:62px">Видано</th>
               <th style="width:68px">Повернено</th>
               <th style="width:62px">Продано</th>
-              <th style="width:72px">Ціна без ПДВ</th>
-              <th style="width:80px">Сума без ПДВ</th>
+              <th style="width:72px">Ціна з ПДВ</th>
+              <th style="width:80px">Сума з ПДВ</th>
             </tr>
           </thead>
           <tbody>
@@ -231,8 +232,6 @@ export class DocumentsService {
           pricePerKg?: unknown;
         },
       ) => {
-        // шт-товар без фактичної ваги — ціну не рахуємо
-        if (item.product?.unit === 'шт' && !item.actualWeight) return sum;
         // Округлюємо кожен рядок до 2 знаків (як 1С) перед додаванням
         const rowTotal =
           Math.round(
@@ -391,12 +390,18 @@ export class DocumentsService {
   async generateInvoice(orderId: string): Promise<Buffer> {
     const order = await this.getOrderData(orderId);
     const company = await this.settings.getAll();
+    const isBazaar = !!(order as any).isBazaar;
 
     const displayNumber = (order as any).numberForm ?? order.number;
     const total = this.calculateTotal(order.items) as number;
-    const totalWithoutVat = total;
-    const vat = total * 0.2;
-    const totalWithVat = Number((total * 1.2).toFixed(2));
+    // Для базару pricePerKg вже з ПДВ — total і є totalWithVat
+    const totalWithVat = isBazaar
+      ? Number(total.toFixed(2))
+      : Number((total * 1.2).toFixed(2));
+    const totalWithoutVat = isBazaar
+      ? Number((total / 1.2).toFixed(2))
+      : total;
+    const vat = Number((totalWithVat - totalWithoutVat).toFixed(2));
 
     const itemsRows = order.items
       .map((item, index) => {
@@ -485,8 +490,8 @@ export class DocumentsService {
               <th>Товар</th>
               <th style="width:40px">Од.</th>
               <th style="width:70px">Кількість</th>
-              <th style="width:80px">Ціна без ПДВ</th>
-              <th style="width:90px">Сума без ПДВ</th>
+              <th style="width:80px">${isBazaar ? 'Ціна з ПДВ' : 'Ціна без ПДВ'}</th>
+              <th style="width:90px">${isBazaar ? 'Сума з ПДВ' : 'Сума без ПДВ'}</th>
             </tr>
           </thead>
           <tbody>
@@ -501,7 +506,7 @@ export class DocumentsService {
               <td class="value">${totalWithoutVat.toFixed(2)}</td>
             </tr>
             <tr>
-              <td class="label" colspan="5">ПДВ:</td>
+              <td class="label" colspan="5">ПДВ 20%:</td>
               <td class="value">${vat.toFixed(2)}</td>
             </tr>
             <tr class="total-final">
@@ -513,7 +518,7 @@ export class DocumentsService {
 
         <div class="sum-words">
           <b>Всього на суму:</b> ${this.numberToWords(totalWithVat)}<br>
-          ПДВ: ${vat.toFixed(2)} грн.
+          ПДВ 20%: ${vat.toFixed(2)} грн.
         </div>
 
         ${order.note ? `<div style="margin-top:6px; font-size:10px; color:#555;">Примітка: ${order.note}</div>` : ''}

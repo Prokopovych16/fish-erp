@@ -42,7 +42,8 @@ function WeightsEditModal({ order, onClose, onSaved }: {
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const displayNumber = (order as any).numberForm ?? order.number;
+  const extOrd = order as Order & { numberForm?: number; numberSuffix?: string };
+  const displayNumber = String(extOrd.numberForm ?? order.number) + (extOrd.numberSuffix ?? '');
   const totalPlanned = order.items.reduce((s, i) => s + Number(i.plannedWeight), 0);
   const totalActual = order.items.reduce((s, i) => s + (Number(weights[i.id]) || 0), 0);
   const totalUnit = order.items.length > 0 && order.items.every(i => i.product.unit === order.items[0].product.unit) ? order.items[0].product.unit : 'кг';
@@ -152,8 +153,9 @@ function OrderDetailsModal({ order, onClose, onEditWeights, onEdit, onDelete, us
   const queryClient = useQueryClient();
   const [printed, setPrinted] = useState(!!(order as any).printedAt);
   const [printLoading, setPrintLoading] = useState(false);
-  const deliveryPoint = (order as any).deliveryPoint;
-  const displayNumber = (order as any).numberForm ?? order.number;
+  const extOrdDet = order as Order & { numberForm?: number; numberSuffix?: string; deliveryPoint?: { name: string; address?: string } };
+  const deliveryPoint = extOrdDet.deliveryPoint;
+  const displayNumber = String(extOrdDet.numberForm ?? order.number) + (extOrdDet.numberSuffix ?? '');
   const total = calcOrderTotal(order.items);
   const totalWeight = order.items.reduce((s, i) => s + Number(i.actualWeight ?? i.plannedWeight), 0);
   const totalPlanned = order.items.reduce((s, i) => s + Number(i.plannedWeight), 0);
@@ -497,19 +499,21 @@ function SuppliersTab() {
 // ─── EditArchiveOrderModal ────────────────────────────────────────────────────
 function EditArchiveOrderModal({ order, onClose, onSaved }: { order: Order; onClose: () => void; onSaved: () => void }) {
   const queryClient = useQueryClient();
-  const displayNumber = (order as any).numberForm ?? order.number;
+  const extEdit = order as Order & { numberForm?: number; numberSuffix?: string; deliveryPointId?: string; invoiceDate?: string; plannedDate?: string };
+  const displayNumber = String(extEdit.numberForm ?? order.number) + (extEdit.numberSuffix ?? '');
 
   const [clientId, setClientId] = useState(order.clientId);
-  const [numberFormVal, setNumberFormVal] = useState(String((order as any).numberForm ?? ''));
+  const [numberFormVal, setNumberFormVal] = useState(String(extEdit.numberForm ?? ''));
+  const [numberSuffixVal, setNumberSuffixVal] = useState(extEdit.numberSuffix ?? '');
   const [driverName, setDriverName] = useState(order.driverName || '');
   const [carNumber, setCarNumber] = useState(order.carNumber || '');
-  const [deliveryPointId, setDeliveryPointId] = useState((order as any).deliveryPointId || '');
+  const [deliveryPointId, setDeliveryPointId] = useState(extEdit.deliveryPointId || '');
   const [note, setNote] = useState(order.note || '');
   const [invoiceDate, setInvoiceDate] = useState(
-    (order as any).invoiceDate ? new Date((order as any).invoiceDate).toISOString().slice(0, 10) : '',
+    extEdit.invoiceDate ? new Date(extEdit.invoiceDate).toISOString().slice(0, 10) : '',
   );
   const [plannedDate, setPlannedDate] = useState(
-    (order as any).plannedDate ? new Date((order as any).plannedDate).toISOString().slice(0, 10) : '',
+    extEdit.plannedDate ? new Date(extEdit.plannedDate).toISOString().slice(0, 10) : '',
   );
   const [items, setItems] = useState(
     order.items.map((i) => ({
@@ -542,6 +546,7 @@ function EditArchiveOrderModal({ order, onClose, onSaved }: { order: Order; onCl
       await api.patch(`/orders/${order.id}`, {
         clientId,
         numberForm: numberFormVal ? Number(numberFormVal) : undefined,
+        numberSuffix: numberSuffixVal || undefined,
         driverName: driverName || undefined,
         carNumber: carNumber || undefined,
         deliveryPointId: deliveryPointId || undefined,
@@ -594,9 +599,20 @@ function EditArchiveOrderModal({ order, onClose, onSaved }: { order: Order; onCl
 
           <div>
             <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Номер накладної</label>
-            <input type="number" min="1" value={numberFormVal}
-              onChange={(e) => setNumberFormVal(e.target.value)}
-              className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <div className="flex gap-2">
+              <input type="number" min="1" value={numberFormVal}
+                onChange={(e) => setNumberFormVal(e.target.value)}
+                className="flex-1 border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <div className="flex flex-col">
+                <input value={numberSuffixVal} onChange={(e) => setNumberSuffixVal(e.target.value)}
+                  maxLength={5} placeholder="суфікс"
+                  title="Літерний суфікс (напр. 'а', 'б') — лише якщо треба продублювати номер"
+                  className="w-24 border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-center" />
+              </div>
+            </div>
+            {numberSuffixVal && (
+              <p className="text-[10px] text-gray-400 mt-1">Буде відображатись як: №{numberFormVal || '—'}{numberSuffixVal}</p>
+            )}
           </div>
 
           <div>
@@ -860,9 +876,9 @@ export default function ArchivePage() {
                 {orders.map((order) => {
                   const orderTotal = calcOrderTotal(order.items);
                   const orderWeight = order.items.reduce((s, i) => s + Number(i.actualWeight ?? i.plannedWeight), 0);
-                  const extOrder = order as Order & { printedAt?: string; numberForm?: number; deliveryPoint?: { name: string } };
+                  const extOrder = order as Order & { printedAt?: string; numberForm?: number; numberSuffix?: string; deliveryPoint?: { name: string } };
                   const isPrinted = !!extOrder.printedAt;
-                  const displayNumber = extOrder.numberForm ?? order.number;
+                  const displayNumber = String(extOrder.numberForm ?? order.number) + (extOrder.numberSuffix ?? '');
                   return (
                     <div key={order.id} onClick={() => setSelectedOrder(order)}
                       className="p-4 active:bg-blue-50/50 cursor-pointer">
@@ -904,11 +920,11 @@ export default function ArchivePage() {
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {orders.map((order) => {
-                      const extOrd = order as Order & { printedAt?: string; numberForm?: number; deliveryPoint?: { name: string } };
+                      const extOrd = order as Order & { printedAt?: string; numberForm?: number; numberSuffix?: string; deliveryPoint?: { name: string } };
                       const orderTotal = calcOrderTotal(order.items);
                       const orderWeight = order.items.reduce((s, i) => s + Number(i.actualWeight ?? i.plannedWeight), 0);
                       const isPrinted = !!extOrd.printedAt;
-                      const displayNumber = extOrd.numberForm ?? order.number;
+                      const displayNumber = String(extOrd.numberForm ?? order.number) + (extOrd.numberSuffix ?? '');
                       return (
                         <tr key={order.id} onClick={() => setSelectedOrder(order)}
                           className="hover:bg-blue-50/50 cursor-pointer transition-colors group">

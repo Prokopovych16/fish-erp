@@ -198,6 +198,7 @@ export class OrdersService {
         clientId: dto.clientId,
         form: dto.form,
         numberForm: finalNumberForm,
+        numberSuffix: dto.numberSuffix ?? null,
         status: status as any,
         isBazaar,
         createdById: userId,
@@ -890,6 +891,7 @@ export class OrdersService {
       data: {
         ...(dto.clientId && { clientId: dto.clientId }),
         ...(dto.numberForm !== undefined && { numberForm: dto.numberForm }),
+        ...(dto.numberSuffix !== undefined && { numberSuffix: dto.numberSuffix || null }),
         ...(dto.driverName !== undefined && {
           driverName: dto.driverName || null,
         }),
@@ -1049,7 +1051,6 @@ export class OrdersService {
     const rows = orders.map((o) => {
       // Та ж сама логіка що й у generateTtn/generateInvoice
       const totalNoVat = o.items.reduce((s, i) => {
-        if (i.product.unit === 'шт' && !i.actualWeight) return s;
         const rowTotal =
           Math.round(
             Number(i.actualWeight ?? i.plannedWeight) *
@@ -1068,6 +1069,7 @@ export class OrdersService {
 
       return {
         number: (o as any).numberForm ?? o.number,
+        numberSuffix: (o as any).numberSuffix ?? null,
         client: clientName,
         form: o.form,
         totalNoVat,

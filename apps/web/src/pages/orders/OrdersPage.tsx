@@ -964,14 +964,6 @@ function CreateOrderModal({ onClose, onCreated, defaultBazaar }: { onClose: () =
           ? items.filter((i) => i.productId && i.plannedWeight).map((i) => ({ productId: i.productId, plannedWeight: Number(i.plannedWeight), displayUnit: i.displayUnit }))
           : items.map((i) => ({ productId: i.productId, plannedWeight: Number(i.plannedWeight), displayUnit: i.displayUnit })),
       });
-      // Для базару — зберігаємо асортимент цього клієнта на сервері, щоб наступного разу він підвантажився сам
-      if (isBazaar && clientId) {
-        try {
-          await api.put(`/bazaar-assortment/${clientId}`, {
-            items: items.filter((i) => i.productId).map((i) => ({ productId: i.productId, displayUnit: i.displayUnit })),
-          });
-        } catch {}
-      }
       onCreated(); onClose();
     } catch (e: any) {
       const msg = e.response?.data?.message;
@@ -1381,14 +1373,6 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
             })),
         }),
       });
-      // Базар: позиції могли змінитись — оновлюємо збережений асортимент клієнта
-      if (isBazaar && !itemsLocked) {
-        try {
-          await api.put(`/bazaar-assortment/${clientId}`, {
-            items: items.filter((i) => i.productId).map((i) => ({ productId: i.productId, displayUnit: i.displayUnit })),
-          });
-        } catch {}
-      }
       queryClient.invalidateQueries({ queryKey: ['orders'] });
       onSaved();
       onClose();
@@ -1494,7 +1478,7 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
               {totalWeight > 0 && (
                 <span className="text-xs text-gray-400">
                   Всього: <b className="text-gray-700">{totalWeight.toFixed(3)}</b>
-                  {totalSum > 0 && <b className="text-green-600 ml-2">{(totalSum * 1.2).toFixed(2)} ₴</b>}
+                  {totalSum > 0 && <b className="text-green-600 ml-2">{isBazaar ? totalSum.toFixed(2) : (totalSum * 1.2).toFixed(2)} ₴</b>}
                 </span>
               )}
             </div>
@@ -1592,9 +1576,9 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
                               style={{ MozAppearance: 'textfield' } as any}
                               className="w-28 border border-gray-200 rounded-lg px-2 py-1 text-xs text-right focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                             />
-                            <span className="text-[10px] text-gray-400">без ПДВ</span>
+                            <span className="text-[10px] text-gray-400">{isBazaar ? 'з ПДВ' : 'без ПДВ'}</span>
                             {lineSum != null && lineSum > 0 && (
-                              <span className="text-[10px] font-bold text-green-600">= {(lineSum * 1.2).toFixed(2)} ₴</span>
+                              <span className="text-[10px] font-bold text-green-600">= {isBazaar ? lineSum.toFixed(2) : (lineSum * 1.2).toFixed(2)} ₴</span>
                             )}
                           </div>
                           {!item.pricePerKg && clientPrice && (
@@ -1719,7 +1703,7 @@ function DraggableOrderCard({ order, onStatusChange, onUpdateWeights, onOpenDeta
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="font-bold text-gray-800 text-sm">№{(order as any).numberForm ?? order.number}</span>
+                <span className="font-bold text-gray-800 text-sm">№{String((order as any).numberForm ?? order.number)}{(order as any).numberSuffix ?? ''}</span>
                 <FormBadge form={order.form} />
                 {isBazaar && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700 font-bold">🏖️ Базар</span>}
                 {!!(order as any).printedAt && <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-600 font-bold">✓</span>}
@@ -1993,6 +1977,152 @@ function BazaarReturnModal({ order, onClose, onSettled }: { order: Order; onClos
   );
 }
 
+// ─── BazaarMenuButton ─────────────────────────────────────────────────────────
+function BazaarMenuButton({ onNew, onAssortment }: { onNew: () => void; onAssortment: () => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Close on outside click
+  const handleBlur = useCallback((e: React.FocusEvent) => {
+    if (!ref.current?.contains(e.relatedTarget as Node)) setOpen(false);
+  }, []);
+
+  return (
+    <div ref={ref} className="relative" onBlur={handleBlur}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1.5 bg-orange-500 text-white text-sm px-4 py-1.5 rounded-xl hover:bg-orange-600 font-semibold shadow-sm"
+      >
+        🏖️ Базар
+        <svg className={`w-3.5 h-3.5 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute right-0 mt-1 bg-white rounded-xl shadow-lg border border-gray-200 py-1 z-50 min-w-[170px]">
+          <button onClick={() => { onNew(); setOpen(false); }}
+            className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-orange-50 hover:text-orange-700 font-semibold flex items-center gap-2">
+            🏖️ Нова накладна
+          </button>
+          <div className="border-t border-gray-100 mx-2" />
+          <button onClick={() => { onAssortment(); setOpen(false); }}
+            className="w-full text-left px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-50 flex items-center gap-2">
+            ⚙️ Асортимент
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── BazaarAssortmentModal ────────────────────────────────────────────────────
+function BazaarAssortmentModal({ onClose }: { onClose: () => void }) {
+  const [clientId, setClientId] = useState('');
+  const [items, setItems] = useState<{ productId: string; displayUnit: string }[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [saved, setSaved] = useState(false);
+
+  const { data: clients = [] } = useQuery({ queryKey: ['clients'], queryFn: () => api.get('/clients').then((r) => r.data) });
+  const { data: products = [] } = useQuery({ queryKey: ['products-active'], queryFn: () => api.get('/products/active').then((r) => r.data) });
+
+  const loadAssortment = async (id: string) => {
+    setClientId(id); setItems([]); setSaved(false); setError('');
+    if (!id) return;
+    setLoading(true);
+    try {
+      const { data } = await api.get(`/bazaar-assortment/${id}`);
+      setItems(Array.isArray(data) ? data.map((a: any) => ({ productId: a.productId, displayUnit: a.displayUnit || 'кг' })) : []);
+    } catch { setError('Помилка завантаження'); }
+    finally { setLoading(false); }
+  };
+
+  const handleSave = async () => {
+    if (!clientId) return;
+    setSaving(true); setError(''); setSaved(false);
+    try {
+      await api.put(`/bazaar-assortment/${clientId}`, { items: items.filter((i) => i.productId) });
+      setSaved(true);
+    } catch { setError('Помилка збереження'); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-3">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden">
+        <div className="px-5 py-4 border-b flex items-center justify-between shrink-0 bg-gradient-to-r from-orange-500 to-amber-500">
+          <div>
+            <h2 className="font-bold text-white text-lg">🏖️ Асортимент базару</h2>
+            <p className="text-orange-100 text-xs mt-0.5">Шаблон позицій для нових базарних накладних</p>
+          </div>
+          <button onClick={onClose} className="text-white/70 hover:text-white text-2xl leading-none">×</button>
+        </div>
+        <div className="overflow-y-auto flex-1 p-5 space-y-4">
+          <div>
+            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Клієнт (базарник)</label>
+            <select value={clientId} onChange={(e) => loadAssortment(e.target.value)}
+              className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400">
+              <option value="">Оберіть клієнта...</option>
+              {(clients as any[]).filter((c: any) => c.isActive).map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+
+          {clientId && !loading && (
+            <>
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Позиції шаблону</label>
+                  <button onClick={() => setItems((prev) => [...prev, { productId: '', displayUnit: 'кг' }])}
+                    className="text-xs text-orange-600 hover:text-orange-700 font-semibold">+ Додати</button>
+                </div>
+                {items.length === 0 && (
+                  <p className="text-xs text-gray-400 text-center py-4 border border-dashed border-gray-200 rounded-xl">
+                    Немає позицій — додайте товари які має підтягувати базар
+                  </p>
+                )}
+                <div className="space-y-2">
+                  {items.map((item, idx) => (
+                    <div key={idx} className="flex items-center gap-2 bg-orange-50/40 border border-orange-100 rounded-xl px-3 py-2">
+                      <select value={item.productId}
+                        onChange={(e) => setItems((prev) => prev.map((p, i) => i === idx ? { ...p, productId: e.target.value } : p))}
+                        className="flex-1 border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 bg-white">
+                        <option value="">Продукт...</option>
+                        {(products as any[]).map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      </select>
+                      <select value={item.displayUnit}
+                        onChange={(e) => setItems((prev) => prev.map((p, i) => i === idx ? { ...p, displayUnit: e.target.value } : p))}
+                        className="w-14 border border-gray-300 rounded-lg px-1.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-orange-400">
+                        <option value="кг">кг</option>
+                        <option value="шт">шт</option>
+                        <option value="уп">уп</option>
+                      </select>
+                      <button onClick={() => setItems((prev) => prev.filter((_, i) => i !== idx))}
+                        className="text-red-400 hover:text-red-600 text-lg leading-none shrink-0">×</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              {saved && <div className="text-green-600 text-sm bg-green-50 border border-green-100 px-3 py-2 rounded-xl">✓ Збережено</div>}
+              {error && <div className="text-red-500 text-sm bg-red-50 border border-red-100 px-3 py-2 rounded-xl">⚠️ {error}</div>}
+            </>
+          )}
+          {loading && <div className="text-sm text-gray-400 text-center py-6">Завантаження...</div>}
+        </div>
+        <div className="px-5 py-4 border-t flex gap-2 shrink-0">
+          <button onClick={onClose} className="flex-1 border border-gray-300 text-gray-600 text-sm px-4 py-2.5 rounded-xl hover:bg-gray-50">Закрити</button>
+          {clientId && (
+            <button onClick={handleSave} disabled={saving}
+              className="flex-1 bg-orange-500 text-white text-sm px-4 py-2.5 rounded-xl hover:bg-orange-600 disabled:opacity-50 font-bold">
+              {saving ? 'Збереження...' : '✓ Зберегти шаблон'}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── OrdersPage ───────────────────────────────────────────────────────────────
 export default function OrdersPage() {
   const { user } = useAuthStore();
@@ -2002,6 +2132,7 @@ export default function OrdersPage() {
   const [detailsOrder, setDetailsOrder] = useState<Order | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [showCreateBazaar, setShowCreateBazaar] = useState(false);
+  const [showBazaarAssortment, setShowBazaarAssortment] = useState(false);
   const [bazaarReturnOrder, setBazaarReturnOrder] = useState<Order | null>(null);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [activeOrder, setActiveOrder] = useState<Order | null>(null);
@@ -2119,10 +2250,10 @@ export default function OrdersPage() {
           )}
           {user?.role === 'ADMIN' && (
             <>
-              <button onClick={() => setShowCreateBazaar(true)}
-                className="bg-orange-500 text-white text-sm px-4 py-1.5 rounded-xl hover:bg-orange-600 font-semibold shadow-sm">
-                🏖️ Базар
-              </button>
+              <BazaarMenuButton
+                onNew={() => setShowCreateBazaar(true)}
+                onAssortment={() => setShowBazaarAssortment(true)}
+              />
               <button onClick={() => setShowCreate(true)}
                 className="bg-blue-600 text-white text-sm px-4 py-1.5 rounded-xl hover:bg-blue-700 font-semibold shadow-sm">
                 + Нова заявка
@@ -2167,6 +2298,7 @@ export default function OrdersPage() {
           onSave={(items) => weightsMutation.mutate({ id: selectedOrder.id, items })}
           userRole={user?.role || ''} />
       )}
+      {showBazaarAssortment && <BazaarAssortmentModal onClose={() => setShowBazaarAssortment(false)} />}
       {showCreate && (
         <CreateOrderModal onClose={() => setShowCreate(false)}
           onCreated={() => queryClient.invalidateQueries({ queryKey: ['orders'] })} />
