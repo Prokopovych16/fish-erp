@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/api/axios';
 import { useAuthStore } from '@/store/auth';
 import { Order, OrderStatus, Form } from '@/types';
+import { r2, addVat } from '@/utils/finance';
 import {
   DndContext,
   DragEndEvent,
@@ -17,8 +18,6 @@ import {
 } from '@dnd-kit/core';
 
 // ─── FormBadge ────────────────────────────────────────────────────────────────
-const r2 = (v: number) => Math.round(v * 100 + 1e-7) / 100;
-
 function FormBadge({ form }: { form: Form }) {
   return (
     <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold tracking-wide ${
@@ -276,7 +275,7 @@ function OrderDetailsModal({ order, onClose, onStatusChange, onUpdateWeights, on
     } catch { alert('Помилка генерації'); }
   };
 
-  const totalWithVat = Math.round(total * 1.2 * 100 + 1e-7) / 100;
+  const totalWithVat = addVat(total);
 
   const buttons = (
     <>
@@ -588,7 +587,7 @@ function WeightsModal({ order, onClose, onSave, userRole }: {
   const totalActual = order.items.reduce((s, i) => s + (Number(weights[i.id]) || 0), 0);
   const totalSum = order.items.reduce((s, i) => {
     if (i.product.unit === 'шт' && !weights[i.id]) return s;
-    return s + (Number(weights[i.id]) || 0) * Number(i.pricePerKg ?? 0);
+    return s + r2((Number(weights[i.id]) || 0) * Number(i.pricePerKg ?? 0));
   }, 0);
 
   const kgItems = order.items.filter(i => {
@@ -707,7 +706,7 @@ function WeightsModal({ order, onClose, onSave, userRole }: {
             ))}
           </div>
           {totalSum > 0 && userRole !== 'WORKER' && (
-            <div className="mt-2 text-right text-sm"><span className="text-gray-500">Сума (з ПДВ): </span><span className="font-bold text-green-600">{(totalSum * 1.2).toFixed(2)} ₴</span></div>
+            <div className="mt-2 text-right text-sm"><span className="text-gray-500">Сума (з ПДВ): </span><span className="font-bold text-green-600">{addVat(totalSum).toFixed(2)} ₴</span></div>
           )}
         </div>
         <div className="px-5 pb-5 border-t pt-4 flex gap-2 shrink-0">
@@ -1136,7 +1135,7 @@ function CreateOrderModal({ onClose, onCreated, defaultBazaar }: { onClose: () =
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Позиції *</label>
-              {totalWeight > 0 && <span className="text-xs text-gray-400">Всього: <b className="text-gray-700">{totalWeight.toFixed(3)}</b>{totalSum > 0 && <b className="text-green-600 ml-2">{(totalSum * 1.2).toFixed(2)} ₴</b>}</span>}
+              {totalWeight > 0 && <span className="text-xs text-gray-400">Всього: <b className="text-gray-700">{totalWeight.toFixed(3)}</b>{totalSum > 0 && <b className="text-green-600 ml-2">{addVat(totalSum).toFixed(2)} ₴</b>}</span>}
             </div>
             <div className="space-y-2">
               {items.map((item, idx) => {
@@ -1262,7 +1261,7 @@ function CreateOrderModal({ onClose, onCreated, defaultBazaar }: { onClose: () =
               {clientId && <div className="flex items-center gap-1.5"><span className="text-gray-400">Клієнт:</span><span className="font-semibold text-gray-700">{clients?.find((c: any) => c.id === clientId)?.name}</span><FormBadge form={form} /></div>}
               {selectedPoint && <div className="flex items-center gap-1"><span>📍</span><span className="font-semibold text-gray-700">{selectedPoint.name}</span></div>}
               {totalWeight > 0 && <div className="flex items-center gap-1.5"><span className="text-gray-400">Вага:</span><b className="text-gray-700">{totalWeight.toFixed(3)}</b></div>}
-              {totalSum > 0 && <div className="flex items-center gap-1.5"><span className="text-gray-400">Сума (з ПДВ):</span><b className="text-green-600 text-sm">{(totalSum * 1.2).toFixed(2)} ₴</b></div>}
+              {totalSum > 0 && <div className="flex items-center gap-1.5"><span className="text-gray-400">Сума (з ПДВ):</span><b className="text-green-600 text-sm">{addVat(totalSum).toFixed(2)} ₴</b></div>}
               {isDraft && <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-semibold">📋 Чернетка</span>}
               {isBazaar && <span className="bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-semibold">🏖️ Базар</span>}
             </div>
@@ -1345,7 +1344,7 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
     const effectivePrice = (i.pricePerKg && Number(i.pricePerKg) > 0)
       ? Number(i.pricePerKg)
       : getPriceForProduct(i.productId);
-    return s + (effectivePrice ? effectivePrice * (Number(i.plannedWeight) || 0) : 0);
+    return s + r2(effectivePrice ? effectivePrice * (Number(i.plannedWeight) || 0) : 0);
   }, 0);
 
   const handleSave = async () => {
@@ -1480,7 +1479,7 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
               {totalWeight > 0 && (
                 <span className="text-xs text-gray-400">
                   Всього: <b className="text-gray-700">{totalWeight.toFixed(3)}</b>
-                  {totalSum > 0 && <b className="text-green-600 ml-2">{isBazaar ? totalSum.toFixed(2) : (totalSum * 1.2).toFixed(2)} ₴</b>}
+                  {totalSum > 0 && <b className="text-green-600 ml-2">{isBazaar ? totalSum.toFixed(2) : addVat(totalSum).toFixed(2)} ₴</b>}
                 </span>
               )}
             </div>
@@ -1580,7 +1579,7 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
                             />
                             <span className="text-[10px] text-gray-400">{isBazaar ? 'з ПДВ' : 'без ПДВ'}</span>
                             {lineSum != null && lineSum > 0 && (
-                              <span className="text-[10px] font-bold text-green-600">= {isBazaar ? lineSum.toFixed(2) : (lineSum * 1.2).toFixed(2)} ₴</span>
+                              <span className="text-[10px] font-bold text-green-600">= {isBazaar ? lineSum.toFixed(2) : addVat(lineSum).toFixed(2)} ₴</span>
                             )}
                           </div>
                           {!item.pricePerKg && clientPrice && (
@@ -1947,7 +1946,7 @@ function BazaarReturnModal({ order, onClose, onSettled }: { order: Order; onClos
               {totalSum > 0 && (
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-500">До сплати (з ПДВ):</span>
-                  <span className="font-bold text-orange-700 text-lg">{(totalSum * 1.2).toFixed(2)} ₴</span>
+                  <span className="font-bold text-orange-700 text-lg">{addVat(totalSum).toFixed(2)} ₴</span>
                 </div>
               )}
               <div className="flex gap-2">
@@ -1963,7 +1962,7 @@ function BazaarReturnModal({ order, onClose, onSettled }: { order: Order; onClos
           <div className="p-6 space-y-4 text-center">
             <div className="text-4xl">✅</div>
             <div className="font-bold text-gray-800">Повернення оформлено, заявку завершено</div>
-            {totalSum > 0 && <div className="text-2xl font-bold text-orange-700">{(totalSum * 1.2).toFixed(2)} ₴</div>}
+            {totalSum > 0 && <div className="text-2xl font-bold text-orange-700">{addVat(totalSum).toFixed(2)} ₴</div>}
             <button onClick={handlePrintSettlement}
               className="w-full bg-green-600 text-white text-sm px-4 py-2.5 rounded-xl hover:bg-green-700 font-bold">
               🧾 Роздрукувати розрахунок

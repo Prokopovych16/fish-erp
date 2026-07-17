@@ -1,6 +1,7 @@
 import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
 import { PrismaService } from '../../prisma.service';
 import { Form } from '@prisma/client';
+import { r2 } from '../../utils/finance';
 
 interface InvoiceItemDto {
   productId: string;
@@ -16,10 +17,6 @@ interface CreateInvoiceDto {
   form: Form;
   note?: string;
   items: InvoiceItemDto[];
-}
-
-function r2(value: number): number {
-  return Math.round(value * 100 + 1e-7) / 100;
 }
 
 function calcTotals(items: InvoiceItemDto[]) {

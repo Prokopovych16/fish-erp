@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma.service';
 import { SettingsService } from '../settings/settings.service';
 import puppeteer from 'puppeteer';
+import { r2 } from '../../utils/finance';
 
 @Injectable()
 export class DocumentsService {
@@ -78,7 +79,7 @@ export class DocumentsService {
         const returned = Number((item as any).returnedWeight ?? 0);
         const sold = Math.max(issued - returned, 0);
         const price = Number(item.pricePerKg ?? 0); // price вже з ПДВ
-        const sum = this.r2(sold * price);
+        const sum = r2(sold * price);
         totalWithVat += sum;
         return `
         <tr>
@@ -221,10 +222,6 @@ export class DocumentsService {
     return this.generatePdf(html);
   }
 
-  private r2(value: number): number {
-    return Math.round(value * 100 + 1e-7) / 100;
-  }
-
   private calculateTotal(items: any[]): number {
     return items.reduce(
       (
@@ -236,7 +233,7 @@ export class DocumentsService {
           pricePerKg?: unknown;
         },
       ) => {
-        const rowTotal = this.r2(
+        const rowTotal = r2(
           Number(item.actualWeight ?? item.plannedWeight) *
             Number(item.pricePerKg ?? 0),
         );
@@ -282,7 +279,7 @@ export class DocumentsService {
 
   // Число прописом (гривні)
   private numberToWords(amount: number): string {
-    const n = this.r2(amount);
+    const n = r2(amount);
     const intPart = Math.floor(n);
     const kopPart = Math.round((n - intPart) * 100 + 1e-7);
 
@@ -408,7 +405,7 @@ export class DocumentsService {
       .map((item, index) => {
         const weight = Number(item.actualWeight ?? item.plannedWeight);
         const price = Number(item.pricePerKg ?? 0);
-        const sumWithoutVat = this.r2(weight * price);
+        const sumWithoutVat = r2(weight * price);
         return `
         <tr>
           <td>${index + 1}</td>
@@ -669,7 +666,7 @@ export class DocumentsService {
       .map((item, idx) => {
         const weight = Number(item.actualWeight ?? item.plannedWeight);
         const price = Number(item.pricePerKg ?? 0);
-        const sumWithVat = this.r2(weight * price) * 1.2;
+        const sumWithVat = r2(weight * price) * 1.2;
         const p = item.product as {
           storageTemp?: string;
           packagingType?: string;
@@ -1489,7 +1486,7 @@ export class DocumentsService {
     const rows = client.prices
       .filter((p) => Number(p.price) > 0)
       .map((p, i) => {
-        const priceWithVat = this.r2(Number(p.price) * 1.2).toFixed(2);
+        const priceWithVat = r2(Number(p.price) * 1.2).toFixed(2);
         return `
         <tr>
           <td class="n">${i + 1}</td>

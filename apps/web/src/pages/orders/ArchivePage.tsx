@@ -3,8 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/api/axios';
 import { useAuthStore } from '@/store/auth';
 import { Order, Form } from '@/types';
-
-const r2 = (v: number) => Math.round(v * 100 + 1e-7) / 100;
+import { r2, addVat } from '@/utils/finance';
 
 function FormBadge({ form }: { form: Form }) {
   return (
@@ -51,7 +50,7 @@ function WeightsEditModal({ order, onClose, onSaved }: {
   const totalUnit = order.items.length > 0 && order.items.every(i => i.product.unit === order.items[0].product.unit) ? order.items[0].product.unit : 'кг';
   const totalSum = order.items.reduce((s, i) => {
     if (i.product.unit === 'шт' && !weights[i.id]) return s;
-    return s + (Number(weights[i.id]) || 0) * Number(i.pricePerKg ?? 0);
+    return s + r2((Number(weights[i.id]) || 0) * Number(i.pricePerKg ?? 0));
   }, 0);
 
   const handleSave = async () => {
@@ -132,7 +131,7 @@ function WeightsEditModal({ order, onClose, onSaved }: {
             <div><div className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">План</div><div className="font-bold text-sm text-gray-700">{totalPlanned.toFixed(3)} {totalUnit}</div></div>
             <div><div className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">Факт</div><div className={`font-bold text-sm ${totalActual > 0 ? 'text-blue-600' : 'text-gray-400'}`}>{totalActual.toFixed(3)} {totalUnit}</div></div>
           </div>
-          {totalSum > 0 && <div className="mt-2 text-right text-sm"><span className="text-gray-500">Сума (з ПДВ): </span><span className="font-bold text-green-600">{(totalSum * 1.2).toFixed(2)} ₴</span></div>}
+          {totalSum > 0 && <div className="mt-2 text-right text-sm"><span className="text-gray-500">Сума (з ПДВ): </span><span className="font-bold text-green-600">{addVat(totalSum).toFixed(2)} ₴</span></div>}
         </div>
         <div className="px-5 pb-5 border-t pt-4 flex gap-2 shrink-0">
           <button onClick={() => setWeights(Object.fromEntries(order.items.map((i) => [i.id, String(i.plannedWeight)])))}
@@ -289,7 +288,7 @@ function OrderDetailsModal({ order, onClose, onEditWeights, onEdit, onDelete, us
                       <td className="px-3 py-2.5 text-right text-gray-400 text-xs font-normal">{totalPlanned.toFixed(3)}</td>
                       <td className="px-3 py-2.5 text-right text-xs">{totalWeight.toFixed(3)}</td>
                       <td className="px-3 py-2.5 text-right text-xs">—</td>
-                      <td className="px-3 py-2.5 text-right text-green-600 text-sm">{(Math.round(total * 1.2 * 100 + 1e-7) / 100).toFixed(2)} ₴</td>
+                      <td className="px-3 py-2.5 text-right text-green-600 text-sm">{(addVat(total)).toFixed(2)} ₴</td>
                     </tr>
                   </tfoot>
                 </table>
@@ -893,7 +892,7 @@ export default function ArchivePage() {
                             {STATUS_LABEL[order.status]}
                           </span>
                         </div>
-                        <span className="font-bold text-green-600 text-sm shrink-0">{(Math.round(orderTotal * 1.2 * 100 + 1e-7) / 100).toFixed(2)} ₴</span>
+                        <span className="font-bold text-green-600 text-sm shrink-0">{(addVat(orderTotal)).toFixed(2)} ₴</span>
                       </div>
                       <div className="text-sm text-gray-700 font-medium truncate">{order.client.name}</div>
                       {extOrder.deliveryPoint && <div className="text-xs text-gray-400">📍 {extOrder.deliveryPoint.name}</div>}
@@ -947,7 +946,7 @@ export default function ArchivePage() {
                             </span>
                           </td>
                           <td className="px-4 py-3 text-right text-gray-600 text-xs font-medium">{orderWeight.toFixed(1)} кг</td>
-                          <td className="px-4 py-3 text-right"><span className="font-bold text-green-600">{(Math.round(orderTotal * 1.2 * 100 + 1e-7) / 100).toFixed(2)} ₴</span></td>
+                          <td className="px-4 py-3 text-right"><span className="font-bold text-green-600">{(addVat(orderTotal)).toFixed(2)} ₴</span></td>
                           <td className="px-4 py-3 text-right text-gray-400 text-xs">{new Date(order.createdAt).toLocaleDateString('uk-UA')}</td>
                         </tr>
                       );

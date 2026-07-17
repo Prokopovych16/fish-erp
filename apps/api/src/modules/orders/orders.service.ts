@@ -12,10 +12,7 @@ import { UpdateOrderDto } from './dto/update-order.dto';
 import { GetOrdersDto } from './dto/get-orders.dto';
 import { OrderStatus, UserRole, Form } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
-
-function r2(value: number): number {
-  return Math.round(value * 100 + 1e-7) / 100;
-}
+import { r2 } from '../../utils/finance';
 
 @Injectable()
 export class OrdersService {
