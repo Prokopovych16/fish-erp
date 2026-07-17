@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/api/axios';
 import { useAuthStore } from '@/store/auth';
 import { Order, Form } from '@/types';
-import { r2, addVat } from '@/utils/finance';
+import { r2, addVat, parseOrderNum } from '@/utils/finance';
 
 function FormBadge({ form }: { form: Form }) {
   return (
@@ -504,8 +504,9 @@ function EditArchiveOrderModal({ order, onClose, onSaved }: { order: Order; onCl
   const displayNumber = String(extEdit.numberForm ?? order.number) + (extEdit.numberSuffix ?? '');
 
   const [clientId, setClientId] = useState(order.clientId);
-  const [numberFormVal, setNumberFormVal] = useState(String(extEdit.numberForm ?? ''));
-  const [numberSuffixVal, setNumberSuffixVal] = useState(extEdit.numberSuffix ?? '');
+  const [orderNumRaw, setOrderNumRaw] = useState(
+    String(extEdit.numberForm ?? '') + (extEdit.numberSuffix ?? ''),
+  );
   const [driverName, setDriverName] = useState(order.driverName || '');
   const [carNumber, setCarNumber] = useState(order.carNumber || '');
   const [deliveryPointId, setDeliveryPointId] = useState(extEdit.deliveryPointId || '');
@@ -546,8 +547,8 @@ function EditArchiveOrderModal({ order, onClose, onSaved }: { order: Order; onCl
     try {
       await api.patch(`/orders/${order.id}`, {
         clientId,
-        numberForm: numberFormVal ? Number(numberFormVal) : undefined,
-        numberSuffix: numberSuffixVal || undefined,
+        numberForm: parseOrderNum(orderNumRaw).num,
+        numberSuffix: parseOrderNum(orderNumRaw).suffix || undefined,
         driverName: driverName || undefined,
         carNumber: carNumber || undefined,
         deliveryPointId: deliveryPointId || undefined,
@@ -600,19 +601,16 @@ function EditArchiveOrderModal({ order, onClose, onSaved }: { order: Order; onCl
 
           <div>
             <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Номер накладної</label>
-            <div className="flex gap-2">
-              <input type="number" min="1" value={numberFormVal}
-                onChange={(e) => setNumberFormVal(e.target.value)}
-                className="flex-1 border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              <div className="flex flex-col">
-                <input value={numberSuffixVal} onChange={(e) => setNumberSuffixVal(e.target.value)}
-                  maxLength={5} placeholder="суфікс"
-                  title="Літерний суфікс (напр. 'а', 'б') — лише якщо треба продублювати номер"
-                  className="w-24 border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-center" />
-              </div>
-            </div>
-            {numberSuffixVal && (
-              <p className="text-[10px] text-gray-400 mt-1">Буде відображатись як: №{numberFormVal || '—'}{numberSuffixVal}</p>
+            <input
+              value={orderNumRaw}
+              onChange={(e) => setOrderNumRaw(e.target.value)}
+              placeholder="напр. 8 або 8/"
+              className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            {parseOrderNum(orderNumRaw).suffix && (
+              <p className="text-[10px] text-gray-400 mt-1">
+                Буде: №{parseOrderNum(orderNumRaw).num}{parseOrderNum(orderNumRaw).suffix}
+              </p>
             )}
           </div>
 

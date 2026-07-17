@@ -13,3 +13,10 @@ export function removeVat(amountWithVat: number): number {
 export function calcVat(amountWithVat: number): number {
   return Number((amountWithVat - removeVat(amountWithVat)).toFixed(2));
 }
+
+/** Парсить "567/" або "567а" → { num: 567, suffix: "/" } */
+export function parseOrderNum(raw: string): { num: number | undefined; suffix: string } {
+  const m = raw.trim().match(/^(\d+)(.*)$/);
+  if (!m) return { num: undefined, suffix: '' };
+  return { num: Number(m[1]), suffix: m[2] };
+}

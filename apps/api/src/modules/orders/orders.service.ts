@@ -87,7 +87,11 @@ export class OrdersService {
         items: { include: { product: true }, orderBy: { sortOrder: 'asc' } },
         createdBy: { select: { id: true, name: true } },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: [
+        { numberForm: 'desc' },
+        { numberSuffix: { sort: 'asc', nulls: 'first' } },
+        { createdAt: 'desc' },
+      ],
       skip,
       take: limit,
     });
@@ -135,14 +139,19 @@ export class OrdersService {
     // Стало:
     if (dto.numberForm) {
       const duplicate = await this.prisma.order.findFirst({
-        where: { form: dto.form, numberForm: dto.numberForm, deletedAt: null },
+        where: {
+          form: dto.form,
+          numberForm: dto.numberForm,
+          numberSuffix: dto.numberSuffix ?? null,
+          deletedAt: null,
+        },
       });
       if (duplicate) {
-        // ← Кидаємо помилку замість мовчазної заміни
+        const fullNum = `${dto.numberForm}${dto.numberSuffix ?? ''}`;
         throw new BadRequestException(
           JSON.stringify({
             type: 'DUPLICATE_NUMBER',
-            message: `Накладна №${dto.numberForm} вже існує для ${dto.form === 'FORM_1' ? 'Ф1' : 'Ф2'}`,
+            message: `Накладна №${fullNum} вже існує для ${dto.form === 'FORM_1' ? 'Ф1' : 'Ф2'}`,
             numberForm: dto.numberForm,
             existingOrderId: duplicate.id,
           }),
@@ -783,20 +792,25 @@ export class OrdersService {
     const order = await this.findOne(id, userRole);
 
     // numberForm — перевірка дублікату (виключаємо поточну заявку)
-    if (dto.numberForm !== undefined && dto.numberForm !== order.numberForm) {
+    const incomingSuffix = dto.numberSuffix !== undefined ? (dto.numberSuffix || null) : (order.numberSuffix ?? null);
+    const numberChanged = dto.numberForm !== undefined && dto.numberForm !== order.numberForm;
+    const suffixChanged = dto.numberSuffix !== undefined && (dto.numberSuffix || null) !== (order.numberSuffix ?? null);
+    if (dto.numberForm !== undefined && (numberChanged || suffixChanged)) {
       const duplicate = await this.prisma.order.findFirst({
         where: {
           form: order.form,
           numberForm: dto.numberForm,
+          numberSuffix: incomingSuffix,
           deletedAt: null,
           id: { not: id },
         },
       });
       if (duplicate) {
+        const fullNum = `${dto.numberForm}${incomingSuffix ?? ''}`;
         throw new BadRequestException(
           JSON.stringify({
             type: 'DUPLICATE_NUMBER',
-            message: `Накладна №${dto.numberForm} вже існує для ${order.form === 'FORM_1' ? 'Ф1' : 'Ф2'}`,
+            message: `Накладна №${fullNum} вже існує для ${order.form === 'FORM_1' ? 'Ф1' : 'Ф2'}`,
             numberForm: dto.numberForm,
             existingOrderId: duplicate.id,
           }),
@@ -1046,7 +1060,11 @@ export class OrdersService {
           },
         },
       },
-      orderBy: [{ numberForm: 'asc' }, { number: 'asc' }],
+      orderBy: [
+        { numberForm: 'asc' },
+        { numberSuffix: { sort: 'asc', nulls: 'first' } },
+        { number: 'asc' },
+      ],
     });
 
     const rows = orders.map((o) => {

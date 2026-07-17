@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/api/axios';
 import { useAuthStore } from '@/store/auth';
 import { Order, OrderStatus, Form } from '@/types';
-import { r2, addVat } from '@/utils/finance';
+import { r2, addVat, parseOrderNum } from '@/utils/finance';
 import {
   DndContext,
   DragEndEvent,
@@ -747,7 +747,7 @@ function CreateOrderModal({ onClose, onCreated, defaultBazaar }: { onClose: () =
   const [error, setError] = useState('');
   const [isDraft, setIsDraft] = useState(false);
   const [isBazaar, setIsBazaar] = useState(!!defaultBazaar);
-  const [customNumber, setCustomNumber] = useState('');
+  const [orderNumRaw, setOrderNumRaw] = useState('');
   const [customDate, setCustomDate] = useState(new Date().toISOString().slice(0, 10));
   const [resolvedReturnIds, setResolvedReturnIds] = useState<Set<string>>(new Set());
   const [invoiceDate, setInvoiceDate] = useState('');
@@ -958,7 +958,8 @@ function CreateOrderModal({ onClose, onCreated, defaultBazaar }: { onClose: () =
         deliveryPointId: deliveryPointId || undefined,
         status: isDraft ? 'DRAFT' : 'PENDING',
         isBazaar: isBazaar || undefined,
-        numberForm: customNumber ? Number(customNumber) : undefined,
+        numberForm: parseOrderNum(orderNumRaw).num,
+        numberSuffix: parseOrderNum(orderNumRaw).suffix || undefined,
         plannedDate: customDate || undefined,
         invoiceDate: invoiceDate || undefined,
         items: isDraft
@@ -1208,16 +1209,17 @@ function CreateOrderModal({ onClose, onCreated, defaultBazaar }: { onClose: () =
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Номер накладної</label>
-                {/* FIX 2: прибираємо повзунок */}
                 <input
-                  type="number"
-                  value={customNumber}
-                  onChange={(e) => setCustomNumber(e.target.value)}
-                  placeholder="авто"
-                  style={{ MozAppearance: 'textfield' } as any}
-                  className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                  value={orderNumRaw}
+                  onChange={(e) => setOrderNumRaw(e.target.value)}
+                  placeholder="авто, або 8/ або 567а"
+                  className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white"
                 />
-                <div className="text-[10px] text-gray-400 mt-1">Порожньо — автоматично</div>
+                <div className="text-[10px] text-gray-400 mt-1">
+                  {orderNumRaw
+                    ? (() => { const { num, suffix } = parseOrderNum(orderNumRaw); return num ? `Номер: ${num}${suffix ? `, суфікс: "${suffix}"` : ''}` : 'Невірний формат'; })()
+                    : 'Порожньо — автоматично'}
+                </div>
               </div>
               <div>
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Дата в накладній</label>
@@ -1290,7 +1292,9 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
   const itemsLocked = isDone && !isBazaar;
 
   const [clientId, setClientId] = useState(order.clientId);
-  const [numberFormVal, setNumberFormVal] = useState(String((order as any).numberForm ?? ''));
+  const [orderNumRaw, setOrderNumRaw] = useState(
+    String((order as any).numberForm ?? '') + ((order as any).numberSuffix ?? ''),
+  );
   const [driverName, setDriverName] = useState(order.driverName || '');
   const [carNumber, setCarNumber] = useState(order.carNumber || '');
   const [deliveryPointId, setDeliveryPointId] = useState((order as any).deliveryPointId || '');
@@ -1354,7 +1358,8 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
     try {
       await api.patch(`/orders/${order.id}`, {
         clientId,
-        numberForm: numberFormVal ? Number(numberFormVal) : undefined,
+        numberForm: parseOrderNum(orderNumRaw).num,
+        numberSuffix: parseOrderNum(orderNumRaw).suffix || undefined,
         driverName: driverName || undefined,
         carNumber: carNumber || undefined,
         deliveryPointId: deliveryPointId || undefined,
@@ -1410,15 +1415,13 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
         <div className="overflow-y-auto flex-1 p-5 space-y-4">
           <div>
             <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Номер накладної <span className="text-red-500">*</span></label>
-            {/* FIX 2: прибираємо повзунок */}
             <input
-              type="number" min="1" value={numberFormVal}
-              onChange={(e) => setNumberFormVal(e.target.value)}
-              style={{ MozAppearance: 'textfield' } as any}
-              className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-              placeholder="Введіть номер..."
+              value={orderNumRaw}
+              onChange={(e) => setOrderNumRaw(e.target.value)}
+              placeholder="напр. 8 або 8/"
+              className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
-            <p className="text-xs text-gray-400 mt-1">При зміні — перевіряється на дублікат</p>
+            <p className="text-[10px] text-gray-400 mt-1">При зміні — перевіряється на дублікат</p>
           </div>
           <div>
             <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Клієнт *</label>

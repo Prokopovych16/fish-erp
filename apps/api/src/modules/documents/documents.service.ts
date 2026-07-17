@@ -70,7 +70,13 @@ export class DocumentsService {
     if (!order.completedAt) throw new NotFoundException('Повернення ще не оформлено');
 
     const company = await this.settings.getAll();
-    const displayNumber = (order as any).numberForm ?? order.number;
+    const orderExt = order as unknown as {
+      numberForm?: number;
+      numberSuffix?: string;
+    };
+    const displayNumber =
+      String(orderExt.numberForm ?? order.number) +
+      (orderExt.numberSuffix ?? '');
 
     let totalWithVat = 0;
     const itemsRows = order.items
@@ -390,7 +396,13 @@ export class DocumentsService {
     const company = await this.settings.getAll();
     const isBazaar = !!(order as any).isBazaar;
 
-    const displayNumber = (order as any).numberForm ?? order.number;
+    const orderExt = order as unknown as {
+      numberForm?: number;
+      numberSuffix?: string;
+    };
+    const displayNumber =
+      String(orderExt.numberForm ?? order.number) +
+      (orderExt.numberSuffix ?? '');
     const total = this.calculateTotal(order.items) as number;
     // Для базару pricePerKg вже з ПДВ — total і є totalWithVat
     const totalWithVat = isBazaar
@@ -646,7 +658,13 @@ export class DocumentsService {
     const order = await this.getOrderData(orderId);
     const company = await this.settings.getAll();
 
-    const displayNumber = (order as any).numberForm ?? order.number;
+    const orderExt = order as unknown as {
+      numberForm?: number;
+      numberSuffix?: string;
+    };
+    const displayNumber =
+      String(orderExt.numberForm ?? order.number) +
+      (orderExt.numberSuffix ?? '');
     const total = this.calculateTotal(order.items) as number;
     const vat = total * 0.2;
     const totalWithVat = Number((total * 1.2).toFixed(2));
@@ -967,7 +985,13 @@ export class DocumentsService {
     const order = await this.getOrderData(orderId);
     const company = await this.settings.getAll();
 
-    const displayNumber = (order as any).numberForm ?? order.number;
+    const orderExt = order as unknown as {
+      numberForm?: number;
+      numberSuffix?: string;
+    };
+    const displayNumber =
+      String(orderExt.numberForm ?? order.number) +
+      (orderExt.numberSuffix ?? '');
     const deliveryPoint = (order as any).deliveryPoint;
     const invoiceDate = this.getInvoiceDate(order);
     const frCode = '02-23-27 FR';
