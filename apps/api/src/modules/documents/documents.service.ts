@@ -78,7 +78,7 @@ export class DocumentsService {
         const returned = Number((item as any).returnedWeight ?? 0);
         const sold = Math.max(issued - returned, 0);
         const price = Number(item.pricePerKg ?? 0); // price вже з ПДВ
-        const sum = Math.round(sold * price * 100) / 100;
+        const sum = this.r2(sold * price);
         totalWithVat += sum;
         return `
         <tr>
@@ -221,7 +221,11 @@ export class DocumentsService {
     return this.generatePdf(html);
   }
 
-  private calculateTotal(items: any[]) {
+  private r2(value: number): number {
+    return Math.round(value * 100 + 1e-7) / 100;
+  }
+
+  private calculateTotal(items: any[]): number {
     return items.reduce(
       (
         sum: number,
@@ -232,13 +236,10 @@ export class DocumentsService {
           pricePerKg?: unknown;
         },
       ) => {
-        // Округлюємо кожен рядок до 2 знаків (як 1С) перед додаванням
-        const rowTotal =
-          Math.round(
-            Number(item.actualWeight ?? item.plannedWeight) *
-              Number(item.pricePerKg ?? 0) *
-              100,
-          ) / 100;
+        const rowTotal = this.r2(
+          Number(item.actualWeight ?? item.plannedWeight) *
+            Number(item.pricePerKg ?? 0),
+        );
         return sum + rowTotal;
       },
       0,
@@ -281,9 +282,9 @@ export class DocumentsService {
 
   // Число прописом (гривні)
   private numberToWords(amount: number): string {
-    const n = Math.round(amount * 100) / 100;
+    const n = this.r2(amount);
     const intPart = Math.floor(n);
-    const kopPart = Math.round((n - intPart) * 100);
+    const kopPart = Math.round((n - intPart) * 100 + 1e-7);
 
     const ones = [
       '',
@@ -407,7 +408,7 @@ export class DocumentsService {
       .map((item, index) => {
         const weight = Number(item.actualWeight ?? item.plannedWeight);
         const price = Number(item.pricePerKg ?? 0);
-        const sumWithoutVat = Math.round(weight * price * 100) / 100;
+        const sumWithoutVat = this.r2(weight * price);
         return `
         <tr>
           <td>${index + 1}</td>
@@ -668,7 +669,7 @@ export class DocumentsService {
       .map((item, idx) => {
         const weight = Number(item.actualWeight ?? item.plannedWeight);
         const price = Number(item.pricePerKg ?? 0);
-        const sumWithVat = (Math.round(weight * price * 100) / 100) * 1.2;
+        const sumWithVat = this.r2(weight * price) * 1.2;
         const p = item.product as {
           storageTemp?: string;
           packagingType?: string;
@@ -1488,9 +1489,7 @@ export class DocumentsService {
     const rows = client.prices
       .filter((p) => Number(p.price) > 0)
       .map((p, i) => {
-        const priceWithVat = (
-          Math.round(Number(p.price) * 1.2 * 100) / 100
-        ).toFixed(2);
+        const priceWithVat = this.r2(Number(p.price) * 1.2).toFixed(2);
         return `
         <tr>
           <td class="n">${i + 1}</td>

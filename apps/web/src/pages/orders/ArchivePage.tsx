@@ -4,6 +4,8 @@ import api from '@/api/axios';
 import { useAuthStore } from '@/store/auth';
 import { Order, Form } from '@/types';
 
+const r2 = (v: number) => Math.round(v * 100 + 1e-7) / 100;
+
 function FormBadge({ form }: { form: Form }) {
   return (
     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
@@ -28,7 +30,7 @@ const STATUS_COLOR: Record<string, string> = {
 function calcOrderTotal(items: Order['items']): number {
   return items.reduce((s, i) => {
     if (i.product.unit === 'шт' && !i.actualWeight) return s;
-    return s + Number(i.actualWeight ?? i.plannedWeight) * Number(i.pricePerKg ?? 0);
+    return s + r2(Number(i.actualWeight ?? i.plannedWeight) * Number(i.pricePerKg ?? 0));
   }, 0);
 }
 
@@ -262,7 +264,7 @@ function OrderDetailsModal({ order, onClose, onEditWeights, onEdit, onDelete, us
                       const canCalcPrice = item.product.unit !== 'шт' || !!item.actualWeight;
                       const diff = item.actualWeight ? Number(item.actualWeight) - planned : null;
                       const diffPct = diff !== null && planned > 0 ? (diff / planned) * 100 : null;
-                      const lineTotal = canCalcPrice && weight * price > 0 ? Math.round(weight * price * 1.2 * 100) / 100 : null;
+                      const lineTotal = canCalcPrice && weight * price > 0 ? r2(weight * price) * 1.2 : null;
                       return (
                         <tr key={item.id} className="hover:bg-gray-50/50">
                           <td className="px-3 py-2.5 font-semibold text-gray-800 text-xs">{item.product.name}</td>
@@ -287,7 +289,7 @@ function OrderDetailsModal({ order, onClose, onEditWeights, onEdit, onDelete, us
                       <td className="px-3 py-2.5 text-right text-gray-400 text-xs font-normal">{totalPlanned.toFixed(3)}</td>
                       <td className="px-3 py-2.5 text-right text-xs">{totalWeight.toFixed(3)}</td>
                       <td className="px-3 py-2.5 text-right text-xs">—</td>
-                      <td className="px-3 py-2.5 text-right text-green-600 text-sm">{(Math.round(total * 1.2 * 100) / 100).toFixed(2)} ₴</td>
+                      <td className="px-3 py-2.5 text-right text-green-600 text-sm">{(Math.round(total * 1.2 * 100 + 1e-7) / 100).toFixed(2)} ₴</td>
                     </tr>
                   </tfoot>
                 </table>
@@ -891,7 +893,7 @@ export default function ArchivePage() {
                             {STATUS_LABEL[order.status]}
                           </span>
                         </div>
-                        <span className="font-bold text-green-600 text-sm shrink-0">{(Math.round(orderTotal * 1.2 * 100) / 100).toFixed(2)} ₴</span>
+                        <span className="font-bold text-green-600 text-sm shrink-0">{(Math.round(orderTotal * 1.2 * 100 + 1e-7) / 100).toFixed(2)} ₴</span>
                       </div>
                       <div className="text-sm text-gray-700 font-medium truncate">{order.client.name}</div>
                       {extOrder.deliveryPoint && <div className="text-xs text-gray-400">📍 {extOrder.deliveryPoint.name}</div>}
@@ -945,7 +947,7 @@ export default function ArchivePage() {
                             </span>
                           </td>
                           <td className="px-4 py-3 text-right text-gray-600 text-xs font-medium">{orderWeight.toFixed(1)} кг</td>
-                          <td className="px-4 py-3 text-right"><span className="font-bold text-green-600">{(Math.round(orderTotal * 1.2 * 100) / 100).toFixed(2)} ₴</span></td>
+                          <td className="px-4 py-3 text-right"><span className="font-bold text-green-600">{(Math.round(orderTotal * 1.2 * 100 + 1e-7) / 100).toFixed(2)} ₴</span></td>
                           <td className="px-4 py-3 text-right text-gray-400 text-xs">{new Date(order.createdAt).toLocaleDateString('uk-UA')}</td>
                         </tr>
                       );

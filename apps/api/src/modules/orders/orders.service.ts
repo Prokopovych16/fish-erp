@@ -13,6 +13,10 @@ import { GetOrdersDto } from './dto/get-orders.dto';
 import { OrderStatus, UserRole, Form } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 
+function r2(value: number): number {
+  return Math.round(value * 100 + 1e-7) / 100;
+}
+
 @Injectable()
 export class OrdersService {
   constructor(
@@ -1051,12 +1055,10 @@ export class OrdersService {
     const rows = orders.map((o) => {
       // Та ж сама логіка що й у generateTtn/generateInvoice
       const totalNoVat = o.items.reduce((s, i) => {
-        const rowTotal =
-          Math.round(
-            Number(i.actualWeight ?? i.plannedWeight) *
-              Number(i.pricePerKg ?? 0) *
-              100,
-          ) / 100;
+        const rowTotal = r2(
+          Number(i.actualWeight ?? i.plannedWeight) *
+            Number(i.pricePerKg ?? 0),
+        );
         return s + rowTotal;
       }, 0);
       const totalWithVat = Number((totalNoVat * 1.2).toFixed(2));

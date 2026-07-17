@@ -17,6 +17,8 @@ import {
 } from '@dnd-kit/core';
 
 // ─── FormBadge ────────────────────────────────────────────────────────────────
+const r2 = (v: number) => Math.round(v * 100 + 1e-7) / 100;
+
 function FormBadge({ form }: { form: Form }) {
   return (
     <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold tracking-wide ${
@@ -218,7 +220,7 @@ function OrderDetailsModal({ order, onClose, onStatusChange, onUpdateWeights, on
   const isBazaar = !!(order as any).isBazaar;
   const total = order.items.reduce((s, i) => {
     if (i.product.unit === 'шт' && !i.actualWeight) return s;
-    return s + Number(i.actualWeight ?? i.plannedWeight) * Number(i.pricePerKg ?? 0);
+    return s + r2(Number(i.actualWeight ?? i.plannedWeight) * Number(i.pricePerKg ?? 0));
   }, 0);
   const totalPlanned = order.items.reduce((s, i) => s + Number(i.plannedWeight), 0);
   const totalActual = order.items.reduce((s, i) => s + Number(i.actualWeight ?? i.plannedWeight), 0);
@@ -274,7 +276,7 @@ function OrderDetailsModal({ order, onClose, onStatusChange, onUpdateWeights, on
     } catch { alert('Помилка генерації'); }
   };
 
-  const totalWithVat = Math.round(total * 1.2 * 100) / 100;
+  const totalWithVat = Math.round(total * 1.2 * 100 + 1e-7) / 100;
 
   const buttons = (
     <>
@@ -451,7 +453,7 @@ function OrderDetailsModal({ order, onClose, onStatusChange, onUpdateWeights, on
                       const w = Number(item.actualWeight ?? item.plannedWeight);
                       const p = Number(item.pricePerKg ?? 0);
                       const canCalcPrice = item.product.unit !== 'шт' || !!item.actualWeight;
-                      const lineTotal = canCalcPrice && w * p > 0 ? Math.round(w * p * 1.2 * 100) / 100 : null;
+                      const lineTotal = canCalcPrice && w * p > 0 ? r2(w * p) * 1.2 : null;
                       return (
                         <tr key={item.id} className="hover:bg-gray-50/50">
                           <td className="px-3 py-2.5 font-semibold text-gray-800 text-xs">{item.product.name}</td>

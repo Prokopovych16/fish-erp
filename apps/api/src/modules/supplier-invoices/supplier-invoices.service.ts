@@ -18,11 +18,13 @@ interface CreateInvoiceDto {
   items: InvoiceItemDto[];
 }
 
+function r2(value: number): number {
+  return Math.round(value * 100 + 1e-7) / 100;
+}
+
 function calcTotals(items: InvoiceItemDto[]) {
-  // Кожен рядок рахуємо точно до копійки, далі без ПДВ і ПДВ — похідні,
-  // щоб сума завжди збігалась рівно
   const totalWithVat = items.reduce(
-    (s, i) => s + Math.round(i.quantity * i.pricePerKg * 100) / 100,
+    (s, i) => s + r2(i.quantity * i.pricePerKg),
     0,
   );
   const totalNoVat = Number((totalWithVat / 1.2).toFixed(2));
