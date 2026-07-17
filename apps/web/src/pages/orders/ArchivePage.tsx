@@ -109,6 +109,7 @@ function WeightsEditModal({ order, onClose, onSaved }: {
                     <div className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide mb-1">Фактична</div>
                     <input type="number" step="0.001" min="0" value={weights[item.id]}
                       onChange={(e) => setWeights((prev) => ({ ...prev, [item.id]: e.target.value }))}
+                      onWheel={(e) => e.currentTarget.blur()}
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
                   </div>
                   <div className="text-xs text-gray-400 shrink-0 mt-5">{item.product.unit}</div>
@@ -683,6 +684,7 @@ function EditArchiveOrderModal({ order, onClose, onSaved }: { order: Order; onCl
                       <div className="text-[10px] text-gray-400 mb-0.5">Планова</div>
                       <input type="number" step="0.001" min="0" value={item.plannedWeight}
                         onChange={(e) => setItems((prev) => prev.map((p, i) => i === idx ? { ...p, plannedWeight: e.target.value } : p))}
+                        onWheel={(e) => e.currentTarget.blur()}
                         className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white" />
                     </div>
                     <div className="text-gray-300 mt-4">→</div>
@@ -690,6 +692,7 @@ function EditArchiveOrderModal({ order, onClose, onSaved }: { order: Order; onCl
                       <div className="text-[10px] text-gray-400 mb-0.5">Фактична</div>
                       <input type="number" step="0.001" min="0" value={item.actualWeight}
                         onChange={(e) => setItems((prev) => prev.map((p, i) => i === idx ? { ...p, actualWeight: e.target.value } : p))}
+                        onWheel={(e) => e.currentTarget.blur()}
                         className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
                     </div>
                     <div className="text-xs text-gray-400 mt-4">{item.productUnit}</div>
@@ -697,6 +700,7 @@ function EditArchiveOrderModal({ order, onClose, onSaved }: { order: Order; onCl
                       <div className="text-[10px] text-gray-400 mb-0.5">Ціна/кг ₴</div>
                       <input type="number" step="0.01" min="0" value={item.pricePerKg || ''}
                         onChange={(e) => setItems((prev) => prev.map((p, i) => i === idx ? { ...p, pricePerKg: Number(e.target.value) } : p))}
+                        onWheel={(e) => e.currentTarget.blur()}
                         placeholder="0.00"
                         className="w-full border border-amber-200 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-amber-400 bg-amber-50/50" />
                     </div>

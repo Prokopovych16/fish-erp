@@ -506,6 +506,7 @@ function OrderDetailsModal({ order, onClose, onStatusChange, onUpdateWeights, on
                               type="number" step="0.001" min="0"
                               value={returnWeights[item.id] ?? ''}
                               onChange={(e) => setReturnWeights(prev => ({ ...prev, [item.id]: e.target.value }))}
+                              onWheel={(e) => e.currentTarget.blur()}
                               placeholder={Number(item.goodQty).toFixed(3)}
                               style={{ MozAppearance: 'textfield' } as any}
                               className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-orange-400 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" />
@@ -670,6 +671,7 @@ function WeightsModal({ order, onClose, onSave, userRole }: {
                       min="0"
                       value={weights[item.id]}
                       onChange={(e) => handleWeightChange(item.id, e.target.value)}
+                      onWheel={(e) => e.currentTarget.blur()}
                       style={{ MozAppearance: 'textfield' } as any}
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                     />
@@ -1169,6 +1171,7 @@ function CreateOrderModal({ onClose, onCreated, defaultBazaar }: { onClose: () =
                           type="number" step="0.001" min="0"
                           value={item.plannedWeight}
                           onChange={(e) => setItems((prev) => prev.map((p, i) => i === idx ? { ...p, plannedWeight: e.target.value } : p))}
+                          onWheel={(e) => e.currentTarget.blur()}
                           placeholder="0.000"
                           style={{ MozAppearance: 'textfield' } as any}
                           className="flex-1 sm:flex-none sm:w-20 border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
@@ -1537,6 +1540,7 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
                           {/* FIX 2: прибираємо повзунок */}
                           <input type="number" step="0.001" min="0" value={item.plannedWeight}
                             onChange={(e) => setItems((prev) => prev.map((p, i) => i === idx ? { ...p, plannedWeight: e.target.value } : p))}
+                            onWheel={(e) => e.currentTarget.blur()}
                             placeholder="0.000"
                             style={{ MozAppearance: 'textfield' } as any}
                             className="flex-1 sm:flex-none sm:w-20 border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" />
@@ -1555,6 +1559,7 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
                             <span className="text-[10px] text-orange-500 shrink-0 w-[51px]">повернено</span>
                             <input type="number" step="0.001" min="0" max={item.plannedWeight || undefined} value={item.returnedWeight}
                               onChange={(e) => setItems((prev) => prev.map((p, i) => i === idx ? { ...p, returnedWeight: e.target.value } : p))}
+                              onWheel={(e) => e.currentTarget.blur()}
                               placeholder="0.000"
                               style={{ MozAppearance: 'textfield' } as any}
                               className="flex-1 sm:flex-none sm:w-20 border border-orange-200 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-orange-400 bg-orange-50/40 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" />
@@ -1576,6 +1581,7 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
                               type="number" step="0.01" min="0"
                               value={item.pricePerKg}
                               onChange={(e) => setItems((prev) => prev.map((p, i) => i === idx ? { ...p, pricePerKg: e.target.value } : p))}
+                              onWheel={(e) => e.currentTarget.blur()}
                               placeholder={clientPrice ? `${clientPrice.toFixed(2)} (авто)` : 'не встановлено'}
                               style={{ MozAppearance: 'textfield' } as any}
                               className="w-28 border border-gray-200 rounded-lg px-2 py-1 text-xs text-right focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
@@ -1928,6 +1934,7 @@ function BazaarReturnModal({ order, onClose, onSettled }: { order: Order; onClos
                     <div className="flex items-center gap-2">
                       <label className="text-xs text-gray-500 shrink-0 w-20">Повернено</label>
                       <input type="number" min="0" max={issued} step="0.001"
+                        onWheel={(e) => e.currentTarget.blur()}
                         value={returns[item.id]}
                         onChange={(e) => setReturns((prev) => ({ ...prev, [item.id]: e.target.value }))}
                         placeholder="0.000"
