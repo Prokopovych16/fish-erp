@@ -92,7 +92,7 @@ export class WarehousesController {
 
   @Post('suppliers')
   createSupplier(
-    @Body() dto: { name: string; edrpou?: string; contact?: string },
+    @Body() dto: { name: string; edrpou?: string; contact?: string; type?: string },
   ) {
     return this.warehousesService.createSupplier(dto);
   }
@@ -100,7 +100,7 @@ export class WarehousesController {
   @Patch('suppliers/:id')
   updateSupplier(
     @Param('id') id: string,
-    @Body() dto: { name?: string; edrpou?: string; contact?: string },
+    @Body() dto: { name?: string; edrpou?: string; contact?: string; type?: string },
   ) {
     return this.warehousesService.updateSupplier(id, dto);
   }
@@ -134,6 +134,7 @@ export class WarehousesController {
         pricePerKg?: number;
       }[];
       note?: string;
+      calcId?: string;
     },
   ) {
     return this.warehousesService.createProduction(dto);

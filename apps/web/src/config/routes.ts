@@ -10,7 +10,7 @@ export const ROUTES: RouteConfig[] = [
   { path: '/dashboard',  label: '📊 Дашборд',      roles: ['ADMIN', 'WORKER', 'ACCOUNTANT', 'INSPECTOR'] },
   { path: '/cash',       label: '💵 Готівка',       roles: ['ADMIN'] },
   { path: '/orders',     label: '📋 Заявки',        roles: ['ADMIN', 'WORKER', 'INSPECTOR'] },
-  { path: '/archive',    label: '🗂 Архів',          roles: ['ADMIN', 'ACCOUNTANT', 'INSPECTOR'] },
+  { path: '/archive',    label: '🗂 Бухгалтерія',    roles: ['ADMIN', 'ACCOUNTANT', 'INSPECTOR'] },
   { path: '/warehouse',  label: '🏭 Склади',         roles: ['ADMIN', 'INSPECTOR'] },
   { path: '/production-calc', label: '💎 Калькулятор', roles: ['ADMIN', 'INSPECTOR'] },
   { path: '/forecast',   label: '📦 Прогноз закупівлі', roles: ['ADMIN'] },

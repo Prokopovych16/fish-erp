@@ -14,13 +14,50 @@ export class SupplierInvoicesController {
   constructor(private service: SupplierInvoicesService) {}
 
   @Get()
-  findAll(@Query('from') from?: string, @Query('to') to?: string, @Query('supplierId') supplierId?: string) {
-    return this.service.findAll({ from, to, supplierId });
+  findAll(
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('supplierId') supplierId?: string,
+    @Query('form') form?: string,
+  ) {
+    return this.service.findAll({ from, to, supplierId, form });
   }
 
   @Get('registry')
-  getRegistry(@Query('from') from: string, @Query('to') to: string, @Query('supplierId') supplierId?: string) {
-    return this.service.getRegistry({ from, to, supplierId });
+  getRegistry(
+    @Query('from') from: string,
+    @Query('to') to: string,
+    @Query('supplierId') supplierId?: string,
+    @Query('form') form?: string,
+  ) {
+    return this.service.getRegistry({ from, to, supplierId, form });
+  }
+
+  @Get('budget')
+  getBudget(
+    @Query('from') from: string,
+    @Query('to') to: string,
+    @Query('form') form?: string,
+  ) {
+    return this.service.getBudget({ from, to, form });
+  }
+
+  @Get('settlements')
+  getSettlements(@Query('from') from: string, @Query('to') to: string) {
+    return this.service.getSettlements({ from, to });
+  }
+
+  @Post('payments')
+  createPayment(
+    @Body() dto: { supplierId: string; amount: number; note?: string; paymentDate: string },
+    @Request() req,
+  ) {
+    return this.service.createPayment(dto, req.user.id);
+  }
+
+  @Delete('payments/:id')
+  deletePayment(@Param('id') id: string) {
+    return this.service.deletePayment(id);
   }
 
   @Get(':id')
@@ -33,7 +70,7 @@ export class SupplierInvoicesController {
     @Body() dto: {
       supplierId: string; invoiceNumber?: string; invoiceDate: string;
       warehouseId: string; form: Form; note?: string;
-      items: { productId: string; quantity: number; pricePerKg: number }[];
+      items: { productId: string; quantity: number; pricePerKg: number; comment?: string }[];
     },
     @Request() req,
   ) {
@@ -46,7 +83,7 @@ export class SupplierInvoicesController {
     @Body() dto: Partial<{
       supplierId: string; invoiceNumber: string; invoiceDate: string;
       warehouseId: string; form: Form; note: string;
-      items: { productId: string; quantity: number; pricePerKg: number }[];
+      items: { productId: string; quantity: number; pricePerKg: number; comment?: string }[];
     }>,
     @Request() req,
   ) {

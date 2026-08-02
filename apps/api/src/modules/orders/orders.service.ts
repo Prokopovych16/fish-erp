@@ -1185,4 +1185,108 @@ export class OrdersService {
 
     return { suppliers, grandTotal, from: params.from, to: params.to };
   }
+
+  // ─── Розрахунок з клієнтами ────────────────────────────────────────────────
+  async getClientSettlements(params: { from: string; to: string }) {
+    const fromDate = new Date(params.from + 'T00:00:00');
+    const toDate = new Date(params.to + 'T23:59:59');
+
+    const orders = await this.prisma.order.findMany({
+      where: { form: 'FORM_1', status: 'DONE', deletedAt: null },
+      include: { client: true, items: { include: { product: true } } },
+      orderBy: { invoiceDate: 'asc' },
+    });
+
+    const allPayments = await this.prisma.clientPayment.findMany({
+      include: { client: true },
+      orderBy: { paymentDate: 'asc' },
+    });
+
+    const r2 = (v: number) => Math.round(v * 100 + 1e-7) / 100;
+
+    const calcOrderTotal = (items: any[]) =>
+      items.reduce((s: number, i: any) => {
+        if (i.product?.unit === 'шт' && !i.actualWeight) return s;
+        return s + r2(Number(i.actualWeight ?? i.plannedWeight ?? 0) * Number(i.pricePerKg ?? 0));
+      }, 0);
+
+    const clientMap = new Map<string, { client: any; orders: any[]; payments: any[] }>();
+
+    for (const order of orders) {
+      if (!clientMap.has(order.clientId)) {
+        clientMap.set(order.clientId, { client: order.client, orders: [], payments: [] });
+      }
+      clientMap.get(order.clientId)!.orders.push(order);
+    }
+    for (const payment of allPayments) {
+      if (!clientMap.has(payment.clientId)) {
+        clientMap.set(payment.clientId, { client: payment.client, orders: [], payments: [] });
+      }
+      clientMap.get(payment.clientId)!.payments.push(payment);
+    }
+
+    const result: any[] = [];
+    for (const [, data] of clientMap) {
+      const allTimeInvoiced = r2(data.orders.reduce((s: number, o: any) => s + r2(calcOrderTotal(o.items) * 1.2), 0));
+      const allTimeAdjusted = r2(data.payments.reduce((s: number, p: any) => s + Number(p.amount), 0));
+      const balance = r2(allTimeInvoiced + allTimeAdjusted);
+
+      const periodOrders = data.orders.filter((o: any) => {
+        const d = o.invoiceDate || o.completedAt || o.createdAt;
+        return d >= fromDate && d <= toDate;
+      });
+      const periodPayments = data.payments.filter((p: any) => p.paymentDate >= fromDate && p.paymentDate <= toDate);
+
+      const periodInvoiced = r2(periodOrders.reduce((s: number, o: any) => s + r2(calcOrderTotal(o.items) * 1.2), 0));
+      const periodAdjusted = r2(periodPayments.reduce((s: number, p: any) => s + Number(p.amount), 0));
+
+      const events = [
+        ...periodOrders.map((o: any) => ({
+          id: o.id,
+          type: 'order' as const,
+          date: o.invoiceDate || o.completedAt || o.createdAt,
+          amount: r2(calcOrderTotal(o.items) * 1.2),
+          orderNumber: String(o.numberForm ?? o.number ?? '') + (o.numberSuffix ?? ''),
+          note: null,
+        })),
+        ...periodPayments.map((p: any) => ({
+          id: p.id,
+          type: 'payment' as const,
+          date: p.paymentDate,
+          amount: Number(p.amount),
+          note: p.note,
+          orderNumber: null,
+        })),
+      ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+      if (data.orders.length > 0 || data.payments.length > 0) {
+        result.push({
+          client: { id: data.client.id, name: data.client.name },
+          allTimeInvoiced,
+          allTimeAdjusted,
+          balance,
+          periodInvoiced,
+          periodAdjusted,
+          events,
+        });
+      }
+    }
+
+    return result.sort((a, b) => b.balance - a.balance);
+  }
+
+  async createClientPayment(dto: { clientId: string; amount: number; note?: string; paymentDate: string }) {
+    return this.prisma.clientPayment.create({
+      data: {
+        clientId: dto.clientId,
+        amount: dto.amount,
+        note: dto.note ?? null,
+        paymentDate: new Date(dto.paymentDate),
+      },
+    });
+  }
+
+  async deleteClientPayment(id: string) {
+    return this.prisma.clientPayment.delete({ where: { id } });
+  }
 }

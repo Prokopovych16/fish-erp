@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/api/axios';
+import { ProductionModal } from './ProductionModal';
 
 type CalcOutput = {
   id: string;
@@ -128,7 +129,7 @@ function OutputRow({ output, costPerKg }: { output: CalcOutput; costPerKg: numbe
 }
 
 // ─── Картка партії ────────────────────────────────────────────────────────────
-function CalcCard({ calc, onDelete }: { calc: ProductionCalc; onDelete: (id: string) => void }) {
+function CalcCard({ calc, onDelete, onEdit }: { calc: ProductionCalc; onDelete: (id: string) => void; onEdit: (calc: ProductionCalc) => void }) {
   const [expanded, setExpanded] = useState(false);
 
   const costPerKg = Number(calc.costPerKg);
@@ -218,6 +219,11 @@ function CalcCard({ calc, onDelete }: { calc: ProductionCalc; onDelete: (id: str
               </>
             )}
           </div>
+          <button
+            onClick={(e) => { e.stopPropagation(); onEdit(calc); }}
+            className={`w-7 h-7 rounded-lg flex items-center justify-center text-sm transition-colors ${expanded ? 'text-purple-200 hover:text-white hover:bg-white/10' : 'text-gray-400 hover:text-amber-500 hover:bg-amber-50'}`}>
+            ✏️
+          </button>
           <button
             onClick={(e) => { e.stopPropagation(); onDelete(calc.id); }}
             className={`w-7 h-7 rounded-lg flex items-center justify-center text-sm transition-colors ${expanded ? 'text-purple-200 hover:text-white hover:bg-white/10' : 'text-gray-400 hover:text-red-500 hover:bg-red-50'}`}>
@@ -360,6 +366,7 @@ export default function ProductionCalcPage() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [showFilters, setShowFilters] = useState(false);
+  const [editingCalc, setEditingCalc] = useState<ProductionCalc | null>(null);
 
   const { data: calcs = [], isLoading } = useQuery({
     queryKey: ['production-calc'],
@@ -374,6 +381,8 @@ export default function ProductionCalcPage() {
   const handleDelete = (id: string) => {
     if (confirm('Видалити цей розрахунок?')) deleteMutation.mutate(id);
   };
+
+  const handleEdit = (calc: ProductionCalc) => setEditingCalc(calc);
 
   const filtered = useMemo(() => {
     return (calcs as ProductionCalc[]).filter((c) => {
@@ -420,6 +429,25 @@ const stats = useMemo(() => {
 
   return (
     <div className="space-y-5">
+      {editingCalc && (
+        <ProductionModal
+          editCalcId={editingCalc.id}
+          initialNote={editingCalc.note ?? undefined}
+          initialCalcData={{
+            inputs: editingCalc.inputs.map(i => ({
+              productName: i.productName,
+              quantity: Number(i.quantity),
+              supplierName: i.supplierName ?? null,
+            })),
+            outputs: editingCalc.outputs.map(o => ({
+              productName: o.productName,
+              quantity: Number(o.quantity),
+            })),
+          }}
+          onClose={() => setEditingCalc(null)}
+        />
+      )}
+
       {/* Шапка-дашборд */}
       <div className="bg-gradient-to-br from-slate-50 via-white to-purple-50/40 rounded-2xl sm:rounded-3xl border border-gray-100 p-3.5 sm:p-5 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -559,7 +587,7 @@ const stats = useMemo(() => {
         activeTab === 'calcs' ? (
           <div className="space-y-3">
             {filtered.map((calc: ProductionCalc) => (
-              <CalcCard key={calc.id} calc={calc} onDelete={handleDelete} />
+              <CalcCard key={calc.id} calc={calc} onDelete={handleDelete} onEdit={handleEdit} />
             ))}
           </div>
         ) : null

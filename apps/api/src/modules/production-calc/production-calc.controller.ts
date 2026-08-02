@@ -34,6 +34,11 @@ export class ProductionCalcController {
     return this.service.updateMarkup(id, body.markupPct);
   }
 
+  @Patch(':id')
+  update(@Param('id') id: string, @Body() dto: any) {
+    return this.service.update(id, dto);
+  }
+
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.service.remove(id);

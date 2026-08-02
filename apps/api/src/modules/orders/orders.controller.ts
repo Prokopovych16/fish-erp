@@ -56,6 +56,24 @@ export class OrdersController {
     return this.ordersService.getSuppliersReport({ from, to });
   }
 
+  @Get('reports/client-settlements')
+  getClientSettlements(
+    @Query('from') from: string,
+    @Query('to') to: string,
+  ) {
+    return this.ordersService.getClientSettlements({ from, to });
+  }
+
+  @Post('client-payments')
+  createClientPayment(@Body() dto: { clientId: string; amount: number; note?: string; paymentDate: string }) {
+    return this.ordersService.createClientPayment(dto);
+  }
+
+  @Delete('client-payments/:id')
+  deleteClientPayment(@Param('id') id: string) {
+    return this.ordersService.deleteClientPayment(id);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string, @Request() req) {
     return this.ordersService.findOne(id, req.user.role);

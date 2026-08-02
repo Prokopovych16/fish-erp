@@ -3,22 +3,27 @@
 // Видали ціну з рядків готової продукції (рахується як собівартість)
 // Додай чекбокс "Записати в калькулятор"
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '@/api/axios';
 
-type FormType = 'FORM_1' | 'FORM_2';
 type WarehouseType = 'RAW_MATERIAL' | 'IN_PRODUCTION' | 'FINISHED_GOODS' | 'FRIDGE' | 'SUPPLIES';
-
 
 const warehouseTypeIcon: Record<WarehouseType, string> = {
   RAW_MATERIAL: '🐟', IN_PRODUCTION: '⚙️', FINISHED_GOODS: '📦', FRIDGE: '❄️', SUPPLIES: '🧴',
 };
 
-export function ProductionModal({ onClose, initialItem }: {
+export function ProductionModal({ onClose, initialItem, editCalcId, initialNote, initialCalcData }: {
   onClose: () => void;
   initialItem?: { warehouseId: string; stockItemId: string; quantity: string };
+  editCalcId?: string;
+  initialNote?: string;
+  initialCalcData?: {
+    inputs: Array<{ productName: string; quantity: number; supplierName: string | null }>;
+    outputs: Array<{ productName: string; quantity: number }>;
+  };
 }) {
+  const isEditMode = !!editCalcId;
   const queryClient = useQueryClient();
 
   const [inputs, setInputs] = useState([
@@ -27,10 +32,13 @@ export function ProductionModal({ onClose, initialItem }: {
   const [outputs, setOutputs] = useState([
     { productId: '', quantity: '' },
   ]);
-  const [note, setNote] = useState('');
-  const [saveToCalc, setSaveToCalc] = useState(false);
+  const [note, setNote] = useState(initialNote ?? '');
+  const [saveToCalc, setSaveToCalc] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const inputsInitRef = useRef(false);
+  const outputsInitRef = useRef(false);
 
   const { data: stock = [] } = useQuery({
     queryKey: ['stock'],
@@ -41,34 +49,64 @@ export function ProductionModal({ onClose, initialItem }: {
     queryFn: () => api.get('/products/active').then((r) => r.data),
   });
 
-  const activeWarehouses = stock.filter((w: any) => w.isActive);
+  const activeWarehouses = (stock as any[]).filter((w: any) => w.isActive);
 
-  // Батчі (партії) для вибраного складу
+  // Auto-fill inputs від calc даних (підбираємо партії по назві продукту + постачальнику)
+  useEffect(() => {
+    if (!initialCalcData || inputsInitRef.current || !(stock as any[]).length) return;
+    inputsInitRef.current = true;
+    const matched = initialCalcData.inputs.map((inp) => {
+      let foundWarehouseId = '';
+      let foundStockItemId = '';
+      for (const wh of activeWarehouses) {
+        for (const item of ((wh.stockItems || []) as any[])) {
+          if (item.product?.name === inp.productName) {
+            if (!inp.supplierName || item.supplier?.name === inp.supplierName) {
+              foundWarehouseId = wh.id;
+              foundStockItemId = item.id;
+              break;
+            }
+          }
+        }
+        if (foundWarehouseId) break;
+      }
+      return { warehouseId: foundWarehouseId, stockItemId: foundStockItemId, quantity: String(inp.quantity) };
+    });
+    if (matched.length) setInputs(matched);
+  }, [stock]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-fill outputs від calc даних (підбираємо productId по назві)
+  useEffect(() => {
+    if (!initialCalcData || outputsInitRef.current || !(products as any[]).length) return;
+    outputsInitRef.current = true;
+    const matched = initialCalcData.outputs.map((out) => {
+      const prod = (products as any[]).find((p: any) => p.name === out.productName);
+      return { productId: prod?.id ?? '', quantity: String(out.quantity) };
+    });
+    if (matched.length) setOutputs(matched);
+  }, [products]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const getBatches = (warehouseId: string) => {
     if (!warehouseId) return [];
     const wh = activeWarehouses.find((w: any) => w.id === warehouseId);
     return ((wh?.stockItems || []) as any[]).filter((i: any) => Number(i.quantity) > 0);
   };
 
-  // Конкретна партія
   const getBatch = (warehouseId: string, stockItemId: string) => {
     if (!stockItemId) return null;
     return getBatches(warehouseId).find((i: any) => i.id === stockItemId) ?? null;
   };
 
-  // Рядки сировини
   const addInput = () => setInputs(prev => [...prev, { warehouseId: '', stockItemId: '', quantity: '' }]);
   const removeInput = (idx: number) => setInputs(prev => prev.filter((_, i) => i !== idx));
   const updateInput = (idx: number, key: string, val: string) =>
     setInputs(prev => prev.map((r, i) => i === idx ? { ...r, [key]: val } : r));
 
-  // Рядки готової продукції
   const addOutput = () => setOutputs(prev => [...prev, { productId: '', quantity: '' }]);
   const removeOutput = (idx: number) => setOutputs(prev => prev.filter((_, i) => i !== idx));
   const updateOutput = (idx: number, key: string, val: string) =>
     setOutputs(prev => prev.map((r, i) => i === idx ? { ...r, [key]: val } : r));
 
-  // Підсумки
   const totalInputCost = inputs.reduce((s, r) => {
     const batch = getBatch(r.warehouseId, r.stockItemId);
     return s + (Number(r.quantity) || 0) * Number(batch?.pricePerKg ?? 0);
@@ -84,32 +122,26 @@ export function ProductionModal({ onClose, initialItem }: {
     setLoading(true);
     setError('');
     try {
-      // 1. Проводимо виробництво на складі
-      await api.post('/warehouses/production', {
-        inputs: inputs.map(r => {
-          const batch = getBatch(r.warehouseId, r.stockItemId);
-          return {
-            warehouseId: r.warehouseId,
-            productId: batch?.productId ?? '',
-            quantity: Number(r.quantity),
-            form: batch?.form ?? 'FORM_1',
-            stockItemId: r.stockItemId,
-          };
-        }),
-        outputs: outputs.map(r => ({
-          productId: r.productId,
-          quantity: Number(r.quantity),
-          form: 'FORM_1',
-          pricePerKg: costPerKg,
-        })),
-        note: note || undefined,
-      });
-
-      // 2. Якщо треба — зберігаємо в калькулятор
-      if (saveToCalc) {
-        await api.post('/production-calc', {
-          note: note || undefined,
+      if (isEditMode) {
+        // ── РЕЖИМ РЕДАГУВАННЯ ────────────────────────────────────────────
+        await api.patch(`/production-calc/${editCalcId}`, {
           inputs: inputs.map(r => {
+            const batch = getBatch(r.warehouseId, r.stockItemId);
+            return {
+              warehouseId: r.warehouseId,
+              productId: batch?.productId ?? '',
+              quantity: Number(r.quantity),
+              form: batch?.form ?? 'FORM_1',
+              stockItemId: r.stockItemId,
+            };
+          }),
+          outputs: outputs.map(r => ({
+            productId: r.productId,
+            quantity: Number(r.quantity),
+            form: 'FORM_1',
+            pricePerKg: costPerKg,
+          })),
+          calcInputs: inputs.map(r => {
             const batch = getBatch(r.warehouseId, r.stockItemId);
             return {
               productName: batch?.product?.name ?? r.stockItemId,
@@ -119,7 +151,7 @@ export function ProductionModal({ onClose, initialItem }: {
               supplierName: batch?.supplier?.name ?? null,
             };
           }),
-          outputs: outputs.map(r => {
+          calcOutputs: outputs.map(r => {
             const prod = (products as any[]).find((p: any) => p.id === r.productId);
             return {
               productName: prod?.name ?? r.productId,
@@ -127,7 +159,57 @@ export function ProductionModal({ onClose, initialItem }: {
               form: 'FORM_1',
             };
           }),
+          note: note || undefined,
         });
+      } else {
+        // ── РЕЖИМ СТВОРЕННЯ ──────────────────────────────────────────────
+        const warehousePayload: any = {
+          inputs: inputs.map(r => {
+            const batch = getBatch(r.warehouseId, r.stockItemId);
+            return {
+              warehouseId: r.warehouseId,
+              productId: batch?.productId ?? '',
+              quantity: Number(r.quantity),
+              form: batch?.form ?? 'FORM_1',
+              stockItemId: r.stockItemId,
+            };
+          }),
+          outputs: outputs.map(r => ({
+            productId: r.productId,
+            quantity: Number(r.quantity),
+            form: 'FORM_1',
+            pricePerKg: costPerKg,
+          })),
+          note: note || undefined,
+        };
+
+        // Якщо saveToCalc: спочатку calc (щоб отримати id), потім warehouse з calcId
+        if (saveToCalc) {
+          const calcResp = await api.post('/production-calc', {
+            note: note || undefined,
+            inputs: inputs.map(r => {
+              const batch = getBatch(r.warehouseId, r.stockItemId);
+              return {
+                productName: batch?.product?.name ?? r.stockItemId,
+                quantity: Number(r.quantity),
+                pricePerKg: Number(batch?.pricePerKg ?? 0),
+                form: batch?.form ?? 'FORM_1',
+                supplierName: batch?.supplier?.name ?? null,
+              };
+            }),
+            outputs: outputs.map(r => {
+              const prod = (products as any[]).find((p: any) => p.id === r.productId);
+              return {
+                productName: prod?.name ?? r.productId,
+                quantity: Number(r.quantity),
+                form: 'FORM_1',
+              };
+            }),
+          });
+          warehousePayload.calcId = calcResp.data.id;
+        }
+
+        await api.post('/warehouses/production', warehousePayload);
       }
 
       queryClient.invalidateQueries({ queryKey: ['stock'] });
@@ -148,9 +230,15 @@ export function ProductionModal({ onClose, initialItem }: {
           <div>
             <div className="flex items-center gap-2">
               <span className="text-xl">⚙️</span>
-              <h2 className="font-bold text-gray-800 text-lg">Виробництво</h2>
+              <h2 className="font-bold text-gray-800 text-lg">
+                {isEditMode ? 'Редагувати виробництво' : 'Виробництво'}
+              </h2>
             </div>
-            <p className="text-xs text-gray-400 mt-0.5">Спишіть сировину і вкажіть готову продукцію</p>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {isEditMode
+                ? 'Вкажіть нові дані — склад буде скориговано автоматично'
+                : 'Спишіть сировину і вкажіть готову продукцію'}
+            </p>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
         </div>
@@ -178,7 +266,6 @@ export function ProductionModal({ onClose, initialItem }: {
                 return (
                   <div key={idx} className={`rounded-xl border p-3 transition-all ${isOver ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-gray-50'}`}>
                     <div className="grid grid-cols-12 gap-2 items-end">
-                      {/* Склад */}
                       <div className="col-span-4">
                         <div className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide mb-1">Склад</div>
                         <select value={row.warehouseId}
@@ -190,7 +277,6 @@ export function ProductionModal({ onClose, initialItem }: {
                           ))}
                         </select>
                       </div>
-                      {/* Партія */}
                       <div className="col-span-5">
                         <div className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide mb-1">Партія</div>
                         <select value={row.stockItemId} onChange={(e) => updateInput(idx, 'stockItemId', e.target.value)}
@@ -204,7 +290,6 @@ export function ProductionModal({ onClose, initialItem }: {
                           ))}
                         </select>
                       </div>
-                      {/* Кількість */}
                       <div className="col-span-2">
                         <div className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide mb-1">кг</div>
                         <input type="number" step="0.001" min="0" value={row.quantity}
@@ -212,7 +297,6 @@ export function ProductionModal({ onClose, initialItem }: {
                           placeholder="0.000"
                           className={`w-full border rounded-lg px-2 py-2 text-xs text-right focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white ${isOver ? 'border-red-300' : 'border-gray-300'}`} />
                       </div>
-                      {/* Видалити */}
                       <div className="col-span-1 flex justify-center">
                         {inputs.length > 1 && (
                           <button onClick={() => removeInput(idx)} className="text-red-400 hover:text-red-600 text-lg">×</button>
@@ -220,7 +304,6 @@ export function ProductionModal({ onClose, initialItem }: {
                       </div>
                     </div>
 
-                    {/* Інфо вибраної партії */}
                     {batch && (
                       <div className="mt-2 flex flex-wrap gap-2 text-xs">
                         <span className={`${batch.form === 'FORM_1' ? 'bg-blue-100 text-blue-600' : 'bg-orange-100 text-orange-600'} px-2 py-0.5 rounded-full font-semibold`}>
@@ -253,12 +336,8 @@ export function ProductionModal({ onClose, initialItem }: {
               </div>
               {totalInputCost > 0 && totalOutputQty > 0 && (
                 <div className="mt-1 space-y-0.5">
-                  <div className="text-xs text-purple-600">
-                    Вхід: <b>{totalInputCost.toFixed(2)} ₴</b>
-                  </div>
-                  <div className="text-xs text-purple-600">
-                    Собівартість: <b>{costPerKg.toFixed(4)} ₴/кг</b>
-                  </div>
+                  <div className="text-xs text-purple-600">Вхід: <b>{totalInputCost.toFixed(2)} ₴</b></div>
+                  <div className="text-xs text-purple-600">Собівартість: <b>{costPerKg.toFixed(4)} ₴/кг</b></div>
                   <div className={`text-xs font-bold ${yieldPct >= 80 ? 'text-green-600' : yieldPct >= 60 ? 'text-orange-500' : 'text-red-500'}`}>
                     Вихід: {yieldPct.toFixed(1)}%
                   </div>
@@ -282,22 +361,19 @@ export function ProductionModal({ onClose, initialItem }: {
               {outputs.map((row, idx) => {
                 const qty = Number(row.quantity) || 0;
                 const lineCost = qty * costPerKg;
-                // Частка цього виходу від загального
                 const share = totalOutputQty > 0 ? (qty / totalOutputQty) * 100 : 0;
 
                 return (
                   <div key={idx} className="rounded-xl border border-gray-200 bg-green-50/30 p-3">
                     <div className="grid grid-cols-12 gap-2 items-end">
-                      {/* Продукт */}
                       <div className="col-span-7">
                         <div className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide mb-1">Готовий продукт</div>
                         <select value={row.productId} onChange={(e) => updateOutput(idx, 'productId', e.target.value)}
                           className="w-full border border-gray-300 rounded-lg px-2 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-green-500 bg-white">
                           <option value="">Оберіть...</option>
-                          {products.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                          {(products as any[]).map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
                         </select>
                       </div>
-                      {/* Фактична вага */}
                       <div className="col-span-4">
                         <div className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide mb-1">Факт. вага кг</div>
                         <input type="number" step="0.001" min="0" value={row.quantity}
@@ -305,7 +381,6 @@ export function ProductionModal({ onClose, initialItem }: {
                           placeholder="0.000"
                           className="w-full border border-gray-300 rounded-lg px-2 py-2 text-xs text-right focus:outline-none focus:ring-2 focus:ring-green-500 bg-white" />
                       </div>
-                      {/* Видалити */}
                       <div className="col-span-1 flex justify-center">
                         {outputs.length > 1 && (
                           <button onClick={() => removeOutput(idx)} className="text-red-400 hover:text-red-600 text-lg">×</button>
@@ -313,7 +388,6 @@ export function ProductionModal({ onClose, initialItem }: {
                       </div>
                     </div>
 
-                    {/* Собівартість цього рядка */}
                     {costPerKg > 0 && qty > 0 && (
                       <div className="mt-2 flex flex-wrap gap-3 text-xs">
                         <span className="text-gray-500">Собівартість: <b className="text-gray-700">{costPerKg.toFixed(4)} ₴/кг</b></span>
@@ -337,29 +411,29 @@ export function ProductionModal({ onClose, initialItem }: {
               placeholder="Необов'язково..." />
           </div>
 
-          {/* Чекбокс — записати в калькулятор */}
-          <div
-            onClick={() => setSaveToCalc(!saveToCalc)}
-            className={`flex items-center gap-3 p-3.5 rounded-xl border-2 cursor-pointer transition-all select-none ${
-              saveToCalc
-                ? 'border-purple-400 bg-purple-50'
-                : 'border-gray-200 bg-gray-50 hover:border-gray-300'
-            }`}
-          >
-            <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-all ${
-              saveToCalc ? 'bg-purple-600 border-purple-600' : 'border-gray-300 bg-white'
-            }`}>
-              {saveToCalc && <span className="text-white text-xs font-bold">✓</span>}
-            </div>
-            <div>
-              <div className={`text-sm font-semibold ${saveToCalc ? 'text-purple-700' : 'text-gray-700'}`}>
-                📊 Записати в калькулятор виробництва
+          {/* Чекбокс — записати в калькулятор (тільки при створенні) */}
+          {!isEditMode && (
+            <div
+              onClick={() => setSaveToCalc(!saveToCalc)}
+              className={`flex items-center gap-3 p-3.5 rounded-xl border-2 cursor-pointer transition-all select-none ${
+                saveToCalc ? 'border-purple-400 bg-purple-50' : 'border-gray-200 bg-gray-50 hover:border-gray-300'
+              }`}
+            >
+              <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-all ${
+                saveToCalc ? 'bg-purple-600 border-purple-600' : 'border-gray-300 bg-white'
+              }`}>
+                {saveToCalc && <span className="text-white text-xs font-bold">✓</span>}
               </div>
-              <div className="text-xs text-gray-400 mt-0.5">
-                Зберегти розрахунок собівартості для подальшого ціноутворення
+              <div>
+                <div className={`text-sm font-semibold ${saveToCalc ? 'text-purple-700' : 'text-gray-700'}`}>
+                  📊 Записати в калькулятор виробництва
+                </div>
+                <div className="text-xs text-gray-400 mt-0.5">
+                  Зберегти розрахунок собівартості для подальшого ціноутворення
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           {error && (
             <div className="flex items-center gap-2 text-red-500 text-sm bg-red-50 border border-red-100 px-4 py-3 rounded-xl">
@@ -388,8 +462,10 @@ export function ProductionModal({ onClose, initialItem }: {
           <div className="flex gap-2">
             <button onClick={onClose} className="flex-1 border border-gray-300 text-gray-600 text-sm px-4 py-2.5 rounded-xl hover:bg-gray-100 transition-colors">Скасувати</button>
             <button onClick={handleSave} disabled={loading}
-              className="flex-1 bg-purple-600 text-white text-sm px-4 py-2.5 rounded-xl hover:bg-purple-700 disabled:opacity-50 transition-colors font-bold">
-              {loading ? 'Зберігаю...' : '⚙️ Провести виробництво'}
+              className={`flex-1 text-white text-sm px-4 py-2.5 rounded-xl disabled:opacity-50 transition-colors font-bold ${
+                isEditMode ? 'bg-amber-500 hover:bg-amber-600' : 'bg-purple-600 hover:bg-purple-700'
+              }`}>
+              {loading ? 'Зберігаю...' : isEditMode ? '✏️ Зберегти зміни' : '⚙️ Провести виробництво'}
             </button>
           </div>
         </div>

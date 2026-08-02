@@ -602,7 +602,7 @@ function BackupSettings() {
 // Головна сторінка налаштувань
 // ============================================================
 export default function SettingsPage() {
-  const [activeTab, setActiveTab] = useState<'company' | 'users' | 'suppliers' | 'drivers' | 'cars' | 'carrier' | 'backup'>('company');
+  const [activeTab, setActiveTab] = useState<'company' | 'users' | 'drivers' | 'cars' | 'carrier' | 'backup'>('company');
 
   const { data: users = [] } = useQuery({
     queryKey: ['users'],
@@ -612,7 +612,6 @@ export default function SettingsPage() {
   const tabs = [
     { value: 'company',   label: 'Реквізити', icon: '🏢' },
     { value: 'users',     label: 'Користувачі', icon: '👥' },
-    { value: 'suppliers', label: 'Постачальники', icon: '🏭' },
     { value: 'drivers',   label: 'Водії', icon: '🚗' },
     { value: 'cars',      label: 'Авто', icon: '🚛' },
     { value: 'carrier',   label: 'Перевізник', icon: '🚚' },
@@ -648,53 +647,6 @@ export default function SettingsPage() {
 
       {activeTab === 'company' && <CompanySettings />}
       {activeTab === 'users' && <UsersSettings />}
-
-      {activeTab === 'suppliers' && (
-        <SimpleListSection
-          title="Постачальники" icon="🏭"
-          queryKey="suppliers" fetchUrl="/warehouses/suppliers"
-          createUrl="/warehouses/suppliers"
-          updateUrl={(id) => `/warehouses/suppliers/${id}`}
-          toggleUrl={(id) => `/warehouses/suppliers/${id}/toggle`}
-          emptyLabel="Постачальників ще немає"
-          formFields={[
-            { key: 'name', required: true },
-            { key: 'edrpou' },
-            { key: 'contact' },
-          ]}
-          renderForm={(vals, setVals) => (
-            <div className="space-y-2">
-              <input value={vals.name || ''} onChange={(e) => setVals({ ...vals, name: e.target.value })}
-                placeholder="Назва *" autoFocus
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              <div className="grid grid-cols-2 gap-2">
-                <input value={vals.edrpou || ''} onChange={(e) => setVals({ ...vals, edrpou: e.target.value })}
-                  placeholder="ЄДРПОУ"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                <input value={vals.contact || ''} onChange={(e) => setVals({ ...vals, contact: e.target.value })}
-                  placeholder="Контакт"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              </div>
-            </div>
-          )}
-          renderItem={(item) => (
-            <div>
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center text-sm font-bold shrink-0">
-                  {(item.name || '?').charAt(0).toUpperCase()}
-                </div>
-                <div>
-                  <div className="text-sm font-medium text-gray-800">{item.name}</div>
-                  <div className="flex gap-3">
-                    {(item as any).edrpou && <span className="text-xs text-gray-400">📋 {(item as any).edrpou}</span>}
-                    {(item as any).contact && <span className="text-xs text-gray-400">📞 {(item as any).contact}</span>}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-        />
-      )}
 
       {activeTab === 'drivers' && (
         <SimpleListSection

@@ -21,15 +21,16 @@ export class WarehousesService {
     name: string;
     edrpou?: string;
     contact?: string;
+    type?: string;
   }) {
-    return this.prisma.supplier.create({ data: dto });
+    return this.prisma.supplier.create({ data: dto as any });
   }
 
   async updateSupplier(
     id: string,
-    dto: { name?: string; edrpou?: string; contact?: string },
+    dto: { name?: string; edrpou?: string; contact?: string; type?: string },
   ) {
-    return this.prisma.supplier.update({ where: { id }, data: dto });
+    return this.prisma.supplier.update({ where: { id }, data: dto as any });
   }
 
   async toggleSupplier(id: string) {
@@ -308,6 +309,7 @@ export class WarehousesService {
       pricePerKg?: number;
     }[];
     note?: string;
+    calcId?: string;
   }) {
     const finishedWarehouse = await this.prisma.warehouse.findFirst({
       where: { type: 'FINISHED_GOODS', isActive: true },
@@ -422,6 +424,7 @@ export class WarehousesService {
           note: dto.note
             ? `[ВХІД] ${dto.note}`
             : '[ВХІД] Передано у виробництво',
+          productionCalcId: dto.calcId ?? null,
         },
       });
     }
@@ -450,6 +453,7 @@ export class WarehousesService {
           note: dto.note ? `[ВИХІД] ${dto.note}` : '[ВИХІД] Готова продукція',
           supplierId: productionSupplierId,
           pricePerKg: output.pricePerKg ?? null,
+          productionCalcId: dto.calcId ?? null,
         },
       });
     }

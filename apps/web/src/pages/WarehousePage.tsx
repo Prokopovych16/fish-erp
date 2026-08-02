@@ -404,7 +404,7 @@ function WarehouseModal({ warehouse, onClose, onMovement, onProduction }: {
 
 
 // ─── SupplierInvoiceModal — накладна з кількома товарами ─────────────────────
-interface InvoiceItemRow { productId: string; quantity: string; pricePerKg: string }
+interface InvoiceItemRow { productId: string; quantity: string; pricePerKg: string; comment: string }
 
 function SupplierInvoiceModal({ onClose }: { onClose: () => void }) {
   const queryClient = useQueryClient();
@@ -414,7 +414,7 @@ function SupplierInvoiceModal({ onClose }: { onClose: () => void }) {
   const [warehouseId, setWarehouseId] = useState('');
   const [form, setForm] = useState<FormType>('FORM_1');
   const [note, setNote] = useState('');
-  const [items, setItems] = useState<InvoiceItemRow[]>([{ productId: '', quantity: '', pricePerKg: '' }]);
+  const [items, setItems] = useState<InvoiceItemRow[]>([{ productId: '', quantity: '', pricePerKg: '', comment: '' }]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -425,7 +425,7 @@ function SupplierInvoiceModal({ onClose }: { onClose: () => void }) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const inWarehouses = (warehouses as any[]).filter((w) => w.isActive && (w.type === 'FRIDGE' || w.type === 'SUPPLIES'));
 
-  const addItem = () => setItems((prev) => [...prev, { productId: '', quantity: '', pricePerKg: '' }]);
+  const addItem = () => setItems((prev) => [...prev, { productId: '', quantity: '', pricePerKg: '', comment: '' }]);
   const removeItem = (idx: number) => setItems((prev) => prev.filter((_, i) => i !== idx));
   const updateItem = (idx: number, key: keyof InvoiceItemRow, val: string) =>
     setItems((prev) => prev.map((r, i) => (i === idx ? { ...r, [key]: val } : r)));
@@ -446,7 +446,7 @@ function SupplierInvoiceModal({ onClose }: { onClose: () => void }) {
       await api.post('/supplier-invoices', {
         supplierId, invoiceNumber: invoiceNumber || undefined, invoiceDate, warehouseId, form,
         note: note || undefined,
-        items: validItems.map((i) => ({ productId: i.productId, quantity: Number(i.quantity), pricePerKg: Number(i.pricePerKg) })),
+        items: validItems.map((i) => ({ productId: i.productId, quantity: Number(i.quantity), pricePerKg: Number(i.pricePerKg), comment: i.comment || undefined })),
       });
       queryClient.invalidateQueries({ queryKey: ['warehouses'] });
       queryClient.invalidateQueries({ queryKey: ['stock'] });
@@ -525,21 +525,28 @@ function SupplierInvoiceModal({ onClose }: { onClose: () => void }) {
                 const lineTotal = Number(item.quantity) > 0 && Number(item.pricePerKg) > 0
                   ? Math.round(Number(item.quantity) * Number(item.pricePerKg) * 100) / 100 : 0;
                 return (
-                  <div key={idx} className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl p-2.5">
-                    <select value={item.productId} onChange={(e) => updateItem(idx, 'productId', e.target.value)}
-                      className="flex-1 min-w-0 border border-gray-300 rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white">
-                      <option value="">Продукт...</option>
-                      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                      {(products as any[]).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                    </select>
-                    <input type="number" step="0.001" min="0" value={item.quantity} onChange={(e) => updateItem(idx, 'quantity', e.target.value)}
-                      placeholder="кг" className="w-20 border border-gray-300 rounded-lg px-2 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white" />
-                    <input type="number" step="0.01" min="0" value={item.pricePerKg} onChange={(e) => updateItem(idx, 'pricePerKg', e.target.value)}
-                      placeholder="₴/кг з ПДВ" className="w-28 border border-gray-300 rounded-lg px-2 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white" />
-                    <span className="w-20 text-right text-xs font-bold text-emerald-600 shrink-0">{lineTotal > 0 ? `${lineTotal.toFixed(2)}₴` : ''}</span>
-                    {items.length > 1 && (
-                      <button onClick={() => removeItem(idx)} className="text-red-400 hover:text-red-600 text-lg leading-none shrink-0 px-1">×</button>
-                    )}
+                  <div key={idx} className="bg-gray-50 border border-gray-200 rounded-xl p-2.5 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <select value={item.productId} onChange={(e) => updateItem(idx, 'productId', e.target.value)}
+                        className="flex-1 min-w-0 border border-gray-300 rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white">
+                        <option value="">Продукт...</option>
+                        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                        {(products as any[]).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      </select>
+                      <input type="number" step="0.001" min="0" value={item.quantity} onChange={(e) => updateItem(idx, 'quantity', e.target.value)}
+                        onWheel={(e) => e.currentTarget.blur()}
+                        placeholder="кг" className="w-20 border border-gray-300 rounded-lg px-2 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white" />
+                      <input type="number" step="0.01" min="0" value={item.pricePerKg} onChange={(e) => updateItem(idx, 'pricePerKg', e.target.value)}
+                        onWheel={(e) => e.currentTarget.blur()}
+                        placeholder="₴/кг з ПДВ" className="w-28 border border-gray-300 rounded-lg px-2 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white" />
+                      <span className="w-20 text-right text-xs font-bold text-emerald-600 shrink-0">{lineTotal > 0 ? `${lineTotal.toFixed(2)}₴` : ''}</span>
+                      {items.length > 1 && (
+                        <button onClick={() => removeItem(idx)} className="text-red-400 hover:text-red-600 text-lg leading-none shrink-0 px-1">×</button>
+                      )}
+                    </div>
+                    <input type="text" value={item.comment} onChange={(e) => updateItem(idx, 'comment', e.target.value)}
+                      placeholder="Коментар до позиції (необов'язково)"
+                      className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-600 focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-white" />
                   </div>
                 );
               })}
