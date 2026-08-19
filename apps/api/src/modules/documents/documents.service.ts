@@ -84,9 +84,11 @@ export class DocumentsService {
         const issued = Number(item.plannedWeight);
         const returned = Number((item as any).returnedWeight ?? 0);
         const sold = Math.max(issued - returned, 0);
-        const price = Number(item.pricePerKg ?? 0);
-        const sum = r2(sold * price);
-        totalNoVat += sum;
+        const priceNoVat = Number(item.pricePerKg ?? 0);
+        const priceWithVat = r2(priceNoVat * 1.2);
+        const sumNoVat = r2(sold * priceNoVat);
+        const sumWithVat = r2(sold * priceWithVat);
+        totalNoVat += sumNoVat;
         return `
         <tr>
           <td>${index + 1}</td>
@@ -95,8 +97,8 @@ export class DocumentsService {
           <td>${issued.toFixed(3)}</td>
           <td>${returned.toFixed(3)}</td>
           <td class="sold-cell">${sold.toFixed(3)}</td>
-          <td>${price > 0 ? price.toFixed(2) : '—'}</td>
-          <td>${price > 0 ? sum.toFixed(2) : '—'}</td>
+          <td>${priceWithVat > 0 ? priceWithVat.toFixed(2) : '—'}</td>
+          <td>${priceWithVat > 0 ? sumWithVat.toFixed(2) : '—'}</td>
         </tr>
       `;
       })
