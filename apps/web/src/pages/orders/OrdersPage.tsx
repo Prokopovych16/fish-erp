@@ -219,7 +219,6 @@ function OrderDetailsModal({ order, onClose, onStatusChange, onUpdateWeights, on
   const isBazaar = !!(order as any).isBazaar;
   const activeItems = order.items.filter((i) => !(i as any).isExcluded);
   const kgActiveItems = activeItems.filter((i) => ((i as any).displayUnit || i.product.unit) === 'кг');
-  const shtActiveItems = activeItems.filter((i) => ((i as any).displayUnit || i.product.unit) !== 'кг');
   const total = activeItems.reduce((s, i) => {
     if (i.product.unit === 'шт' && !i.actualWeight) return s;
     return s + r2(Number(i.actualWeight ?? i.plannedWeight) * Number(i.pricePerKg ?? 0));
@@ -471,18 +470,8 @@ function OrderDetailsModal({ order, onClose, onStatusChange, onUpdateWeights, on
                   <tfoot className="bg-gray-50 border-t border-gray-200">
                     <tr className="text-sm font-bold text-gray-700">
                       <td className="px-3 py-2.5 text-xs">Всього</td>
-                      <td className="px-3 py-2.5 text-right text-gray-400 text-xs font-normal">
-                        {totalPlanned.toFixed(3)} кг
-                        {shtActiveItems.map((i) => (
-                          <span key={i.id} className="block">{Number(i.plannedWeight).toFixed(0)} {(i as any).displayUnit || i.product.unit}</span>
-                        ))}
-                      </td>
-                      <td className="px-3 py-2.5 text-right text-xs text-green-600">
-                        {totalActual.toFixed(3)} кг
-                        {shtActiveItems.map((i) => (
-                          <span key={i.id} className="block">{i.actualWeight ? Number(i.actualWeight).toFixed(0) : '—'} {(i as any).displayUnit || i.product.unit}</span>
-                        ))}
-                      </td>
+                      <td className="px-3 py-2.5 text-right text-gray-400 text-xs font-normal">{totalPlanned > 0 ? `${totalPlanned.toFixed(3)} кг` : '—'}</td>
+                      <td className="px-3 py-2.5 text-right text-xs text-green-600">{totalActual > 0 ? `${totalActual.toFixed(3)} кг` : '—'}</td>
                       {userRole !== 'WORKER' && <td className="px-3 py-2.5 text-right text-xs">—</td>}
                       {userRole !== 'WORKER' && <td className="px-3 py-2.5 text-right text-green-600 font-bold">{total > 0 ? `${totalWithVat.toFixed(2)} ₴` : '—'}</td>}
                     </tr>
