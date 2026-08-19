@@ -453,14 +453,13 @@ function OrderDetailsModal({ order, onClose, onStatusChange, onUpdateWeights, on
                       const displayUnit = (item as any).displayUnit || item.product.unit;
                       const w = Number(item.actualWeight ?? item.plannedWeight);
                       const p = Number(item.pricePerKg ?? 0);
-                      const vatFactor = isBazaar ? 1 : 1.2;
-                      const lineTotal = !isExcl && w > 0 && p > 0 ? r2(w * p) * vatFactor : null;
+                      const lineTotal = !isExcl && w > 0 && p > 0 ? r2(w * p) * 1.2 : null;
                       return (
                         <tr key={item.id} className={isExcl ? 'opacity-40 bg-gray-50' : 'hover:bg-gray-50/50'}>
                           <td className={`px-3 py-2.5 font-semibold text-xs ${isExcl ? 'line-through text-gray-400' : 'text-gray-800'}`}>{item.product.name}</td>
                           <td className="px-3 py-2.5 text-right text-gray-400 text-xs">{isExcl ? '—' : `${Number(item.plannedWeight).toFixed(3)} ${displayUnit}`}</td>
                           <td className="px-3 py-2.5 text-right text-xs font-semibold text-green-600">{!isExcl && item.actualWeight ? `${Number(item.actualWeight).toFixed(3)} ${displayUnit}` : '—'}</td>
-                          {userRole !== 'WORKER' && <td className="px-3 py-2.5 text-right text-gray-500 text-xs">{!isExcl && p > 0 ? `${(p * vatFactor).toFixed(2)} ₴` : '—'}</td>}
+                          {userRole !== 'WORKER' && <td className="px-3 py-2.5 text-right text-gray-500 text-xs">{!isExcl && p > 0 ? `${(p * 1.2).toFixed(2)} ₴` : '—'}</td>}
                           {userRole !== 'WORKER' && <td className="px-3 py-2.5 text-right font-bold text-gray-800 text-xs">{lineTotal != null ? `${lineTotal.toFixed(2)} ₴` : '—'}</td>}
                         </tr>
                       );
@@ -472,7 +471,7 @@ function OrderDetailsModal({ order, onClose, onStatusChange, onUpdateWeights, on
                       <td className="px-3 py-2.5 text-right text-gray-400 text-xs font-normal">{totalPlanned > 0 ? `${totalPlanned.toFixed(3)} кг` : '—'}</td>
                       <td className="px-3 py-2.5 text-right text-xs text-green-600">{totalActual > 0 ? `${totalActual.toFixed(3)} кг` : '—'}</td>
                       {userRole !== 'WORKER' && <td className="px-3 py-2.5 text-right text-xs">—</td>}
-                      {userRole !== 'WORKER' && <td className="px-3 py-2.5 text-right text-green-600 font-bold">{total > 0 ? `${(isBazaar ? total : totalWithVat).toFixed(2)} ₴` : '—'}</td>}
+                      {userRole !== 'WORKER' && <td className="px-3 py-2.5 text-right text-green-600 font-bold">{total > 0 ? `${totalWithVat.toFixed(2)} ₴` : '—'}</td>}
                     </tr>
                   </tfoot>
                 </table>
@@ -1531,7 +1530,7 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
               {totalWeight > 0 && (
                 <span className="text-xs text-gray-400">
                   Всього: <b className="text-gray-700">{totalWeight.toFixed(3)}</b>
-                  {totalSum > 0 && <b className="text-green-600 ml-2">{isBazaar ? totalSum.toFixed(2) : addVat(totalSum).toFixed(2)} ₴</b>}
+                  {totalSum > 0 && <b className="text-green-600 ml-2">{addVat(totalSum).toFixed(2)} ₴</b>}
                 </span>
               )}
             </div>
@@ -1656,9 +1655,9 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
                               style={{ MozAppearance: 'textfield' } as any}
                               className="w-28 border border-gray-200 rounded-lg px-2 py-1 text-xs text-right focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                             />
-                            <span className="text-[10px] text-gray-400">{isBazaar ? 'з ПДВ' : 'без ПДВ'}</span>
+                            <span className="text-[10px] text-gray-400">без ПДВ</span>
                             {lineSum != null && lineSum > 0 && (
-                              <span className="text-[10px] font-bold text-green-600">= {isBazaar ? lineSum.toFixed(2) : addVat(lineSum).toFixed(2)} ₴</span>
+                              <span className="text-[10px] font-bold text-green-600">= {addVat(lineSum).toFixed(2)} ₴</span>
                             )}
                           </div>
                           {!item.pricePerKg && clientPrice && (

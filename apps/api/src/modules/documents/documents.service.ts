@@ -78,15 +78,15 @@ export class DocumentsService {
       String(orderExt.numberForm ?? order.number) +
       (orderExt.numberSuffix ?? '');
 
-    let totalWithVat = 0;
+    let totalNoVat = 0;
     const itemsRows = order.items
       .map((item, index) => {
         const issued = Number(item.plannedWeight);
         const returned = Number((item as any).returnedWeight ?? 0);
         const sold = Math.max(issued - returned, 0);
-        const price = Number(item.pricePerKg ?? 0); // price вже з ПДВ
+        const price = Number(item.pricePerKg ?? 0);
         const sum = r2(sold * price);
-        totalWithVat += sum;
+        totalNoVat += sum;
         return `
         <tr>
           <td>${index + 1}</td>
@@ -102,8 +102,8 @@ export class DocumentsService {
       })
       .join('');
 
-    totalWithVat = Number(totalWithVat.toFixed(2));
-    const totalNoVat = Number((totalWithVat / 1.2).toFixed(2));
+    totalNoVat = Number(totalNoVat.toFixed(2));
+    const totalWithVat = Number((totalNoVat * 1.2).toFixed(2));
     const vat = Number((totalWithVat - totalNoVat).toFixed(2));
 
     const html = `
@@ -394,8 +394,6 @@ export class DocumentsService {
   async generateInvoice(orderId: string): Promise<Buffer> {
     const order = await this.getOrderData(orderId);
     const company = await this.settings.getAll();
-    const isBazaar = !!(order as any).isBazaar;
-
     const orderExt = order as unknown as {
       numberForm?: number;
       numberSuffix?: string;
@@ -403,29 +401,25 @@ export class DocumentsService {
     const displayNumber =
       String(orderExt.numberForm ?? order.number) +
       (orderExt.numberSuffix ?? '');
-    const total = this.calculateTotal(order.items) as number;
-    // Для базару pricePerKg вже з ПДВ — total і є totalWithVat
-    const totalWithVat = isBazaar
-      ? Number(total.toFixed(2))
-      : Number((total * 1.2).toFixed(2));
-    const totalWithoutVat = isBazaar
-      ? Number((total / 1.2).toFixed(2))
-      : total;
+    const isBazaar = !!(order as any).isBazaar;
+    const totalWithoutVat = this.calculateTotal(order.items) as number;
+    const totalWithVat = Number((totalWithoutVat * 1.2).toFixed(2));
     const vat = Number((totalWithVat - totalWithoutVat).toFixed(2));
 
     const itemsRows = order.items
       .map((item, index) => {
         const weight = Number(item.actualWeight ?? item.plannedWeight);
-        const price = Number(item.pricePerKg ?? 0);
-        const sumWithoutVat = r2(weight * price);
+        const priceNoVat = Number(item.pricePerKg ?? 0);
+        const displayPrice = isBazaar ? r2(priceNoVat * 1.2) : priceNoVat;
+        const displaySum = r2(weight * displayPrice);
         return `
         <tr>
           <td>${index + 1}</td>
           <td style="text-align:left; padding-left:4px">${item.product.name}</td>
           <td>${item.product.unit}</td>
           <td>${weight.toFixed(3)}</td>
-          <td>${price > 0 ? price.toFixed(2) : '—'}</td>
-          <td>${price > 0 ? sumWithoutVat.toFixed(2) : '—'}</td>
+          <td>${displayPrice > 0 ? displayPrice.toFixed(2) : '—'}</td>
+          <td>${displayPrice > 0 ? displaySum.toFixed(2) : '—'}</td>
         </tr>
       `;
       })
