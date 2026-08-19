@@ -450,6 +450,7 @@ model OrderItem {
   pricePerKg    Decimal? @db.Decimal(10, 2)
   displayUnit   String?
   sortOrder     Int      @default(0)
+  isExcluded    Boolean  @default(false)
 
   order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product Product @relation(fields: [productId], references: [id])

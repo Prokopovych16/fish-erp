@@ -217,12 +217,15 @@ function OrderDetailsModal({ order, onClose, onStatusChange, onUpdateWeights, on
   const displayNumber = (order as any).numberForm ?? order.number;
   const deliveryPoint = (order as any).deliveryPoint;
   const isBazaar = !!(order as any).isBazaar;
-  const total = order.items.reduce((s, i) => {
+  const activeItems = order.items.filter((i) => !(i as any).isExcluded);
+  const kgActiveItems = activeItems.filter((i) => ((i as any).displayUnit || i.product.unit) === 'кг');
+  const shtActiveItems = activeItems.filter((i) => ((i as any).displayUnit || i.product.unit) !== 'кг');
+  const total = activeItems.reduce((s, i) => {
     if (i.product.unit === 'шт' && !i.actualWeight) return s;
     return s + r2(Number(i.actualWeight ?? i.plannedWeight) * Number(i.pricePerKg ?? 0));
   }, 0);
-  const totalPlanned = order.items.reduce((s, i) => s + Number(i.plannedWeight), 0);
-  const totalActual = order.items.reduce((s, i) => s + Number(i.actualWeight ?? i.plannedWeight), 0);
+  const totalPlanned = kgActiveItems.reduce((s, i) => s + Number(i.plannedWeight), 0);
+  const totalActual = kgActiveItems.reduce((s, i) => s + Number(i.actualWeight ?? i.plannedWeight), 0);
   const [returnWeights, setReturnWeights] = useState<Record<string, string>>({});
   const [processingReturn, setProcessingReturn] = useState<string | null>(null);
 
@@ -448,17 +451,18 @@ function OrderDetailsModal({ order, onClose, onStatusChange, onUpdateWeights, on
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {order.items.map((item) => {
+                      const isExcl = !!(item as any).isExcluded;
                       const displayUnit = (item as any).displayUnit || item.product.unit;
                       const w = Number(item.actualWeight ?? item.plannedWeight);
                       const p = Number(item.pricePerKg ?? 0);
                       const canCalcPrice = item.product.unit !== 'шт' || !!item.actualWeight;
-                      const lineTotal = canCalcPrice && w * p > 0 ? r2(w * p) * 1.2 : null;
+                      const lineTotal = !isExcl && canCalcPrice && w * p > 0 ? r2(w * p) * 1.2 : null;
                       return (
-                        <tr key={item.id} className="hover:bg-gray-50/50">
-                          <td className="px-3 py-2.5 font-semibold text-gray-800 text-xs">{item.product.name}</td>
-                          <td className="px-3 py-2.5 text-right text-gray-400 text-xs">{Number(item.plannedWeight).toFixed(3)} {displayUnit}</td>
-                          <td className="px-3 py-2.5 text-right text-xs font-semibold text-green-600">{item.actualWeight ? `${Number(item.actualWeight).toFixed(3)} ${displayUnit}` : '—'}</td>
-                          {userRole !== 'WORKER' && <td className="px-3 py-2.5 text-right text-gray-500 text-xs">{canCalcPrice && p > 0 ? `${(p * 1.2).toFixed(2)} ₴` : '—'}</td>}
+                        <tr key={item.id} className={isExcl ? 'opacity-40 bg-gray-50' : 'hover:bg-gray-50/50'}>
+                          <td className={`px-3 py-2.5 font-semibold text-xs ${isExcl ? 'line-through text-gray-400' : 'text-gray-800'}`}>{item.product.name}</td>
+                          <td className="px-3 py-2.5 text-right text-gray-400 text-xs">{isExcl ? '—' : `${Number(item.plannedWeight).toFixed(3)} ${displayUnit}`}</td>
+                          <td className="px-3 py-2.5 text-right text-xs font-semibold text-green-600">{!isExcl && item.actualWeight ? `${Number(item.actualWeight).toFixed(3)} ${displayUnit}` : '—'}</td>
+                          {userRole !== 'WORKER' && <td className="px-3 py-2.5 text-right text-gray-500 text-xs">{!isExcl && canCalcPrice && p > 0 ? `${(p * 1.2).toFixed(2)} ₴` : '—'}</td>}
                           {userRole !== 'WORKER' && <td className="px-3 py-2.5 text-right font-bold text-gray-800 text-xs">{lineTotal != null ? `${lineTotal.toFixed(2)} ₴` : '—'}</td>}
                         </tr>
                       );
@@ -467,8 +471,18 @@ function OrderDetailsModal({ order, onClose, onStatusChange, onUpdateWeights, on
                   <tfoot className="bg-gray-50 border-t border-gray-200">
                     <tr className="text-sm font-bold text-gray-700">
                       <td className="px-3 py-2.5 text-xs">Всього</td>
-                      <td className="px-3 py-2.5 text-right text-gray-400 text-xs font-normal">{totalPlanned.toFixed(3)}</td>
-                      <td className="px-3 py-2.5 text-right text-xs text-green-600">{totalActual.toFixed(3)}</td>
+                      <td className="px-3 py-2.5 text-right text-gray-400 text-xs font-normal">
+                        {totalPlanned.toFixed(3)} кг
+                        {shtActiveItems.map((i) => (
+                          <span key={i.id} className="block">{Number(i.plannedWeight).toFixed(0)} {(i as any).displayUnit || i.product.unit}</span>
+                        ))}
+                      </td>
+                      <td className="px-3 py-2.5 text-right text-xs text-green-600">
+                        {totalActual.toFixed(3)} кг
+                        {shtActiveItems.map((i) => (
+                          <span key={i.id} className="block">{i.actualWeight ? Number(i.actualWeight).toFixed(0) : '—'} {(i as any).displayUnit || i.product.unit}</span>
+                        ))}
+                      </td>
                       {userRole !== 'WORKER' && <td className="px-3 py-2.5 text-right text-xs">—</td>}
                       {userRole !== 'WORKER' && <td className="px-3 py-2.5 text-right text-green-600 font-bold">{total > 0 ? `${totalWithVat.toFixed(2)} ₴` : '—'}</td>}
                     </tr>
@@ -559,6 +573,22 @@ function WeightsModal({ order, onClose, onSave, userRole }: {
     Object.fromEntries(order.items.map((i) => [i.id, i.actualWeight ? String(i.actualWeight) : ''])),
   );
 
+  // Excluded items — ініціалізуємо з DB, далі оновлюємо локально
+  const [excluded, setExcluded] = useState<Record<string, boolean>>(
+    Object.fromEntries(order.items.map((i) => [i.id, !!(i as any).isExcluded])),
+  );
+  const [excludeLoading, setExcludeLoading] = useState<Record<string, boolean>>({});
+
+  const handleToggleExclude = async (itemId: string) => {
+    setExcludeLoading((prev) => ({ ...prev, [itemId]: true }));
+    try {
+      await api.patch(`/orders/${order.id}/items/${itemId}/exclude`);
+      setExcluded((prev) => ({ ...prev, [itemId]: !prev[itemId] }));
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+    } catch { /* тихо */ }
+    finally { setExcludeLoading((prev) => ({ ...prev, [itemId]: false })); }
+  };
+
   // Дебаунс автозбереження — 600мс після останньої зміни
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -572,7 +602,7 @@ function WeightsModal({ order, onClose, onSave, userRole }: {
       // Запускаємо новий таймер автозбереження
       autoSaveTimer.current = setTimeout(() => {
         const itemsToSave = order.items
-          .filter((i) => next[i.id] !== '')
+          .filter((i) => !excluded[i.id] && next[i.id] !== '')
           .map((i) => ({ itemId: i.id, actualWeight: Number(next[i.id]) }));
         if (itemsToSave.length > 0) {
           autoSaveMutation.mutate(itemsToSave);
@@ -581,17 +611,18 @@ function WeightsModal({ order, onClose, onSave, userRole }: {
 
       return next;
     });
-  }, [order.items, autoSaveMutation]);
+  }, [order.items, autoSaveMutation, excluded]);
 
   const displayNumber = (order as any).numberForm ?? order.number;
-  const totalPlanned = order.items.reduce((s, i) => s + Number(i.plannedWeight), 0);
-  const totalActual = order.items.reduce((s, i) => s + (Number(weights[i.id]) || 0), 0);
-  const totalSum = order.items.reduce((s, i) => {
+  const activeItems = order.items.filter((i) => !excluded[i.id]);
+  const totalPlanned = activeItems.reduce((s, i) => s + Number(i.plannedWeight), 0);
+  const totalActual = activeItems.reduce((s, i) => s + (Number(weights[i.id]) || 0), 0);
+  const totalSum = activeItems.reduce((s, i) => {
     if (i.product.unit === 'шт' && !weights[i.id]) return s;
     return s + r2((Number(weights[i.id]) || 0) * Number(i.pricePerKg ?? 0));
   }, 0);
 
-  const kgItems = order.items.filter(i => {
+  const kgItems = activeItems.filter(i => {
     const du = (i as any).displayUnit || 'кг';
     return du === 'кг';
   });
@@ -626,6 +657,7 @@ function WeightsModal({ order, onClose, onSave, userRole }: {
         </div>
         <div className="p-5 overflow-y-auto flex-1 space-y-3">
           {order.items.map((item) => {
+            const isItemExcluded = excluded[item.id];
             const displayUnit = (item as any).displayUnit || item.product.unit;
             const unitMode = item.product.unit === 'шт';
             const planned = Number(item.plannedWeight);
@@ -634,57 +666,81 @@ function WeightsModal({ order, onClose, onSave, userRole }: {
             const diffPct = planned > 0 ? (diff / planned) * 100 : 0;
             const hasValue = weights[item.id] !== '';
             const price = Number(item.pricePerKg ?? 0);
-            const cardColor = unitMode
-              ? hasValue ? 'border-blue-200 bg-blue-50' : 'border-gray-200 bg-gray-50'
-              : hasValue && actual > 0
-                ? Math.abs(diffPct) <= 2 ? 'border-green-200 bg-green-50'
-                : Math.abs(diffPct) <= 5 ? 'border-yellow-200 bg-yellow-50'
-                : 'border-red-200 bg-red-50'
-              : 'border-gray-200 bg-gray-50';
+            const cardColor = isItemExcluded
+              ? 'border-gray-200 bg-gray-100 opacity-60'
+              : unitMode
+                ? hasValue ? 'border-blue-200 bg-blue-50' : 'border-gray-200 bg-gray-50'
+                : hasValue && actual > 0
+                  ? Math.abs(diffPct) <= 2 ? 'border-green-200 bg-green-50'
+                  : Math.abs(diffPct) <= 5 ? 'border-yellow-200 bg-yellow-50'
+                  : 'border-red-200 bg-red-50'
+                : 'border-gray-200 bg-gray-50';
             return (
               <div key={item.id} className={`rounded-xl border p-4 transition-all ${cardColor}`}>
                 <div className="flex items-center justify-between mb-3">
-                  <div>
-                    <span className="font-bold text-gray-800 text-sm">{item.product.name}</span>
-                    {displayUnit !== 'кг' && (
-                      <span className="ml-2 text-[10px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded font-semibold">{displayUnit}</span>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className={`font-bold text-sm ${isItemExcluded ? 'text-gray-400 line-through' : 'text-gray-800'}`}>{item.product.name}</span>
+                    {displayUnit !== 'кг' && !isItemExcluded && (
+                      <span className="ml-1 text-[10px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded font-semibold">{displayUnit}</span>
+                    )}
+                    {isItemExcluded && (
+                      <span className="text-[10px] bg-gray-200 text-gray-500 px-1.5 py-0.5 rounded font-semibold">виключено</span>
                     )}
                   </div>
-                  {price > 0 && hasValue && actual > 0 && userRole !== 'WORKER' && (
-                    <span className="text-xs font-bold text-green-600">{(actual * price).toFixed(2)} ₴</span>
-                  )}
+                  <div className="flex items-center gap-2 shrink-0">
+                    {price > 0 && hasValue && actual > 0 && userRole !== 'WORKER' && !isItemExcluded && (
+                      <span className="text-xs font-bold text-green-600">{(actual * price).toFixed(2)} ₴</span>
+                    )}
+                    {/* X / Restore кнопка */}
+                    <button
+                      onClick={() => handleToggleExclude(item.id)}
+                      disabled={excludeLoading[item.id]}
+                      title={isItemExcluded ? 'Відновити позицію' : 'Виключити позицію'}
+                      className={`text-sm px-2 py-0.5 rounded-lg font-bold transition-colors disabled:opacity-40 ${
+                        isItemExcluded
+                          ? 'bg-gray-200 text-gray-600 hover:bg-blue-100 hover:text-blue-700'
+                          : 'bg-red-50 text-red-400 hover:bg-red-100 hover:text-red-600'
+                      }`}>
+                      {isItemExcluded ? '↩ Вернути' : '✕'}
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <div className="flex-1">
-                    <div className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide mb-1">Планова</div>
-                    <div className="bg-white/80 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-600 text-right font-medium">
-                      {planned.toFixed(3)} {displayUnit}
+                {isItemExcluded ? (
+                  <div className="text-xs text-gray-400 italic mt-1">Позиція виключена з заявки — не буде враховуватись при виконанні</div>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1">
+                        <div className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide mb-1">Планова</div>
+                        <div className="bg-white/80 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-600 text-right font-medium">
+                          {planned.toFixed(3)} {displayUnit}
+                        </div>
+                      </div>
+                      <div className="text-gray-300 text-lg shrink-0 mt-4">→</div>
+                      <div className="flex-1">
+                        <div className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide mb-1">Фактична</div>
+                        <input
+                          type="number"
+                          step={unitMode ? '1' : '0.001'}
+                          min="0"
+                          value={weights[item.id]}
+                          onChange={(e) => handleWeightChange(item.id, e.target.value)}
+                          onWheel={(e) => e.currentTarget.blur()}
+                          style={{ MozAppearance: 'textfield' } as any}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                        />
+                      </div>
+                      <div className="text-xs text-gray-400 shrink-0 mt-5">{displayUnit}</div>
                     </div>
-                  </div>
-                  <div className="text-gray-300 text-lg shrink-0 mt-4">→</div>
-                  <div className="flex-1">
-                    <div className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide mb-1">Фактична</div>
-                    {/* FIX 2: прибираємо повзунок (spinner) */}
-                    <input
-                      type="number"
-                      step={unitMode ? '1' : '0.001'}
-                      min="0"
-                      value={weights[item.id]}
-                      onChange={(e) => handleWeightChange(item.id, e.target.value)}
-                      onWheel={(e) => e.currentTarget.blur()}
-                      style={{ MozAppearance: 'textfield' } as any}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                    />
-                  </div>
-                  <div className="text-xs text-gray-400 shrink-0 mt-5">{displayUnit}</div>
-                </div>
-                {!unitMode && hasValue && actual > 0 && (
-                  <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-white/60">
-                    <span className="text-xs text-gray-500">Відхилення:</span>
-                    <span className={`text-xs font-bold ${Math.abs(diffPct) <= 2 ? 'text-green-600' : Math.abs(diffPct) <= 5 ? 'text-yellow-600' : 'text-red-600'}`}>
-                      {diff > 0 ? '+' : ''}{diff.toFixed(3)} ({diffPct > 0 ? '+' : ''}{diffPct.toFixed(1)}%)
-                    </span>
-                  </div>
+                    {!unitMode && hasValue && actual > 0 && (
+                      <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-white/60">
+                        <span className="text-xs text-gray-500">Відхилення:</span>
+                        <span className={`text-xs font-bold ${Math.abs(diffPct) <= 2 ? 'text-green-600' : Math.abs(diffPct) <= 5 ? 'text-yellow-600' : 'text-red-600'}`}>
+                          {diff > 0 ? '+' : ''}{diff.toFixed(3)} ({diffPct > 0 ? '+' : ''}{diffPct.toFixed(1)}%)
+                        </span>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             );
@@ -717,12 +773,12 @@ function WeightsModal({ order, onClose, onSave, userRole }: {
             setWeights(planWeights);
             // Автозберігаємо план
             if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
-            const itemsToSave = order.items.map((i) => ({ itemId: i.id, actualWeight: Number(i.plannedWeight) }));
+            const itemsToSave = order.items.filter((i) => !excluded[i.id]).map((i) => ({ itemId: i.id, actualWeight: Number(i.plannedWeight) }));
             autoSaveMutation.mutate(itemsToSave);
           }}
             className="border border-gray-200 text-gray-600 text-sm px-3 py-2.5 rounded-xl hover:bg-gray-50 whitespace-nowrap font-medium">= План</button>
           <button onClick={onClose} className="flex-1 border border-gray-200 text-gray-600 text-sm px-4 py-2.5 rounded-xl hover:bg-gray-50">Закрити</button>
-          <button onClick={() => onSave(order.items.filter((i) => weights[i.id] !== '').map((i) => ({ itemId: i.id, actualWeight: Number(weights[i.id]) })))}
+          <button onClick={() => onSave(order.items.filter((i) => !excluded[i.id] && weights[i.id] !== '').map((i) => ({ itemId: i.id, actualWeight: Number(weights[i.id]) })))}
             className="flex-1 bg-blue-600 text-white text-sm px-4 py-2.5 rounded-xl hover:bg-blue-700 font-bold">Зберегти</button>
         </div>
       </div>
@@ -1310,12 +1366,14 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
   );
   const [items, setItems] = useState(
     order.items.map((i) => ({
+      itemId: i.id,
       productId: i.productId,
       plannedWeight: String(i.plannedWeight),
       actualWeight: i.actualWeight != null ? String(i.actualWeight) : '',
       returnedWeight: i.returnedWeight != null ? String(i.returnedWeight) : '',
       displayUnit: (i as any).displayUnit || i.product?.unit || 'кг',
       pricePerKg: i.pricePerKg != null ? String(Number(i.pricePerKg)) : '',
+      isExcluded: !!(i as any).isExcluded,
     })),
   );
   const [loading, setLoading] = useState(false);
@@ -1356,7 +1414,7 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
 
   const handleSave = async () => {
     if (!clientId) return setError('Оберіть клієнта');
-    if (!itemsLocked && items.some((i) => !i.productId || !i.plannedWeight)) return setError('Заповніть всі позиції');
+    if (!itemsLocked && items.some((i) => !i.isExcluded && (!i.productId || !i.plannedWeight))) return setError('Заповніть всі позиції');
     setLoading(true); setError('');
     try {
       await api.patch(`/orders/${order.id}`, {
@@ -1371,7 +1429,7 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
         invoiceDate: invoiceDate || undefined,
         ...(!itemsLocked && {
           items: items
-            .filter((i) => i.productId && i.plannedWeight)
+            .filter((i) => !i.isExcluded && i.productId && i.plannedWeight)
             .map((i) => ({
               productId: i.productId,
               plannedWeight: Number(i.plannedWeight),
@@ -1512,6 +1570,30 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
                   const lineSum = canCalcPrice && effectivePrice && item.plannedWeight
                     ? effectivePrice * Number(item.plannedWeight)
                     : null;
+                  if (item.isExcluded) {
+                    return (
+                      <div key={idx} className="rounded-xl border border-gray-200 bg-gray-100 p-3 flex items-center justify-between gap-2 opacity-60">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="w-5 h-5 rounded-full bg-gray-300 text-gray-500 flex items-center justify-center text-[10px] font-bold shrink-0">{idx + 1}</div>
+                          <span className="text-sm text-gray-400 line-through truncate">
+                            {(products as any[])?.find((p: any) => p.id === item.productId)?.name ?? 'Продукт'}
+                          </span>
+                          <span className="text-[10px] bg-gray-200 text-gray-500 px-1.5 py-0.5 rounded font-semibold shrink-0">виключено</span>
+                        </div>
+                        <button
+                          onClick={async () => {
+                            if (!item.itemId) return;
+                            try {
+                              await api.patch(`/orders/${order.id}/items/${item.itemId}/exclude`);
+                              setItems((prev) => prev.map((p, i) => i === idx ? { ...p, isExcluded: false } : p));
+                            } catch { /* тихо */ }
+                          }}
+                          className="text-xs bg-gray-200 text-gray-600 hover:bg-blue-100 hover:text-blue-700 px-2 py-1 rounded-lg font-bold shrink-0">
+                          ↩ Вернути
+                        </button>
+                      </div>
+                    );
+                  }
                   return (
                     <div key={idx} className={`rounded-xl border p-3 ${item.productId && item.plannedWeight ? 'border-green-200 bg-green-50/40' : 'border-gray-200 bg-gray-50/50'}`}>
                       <div className="space-y-2">
@@ -1602,7 +1684,7 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
                     </div>
                   );
                 })}
-                <button onClick={() => setItems((prev) => [...prev, { productId: '', plannedWeight: '', actualWeight: '', returnedWeight: '', displayUnit: 'кг', pricePerKg: '' }])}
+                <button onClick={() => setItems((prev) => [...prev, { itemId: '', productId: '', plannedWeight: '', actualWeight: '', returnedWeight: '', displayUnit: 'кг', pricePerKg: '', isExcluded: false }])}
                   className="w-full border border-dashed border-gray-300 text-gray-500 text-sm py-2.5 rounded-xl hover:border-blue-400 hover:text-blue-600 transition-colors">
                   + Додати позицію
                 </button>
@@ -1625,12 +1707,17 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
 
 // ─── OrderCardContent — вміст картки ─────────────────────────────────────────
 function OrderCardContent({ order, userRole }: { order: Order; userRole: string }) {
-  const totalActual = order.items.reduce((s, i) => s + Number(i.actualWeight ?? 0), 0);
-  const totalPlanned = order.items.reduce((s, i) => s + Number(i.plannedWeight), 0);
   const displayNumber = (order as any).numberForm ?? order.number;
   const isPrinted = !!(order as any).printedAt;
   const deliveryPoint = (order as any).deliveryPoint;
   const isDraft = order.status === 'DRAFT';
+
+  const activeItems = order.items.filter((i) => !(i as any).isExcluded);
+  const kgItems = activeItems.filter((i) => ((i as any).displayUnit || i.product.unit) === 'кг');
+  const shtItems = activeItems.filter((i) => ((i as any).displayUnit || i.product.unit) !== 'кг');
+
+  const totalPlannedKg = kgItems.reduce((s, i) => s + Number(i.plannedWeight), 0);
+  const totalActualKg = kgItems.reduce((s, i) => s + Number(i.actualWeight ?? 0), 0);
 
   return (
     <div className={`bg-white rounded-xl border shadow-sm overflow-hidden ${isDraft ? 'border-slate-200' : 'border-gray-200'}`}>
@@ -1650,23 +1737,39 @@ function OrderCardContent({ order, userRole }: { order: Order; userRole: string 
         </div>
         <div className="mt-2.5 space-y-1">
           {order.items.map((item) => {
-            // FIX 1: використовуємо displayUnit замість item.product.unit
+            const isExcl = !!(item as any).isExcluded;
             const displayUnit = (item as any).displayUnit || item.product.unit;
             return (
-              <div key={item.id} className="flex justify-between text-xs text-gray-600">
-                <span className="truncate mr-2">{item.product.name}</span>
+              <div key={item.id} className={`flex justify-between text-xs ${isExcl ? 'opacity-40' : 'text-gray-600'}`}>
+                <span className={`truncate mr-2 ${isExcl ? 'line-through text-gray-400' : ''}`}>{item.product.name}</span>
                 <span className="shrink-0">
-                  {item.actualWeight
-                    ? <span className="text-green-600 font-bold">{Number(item.actualWeight).toFixed(3)} {displayUnit}</span>
-                    : <span className="text-gray-500">{Number(item.plannedWeight).toFixed(3)} {displayUnit}</span>}
+                  {isExcl
+                    ? <span className="text-gray-300">—</span>
+                    : item.actualWeight
+                      ? <span className="text-green-600 font-bold">{Number(item.actualWeight).toFixed(3)} {displayUnit}</span>
+                      : <span className="text-gray-500">{Number(item.plannedWeight).toFixed(3)} {displayUnit}</span>}
                 </span>
               </div>
             );
           })}
         </div>
-        <div className="text-[10px] text-gray-400 border-t border-gray-100 pt-2 mt-2.5 flex gap-3">
-          <span>План: <span className="font-semibold text-gray-600">{totalPlanned.toFixed(3)}</span></span>
-          {totalActual > 0 && <span>Факт: <span className="font-bold text-green-600">{totalActual.toFixed(3)}</span></span>}
+        <div className="text-[10px] text-gray-400 border-t border-gray-100 pt-2 mt-2.5 flex flex-wrap gap-x-3 gap-y-0.5">
+          {totalPlannedKg > 0 && (
+            <>
+              <span>Plan кг: <span className="font-semibold text-gray-600">{totalPlannedKg.toFixed(3)}</span></span>
+              {totalActualKg > 0 && <span>Факт кг: <span className="font-bold text-green-600">{totalActualKg.toFixed(3)}</span></span>}
+            </>
+          )}
+          {shtItems.map((i) => {
+            const du = (i as any).displayUnit || i.product.unit;
+            return (
+              <span key={i.id}>
+                {i.product.name.split(' ')[0]}: <span className={i.actualWeight ? 'font-bold text-green-600' : 'font-semibold text-gray-600'}>
+                  {Number(i.actualWeight ?? i.plannedWeight).toFixed(0)} {du}
+                </span>
+              </span>
+            );
+          })}
         </div>
         {order.note && <div className="text-[10px] text-gray-500 italic bg-gray-50 px-2 py-1 rounded-lg mt-2">{order.note}</div>}
       </div>
@@ -1726,28 +1829,51 @@ function DraggableOrderCard({ order, onStatusChange, onUpdateWeights, onOpenDeta
           </div>
           <div className="mt-2.5 space-y-1">
             {order.items.map((item) => {
-              // FIX 1: використовуємо displayUnit замість item.product.unit
+              const isExcl = !!item.isExcluded;
               const displayUnit = (item as any).displayUnit || item.product.unit;
               return (
-                <div key={item.id} className="flex justify-between text-xs text-gray-600">
-                  <span className="truncate mr-2">{item.product.name}</span>
+                <div key={item.id} className={`flex justify-between text-xs ${isExcl ? 'opacity-40' : 'text-gray-600'}`}>
+                  <span className={`truncate mr-2 ${isExcl ? 'line-through text-gray-400' : ''}`}>{item.product.name}</span>
                   <span className="shrink-0">
-                    {isBazaar && item.returnedWeight != null
-                      ? <span className="text-orange-600 font-bold">продано {(Number(item.plannedWeight) - Number(item.returnedWeight)).toFixed(3)} {displayUnit}</span>
-                      : item.actualWeight
-                      ? <span className="text-green-600 font-bold">{Number(item.actualWeight).toFixed(3)} {displayUnit}</span>
-                      : <span className="text-gray-500">{Number(item.plannedWeight).toFixed(3)} {displayUnit}</span>}
+                    {isExcl
+                      ? <span className="text-gray-300">—</span>
+                      : isBazaar && item.returnedWeight != null
+                        ? <span className="text-orange-600 font-bold">продано {(Number(item.plannedWeight) - Number(item.returnedWeight)).toFixed(3)} {displayUnit}</span>
+                        : item.actualWeight
+                          ? <span className="text-green-600 font-bold">{Number(item.actualWeight).toFixed(3)} {displayUnit}</span>
+                          : <span className="text-gray-500">{Number(item.plannedWeight).toFixed(3)} {displayUnit}</span>}
                   </span>
                 </div>
               );
             })}
           </div>
-          <div className="text-[10px] text-gray-400 border-t border-gray-100 pt-2 mt-2.5 flex gap-3">
-            <span>{isBazaar ? 'Видано' : 'План'}: <span className="font-semibold text-gray-600">{order.items.reduce((s, i) => s + Number(i.plannedWeight), 0).toFixed(3)}</span></span>
-            {order.items.reduce((s, i) => s + Number(i.actualWeight ?? 0), 0) > 0 && (
-              <span>Факт: <span className="font-bold text-green-600">{order.items.reduce((s, i) => s + Number(i.actualWeight ?? 0), 0).toFixed(3)}</span></span>
-            )}
-          </div>
+          {(() => {
+            const activeItems = order.items.filter((i) => !i.isExcluded);
+            const kgItems = activeItems.filter((i) => ((i as any).displayUnit || i.product.unit) === 'кг');
+            const shtItems = activeItems.filter((i) => ((i as any).displayUnit || i.product.unit) !== 'кг');
+            const totalPlanKg = kgItems.reduce((s, i) => s + Number(i.plannedWeight), 0);
+            const totalFactKg = kgItems.reduce((s, i) => s + Number(i.actualWeight ?? 0), 0);
+            return (
+              <div className="text-[10px] text-gray-400 border-t border-gray-100 pt-2 mt-2.5 flex flex-wrap gap-x-3 gap-y-0.5">
+                {kgItems.length > 0 && (
+                  <>
+                    <span>{isBazaar ? 'Видано' : 'План'} кг: <span className="font-semibold text-gray-600">{totalPlanKg.toFixed(3)}</span></span>
+                    {totalFactKg > 0 && <span>Факт кг: <span className="font-bold text-green-600">{totalFactKg.toFixed(3)}</span></span>}
+                  </>
+                )}
+                {shtItems.map((i) => {
+                  const du = (i as any).displayUnit || i.product.unit;
+                  return (
+                    <span key={i.id}>
+                      {i.product.name.split(' ')[0]}: <span className={i.actualWeight ? 'font-bold text-green-600' : 'font-semibold text-gray-600'}>
+                        {Number(i.actualWeight ?? i.plannedWeight).toFixed(0)} {du}
+                      </span>
+                    </span>
+                  );
+                })}
+              </div>
+            );
+          })()}
           {order.note && <div className="text-[10px] text-gray-500 italic bg-gray-50 px-2 py-1 rounded-lg mt-2">{order.note}</div>}
         </div>
 
@@ -2095,6 +2221,18 @@ function BazaarAssortmentModal({ onClose }: { onClose: () => void }) {
                 <div className="space-y-2">
                   {items.map((item, idx) => (
                     <div key={idx} className="flex items-center gap-2 bg-orange-50/40 border border-orange-100 rounded-xl px-3 py-2">
+                      {/* Кнопки порядку */}
+                      <div className="flex flex-col gap-0.5 shrink-0">
+                        <button
+                          disabled={idx === 0}
+                          onClick={() => setItems((prev) => { const a = [...prev]; [a[idx - 1], a[idx]] = [a[idx], a[idx - 1]]; return a; })}
+                          className="text-gray-400 hover:text-orange-600 disabled:opacity-20 text-xs leading-none px-0.5">▲</button>
+                        <button
+                          disabled={idx === items.length - 1}
+                          onClick={() => setItems((prev) => { const a = [...prev]; [a[idx + 1], a[idx]] = [a[idx], a[idx + 1]]; return a; })}
+                          className="text-gray-400 hover:text-orange-600 disabled:opacity-20 text-xs leading-none px-0.5">▼</button>
+                      </div>
+                      <span className="text-[10px] text-gray-400 font-bold w-4 shrink-0 text-center">{idx + 1}</span>
                       <select value={item.productId}
                         onChange={(e) => setItems((prev) => prev.map((p, i) => i === idx ? { ...p, productId: e.target.value } : p))}
                         className="flex-1 border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 bg-white">

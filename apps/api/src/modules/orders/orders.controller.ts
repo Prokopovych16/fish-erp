@@ -114,6 +114,15 @@ export class OrdersController {
     return this.ordersService.recordBazaarReturn(id, dto, req.user.id, req.user.role);
   }
 
+  @Patch(':id/items/:itemId/exclude')
+  toggleExcludeItem(
+    @Param('id') id: string,
+    @Param('itemId') itemId: string,
+    @Request() req,
+  ) {
+    return this.ordersService.toggleExcludeItem(id, itemId, req.user.role, req.user.id);
+  }
+
   @Patch(':id/items')
   updateItems(
     @Param('id') id: string,

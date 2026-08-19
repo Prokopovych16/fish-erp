@@ -1,0 +1,1 @@
+ALTER TABLE "OrderItem" ADD COLUMN "isExcluded" BOOLEAN NOT NULL DEFAULT false;

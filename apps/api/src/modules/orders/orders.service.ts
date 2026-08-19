@@ -607,6 +607,7 @@ export class OrdersService {
 
       if (finishedWarehouse) {
         for (const item of order.items) {
+          if ((item as any).isExcluded) continue; // excluded items never deducted
           const weight = Number(item.actualWeight ?? item.plannedWeight);
           if (weight <= 0) continue;
 
@@ -664,9 +665,9 @@ export class OrdersService {
 
     // ─── IN_PROGRESS → DONE: списання по FIFO ────────────────────────────────
     if (dto.status === OrderStatus.DONE) {
-      // Перевірка що всі позиції мають фактичну вагу
+      // Перевірка що всі активні (не виключені) позиції мають фактичну вагу
       const missingWeights = order.items.filter(
-        (item) => item.actualWeight === null || item.actualWeight === undefined,
+        (item) => !(item as any).isExcluded && (item.actualWeight === null || item.actualWeight === undefined),
       );
       if (missingWeights.length > 0) {
         throw new BadRequestException(
@@ -700,7 +701,7 @@ export class OrdersService {
 
       await this.deductFifoForItems(
         order.items
-          .filter((item) => Number(item.actualWeight ?? item.plannedWeight) > 0)
+          .filter((item) => !(item as any).isExcluded && Number(item.actualWeight ?? item.plannedWeight) > 0)
           .map((item) => ({
             productId: item.productId,
             productName: item.product?.name,
@@ -781,6 +782,30 @@ export class OrdersService {
     });
 
     return this.findOne(id, userRole);
+  }
+
+  async toggleExcludeItem(orderId: string, itemId: string, userRole: UserRole, userId: string) {
+    const order = await this.findOne(orderId, userRole);
+    if (order.status === OrderStatus.DONE || order.status === OrderStatus.CANCELLED) {
+      throw new BadRequestException('Не можна змінювати позиції виконаної або скасованої заявки');
+    }
+    const item = order.items.find((i) => i.id === itemId);
+    if (!item) throw new BadRequestException('Позицію не знайдено');
+
+    const updated = await this.prisma.orderItem.update({
+      where: { id: itemId },
+      data: { isExcluded: !(item as any).isExcluded },
+    });
+
+    await this.audit.log({
+      userId,
+      action: 'ORDER_ITEMS_UPDATED',
+      entityId: orderId,
+      oldValue: { itemId, isExcluded: (item as any).isExcluded },
+      newValue: { itemId, isExcluded: !(item as any).isExcluded },
+    });
+
+    return updated;
   }
 
   async updateOrder(
@@ -887,9 +912,10 @@ export class OrdersService {
       });
       const priceMap = new Map(clientPrices.map((p) => [p.productId, p.price]));
 
-      await this.prisma.orderItem.deleteMany({ where: { orderId: id } });
+      // Excluded items залишаємо — вони не редагуються через звичайний save
+      await this.prisma.orderItem.deleteMany({ where: { orderId: id, isExcluded: false } });
       await this.prisma.orderItem.createMany({
-        data: dto.items.map((item) => ({
+        data: dto.items.map((item, idx) => ({
           orderId: id,
           productId: item.productId,
           plannedWeight: item.plannedWeight,
@@ -897,6 +923,8 @@ export class OrdersService {
           returnedWeight: isBazaarOrder ? (item.returnedWeight ?? null) : undefined,
           pricePerKg: item.pricePerKg != null ? item.pricePerKg : (priceMap.get(item.productId) ?? null),
           displayUnit: item.displayUnit ?? null,
+          sortOrder: idx,
+          isExcluded: false,
         })),
       });
     }
@@ -1033,8 +1061,6 @@ export class OrdersService {
       deletedAt: null,
       // в реєстр йдуть усі окрім скасованих — і виконані, і ще в роботі/очікують
       status: { not: 'CANCELLED' },
-      // базарні заявки — це видача/повернення товару, а не продаж, в реєстр накладних не йдуть
-      isBazaar: false,
       ...(params.form && { form: params.form as Form }),
       ...(userRole === UserRole.INSPECTOR && { form: Form.FORM_1 }),
       // фільтр по даті накладної; якщо немає — по completedAt; якщо й того немає (ще не виконана) — по даті створення
@@ -1052,6 +1078,7 @@ export class OrdersService {
           select: { name: true, group: { select: { name: true } } },
         },
         items: {
+          where: { isExcluded: false },
           select: {
             actualWeight: true,
             plannedWeight: true,

@@ -17,7 +17,7 @@ export class DocumentsService {
       include: {
         client: true,
         deliveryPoint: true,
-        items: { include: { product: true } },
+        items: { where: { isExcluded: false }, include: { product: true } },
       },
     });
     if (!order) throw new NotFoundException('Заявку не знайдено');
@@ -63,7 +63,7 @@ export class DocumentsService {
   async generateBazaarSettlement(orderId: string): Promise<Buffer> {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
-      include: { client: true, items: { include: { product: true } } },
+      include: { client: true, items: { where: { isExcluded: false }, include: { product: true } } },
     });
     if (!order) throw new NotFoundException('Заявку не знайдено');
     if (!(order as any).isBazaar) throw new NotFoundException('Це не базарна заявка');

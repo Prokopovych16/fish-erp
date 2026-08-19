@@ -84,6 +84,7 @@ export interface OrderItem {
   actualWeight?: number;
   returnedWeight?: number | null;
   pricePerKg?: number;
+  isExcluded?: boolean;
   product: Product;
 }
 
