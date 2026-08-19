@@ -1712,10 +1712,7 @@ function OrderCardContent({ order, userRole }: { order: Order; userRole: string 
   const deliveryPoint = (order as any).deliveryPoint;
   const isDraft = order.status === 'DRAFT';
 
-  const activeItems = order.items.filter((i) => !(i as any).isExcluded);
-  const kgItems = activeItems.filter((i) => ((i as any).displayUnit || i.product.unit) === 'кг');
-  const shtItems = activeItems.filter((i) => ((i as any).displayUnit || i.product.unit) !== 'кг');
-
+  const kgItems = order.items.filter((i) => !(i as any).isExcluded && ((i as any).displayUnit || i.product.unit) === 'кг');
   const totalPlannedKg = kgItems.reduce((s, i) => s + Number(i.plannedWeight), 0);
   const totalActualKg = kgItems.reduce((s, i) => s + Number(i.actualWeight ?? 0), 0);
 
@@ -1753,24 +1750,12 @@ function OrderCardContent({ order, userRole }: { order: Order; userRole: string 
             );
           })}
         </div>
-        <div className="text-[10px] text-gray-400 border-t border-gray-100 pt-2 mt-2.5 flex flex-wrap gap-x-3 gap-y-0.5">
-          {totalPlannedKg > 0 && (
-            <>
-              <span>Plan кг: <span className="font-semibold text-gray-600">{totalPlannedKg.toFixed(3)}</span></span>
-              {totalActualKg > 0 && <span>Факт кг: <span className="font-bold text-green-600">{totalActualKg.toFixed(3)}</span></span>}
-            </>
-          )}
-          {shtItems.map((i) => {
-            const du = (i as any).displayUnit || i.product.unit;
-            return (
-              <span key={i.id}>
-                {i.product.name.split(' ')[0]}: <span className={i.actualWeight ? 'font-bold text-green-600' : 'font-semibold text-gray-600'}>
-                  {Number(i.actualWeight ?? i.plannedWeight).toFixed(0)} {du}
-                </span>
-              </span>
-            );
-          })}
-        </div>
+        {totalPlannedKg > 0 && (
+          <div className="text-[10px] text-gray-400 border-t border-gray-100 pt-2 mt-2.5 flex gap-3">
+            <span>План: <span className="font-semibold text-gray-600">{totalPlannedKg.toFixed(3)}</span></span>
+            {totalActualKg > 0 && <span>Факт: <span className="font-bold text-green-600">{totalActualKg.toFixed(3)}</span></span>}
+          </div>
+        )}
         {order.note && <div className="text-[10px] text-gray-500 italic bg-gray-50 px-2 py-1 rounded-lg mt-2">{order.note}</div>}
       </div>
     </div>
@@ -1848,29 +1833,14 @@ function DraggableOrderCard({ order, onStatusChange, onUpdateWeights, onOpenDeta
             })}
           </div>
           {(() => {
-            const activeItems = order.items.filter((i) => !i.isExcluded);
-            const kgItems = activeItems.filter((i) => ((i as any).displayUnit || i.product.unit) === 'кг');
-            const shtItems = activeItems.filter((i) => ((i as any).displayUnit || i.product.unit) !== 'кг');
+            const kgItems = order.items.filter((i) => !i.isExcluded && ((i as any).displayUnit || i.product.unit) === 'кг');
             const totalPlanKg = kgItems.reduce((s, i) => s + Number(i.plannedWeight), 0);
             const totalFactKg = kgItems.reduce((s, i) => s + Number(i.actualWeight ?? 0), 0);
+            if (kgItems.length === 0) return null;
             return (
-              <div className="text-[10px] text-gray-400 border-t border-gray-100 pt-2 mt-2.5 flex flex-wrap gap-x-3 gap-y-0.5">
-                {kgItems.length > 0 && (
-                  <>
-                    <span>{isBazaar ? 'Видано' : 'План'} кг: <span className="font-semibold text-gray-600">{totalPlanKg.toFixed(3)}</span></span>
-                    {totalFactKg > 0 && <span>Факт кг: <span className="font-bold text-green-600">{totalFactKg.toFixed(3)}</span></span>}
-                  </>
-                )}
-                {shtItems.map((i) => {
-                  const du = (i as any).displayUnit || i.product.unit;
-                  return (
-                    <span key={i.id}>
-                      {i.product.name.split(' ')[0]}: <span className={i.actualWeight ? 'font-bold text-green-600' : 'font-semibold text-gray-600'}>
-                        {Number(i.actualWeight ?? i.plannedWeight).toFixed(0)} {du}
-                      </span>
-                    </span>
-                  );
-                })}
+              <div className="text-[10px] text-gray-400 border-t border-gray-100 pt-2 mt-2.5 flex gap-3">
+                <span>{isBazaar ? 'Видано' : 'План'}: <span className="font-semibold text-gray-600">{totalPlanKg.toFixed(3)}</span></span>
+                {totalFactKg > 0 && <span>Факт: <span className="font-bold text-green-600">{totalFactKg.toFixed(3)}</span></span>}
               </div>
             );
           })()}
