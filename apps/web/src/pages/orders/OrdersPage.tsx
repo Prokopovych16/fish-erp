@@ -220,7 +220,6 @@ function OrderDetailsModal({ order, onClose, onStatusChange, onUpdateWeights, on
   const activeItems = order.items.filter((i) => !(i as any).isExcluded);
   const kgActiveItems = activeItems.filter((i) => ((i as any).displayUnit || i.product.unit) === 'кг');
   const total = activeItems.reduce((s, i) => {
-    if (i.product.unit === 'шт' && !i.actualWeight) return s;
     return s + r2(Number(i.actualWeight ?? i.plannedWeight) * Number(i.pricePerKg ?? 0));
   }, 0);
   const totalPlanned = kgActiveItems.reduce((s, i) => s + Number(i.plannedWeight), 0);
@@ -454,14 +453,14 @@ function OrderDetailsModal({ order, onClose, onStatusChange, onUpdateWeights, on
                       const displayUnit = (item as any).displayUnit || item.product.unit;
                       const w = Number(item.actualWeight ?? item.plannedWeight);
                       const p = Number(item.pricePerKg ?? 0);
-                      const canCalcPrice = item.product.unit !== 'шт' || !!item.actualWeight;
-                      const lineTotal = !isExcl && canCalcPrice && w * p > 0 ? r2(w * p) * 1.2 : null;
+                      const vatFactor = isBazaar ? 1 : 1.2;
+                      const lineTotal = !isExcl && w > 0 && p > 0 ? r2(w * p) * vatFactor : null;
                       return (
                         <tr key={item.id} className={isExcl ? 'opacity-40 bg-gray-50' : 'hover:bg-gray-50/50'}>
                           <td className={`px-3 py-2.5 font-semibold text-xs ${isExcl ? 'line-through text-gray-400' : 'text-gray-800'}`}>{item.product.name}</td>
                           <td className="px-3 py-2.5 text-right text-gray-400 text-xs">{isExcl ? '—' : `${Number(item.plannedWeight).toFixed(3)} ${displayUnit}`}</td>
                           <td className="px-3 py-2.5 text-right text-xs font-semibold text-green-600">{!isExcl && item.actualWeight ? `${Number(item.actualWeight).toFixed(3)} ${displayUnit}` : '—'}</td>
-                          {userRole !== 'WORKER' && <td className="px-3 py-2.5 text-right text-gray-500 text-xs">{!isExcl && canCalcPrice && p > 0 ? `${(p * 1.2).toFixed(2)} ₴` : '—'}</td>}
+                          {userRole !== 'WORKER' && <td className="px-3 py-2.5 text-right text-gray-500 text-xs">{!isExcl && p > 0 ? `${(p * vatFactor).toFixed(2)} ₴` : '—'}</td>}
                           {userRole !== 'WORKER' && <td className="px-3 py-2.5 text-right font-bold text-gray-800 text-xs">{lineTotal != null ? `${lineTotal.toFixed(2)} ₴` : '—'}</td>}
                         </tr>
                       );
@@ -473,7 +472,7 @@ function OrderDetailsModal({ order, onClose, onStatusChange, onUpdateWeights, on
                       <td className="px-3 py-2.5 text-right text-gray-400 text-xs font-normal">{totalPlanned > 0 ? `${totalPlanned.toFixed(3)} кг` : '—'}</td>
                       <td className="px-3 py-2.5 text-right text-xs text-green-600">{totalActual > 0 ? `${totalActual.toFixed(3)} кг` : '—'}</td>
                       {userRole !== 'WORKER' && <td className="px-3 py-2.5 text-right text-xs">—</td>}
-                      {userRole !== 'WORKER' && <td className="px-3 py-2.5 text-right text-green-600 font-bold">{total > 0 ? `${totalWithVat.toFixed(2)} ₴` : '—'}</td>}
+                      {userRole !== 'WORKER' && <td className="px-3 py-2.5 text-right text-green-600 font-bold">{total > 0 ? `${(isBazaar ? total : totalWithVat).toFixed(2)} ₴` : '—'}</td>}
                     </tr>
                   </tfoot>
                 </table>
