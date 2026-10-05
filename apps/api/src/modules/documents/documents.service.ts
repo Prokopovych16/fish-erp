@@ -17,6 +17,7 @@ export class DocumentsService {
       include: {
         client: true,
         deliveryPoint: true,
+        fop: true,
         items: { where: { isExcluded: false }, include: { product: true } },
       },
     });
@@ -395,7 +396,10 @@ export class DocumentsService {
   // ============================================================
   async generateInvoice(orderId: string): Promise<Buffer> {
     const order = await this.getOrderData(orderId);
-    const company = await this.settings.getAll();
+    const defaultCompany = await this.settings.getAll();
+    const fop = (order as any).fop as { companyName?: string; edrpou?: string; ipn?: string; iban?: string; address?: string; phone?: string; director?: string } | null;
+    // Шапка накладної береться з ФОПа якщо обраний, інакше — з загальних налаштувань
+    const company = fop ? { ...defaultCompany, ...Object.fromEntries(Object.entries(fop).filter(([, v]) => v != null)) } : defaultCompany;
     const orderExt = order as unknown as {
       numberForm?: number;
       numberSuffix?: string;

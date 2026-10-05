@@ -191,6 +191,147 @@ function CompanySettings() {
 }
 
 // ============================================================
+// ФОПи
+// ============================================================
+const FOP_FIELDS: { key: string; label: string; placeholder: string; icon: string; required?: boolean }[] = [
+  { key: 'companyName', label: 'Назва ФОП', placeholder: 'ФОП Іваненко Іван Іванович', icon: '🏢', required: true },
+  { key: 'edrpou', label: 'ЄДРПОУ / ДРФО', placeholder: '12345678', icon: '📋' },
+  { key: 'ipn', label: 'ІПН', placeholder: '1234567890', icon: '🔢' },
+  { key: 'iban', label: 'Розрахунковий рахунок (IBAN)', placeholder: 'UA12345...', icon: '🏦' },
+  { key: 'address', label: 'Адреса', placeholder: 'м. Київ, вул. Хрещатик 1', icon: '📍' },
+  { key: 'phone', label: 'Телефон', placeholder: '+380 99 999 9999', icon: '📞' },
+  { key: 'director', label: 'Підписант (П.І.Б.)', placeholder: 'Іваненко Іван Іванович', icon: '👤' },
+];
+
+type FopRecord = { id: string; name: string; companyName: string; edrpou?: string; ipn?: string; iban?: string; address?: string; phone?: string; director?: string; isDefault: boolean };
+
+function FopModal({ fop, onClose }: { fop?: FopRecord; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const [values, setValues] = useState<Record<string, string>>({
+    name: fop?.name || '',
+    companyName: fop?.companyName || '',
+    edrpou: fop?.edrpou || '',
+    ipn: fop?.ipn || '',
+    iban: fop?.iban || '',
+    address: fop?.address || '',
+    phone: fop?.phone || '',
+    director: fop?.director || '',
+  });
+  const [isDefault, setIsDefault] = useState(fop?.isDefault || false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSave = async () => {
+    if (!values.name.trim()) return setError('Вкажіть коротку назву');
+    if (!values.companyName.trim()) return setError('Вкажіть назву ФОП');
+    setLoading(true); setError('');
+    try {
+      const payload = { ...Object.fromEntries(Object.entries(values).map(([k, v]) => [k, v || undefined])), isDefault };
+      if (fop) await api.patch(`/fops/${fop.id}`, payload);
+      else await api.post('/fops', payload);
+      queryClient.invalidateQueries({ queryKey: ['fops'] });
+      onClose();
+    } catch (e: any) {
+      setError(e.response?.data?.message || 'Помилка збереження');
+    } finally { setLoading(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden">
+        <div className="px-5 py-4 bg-gradient-to-r from-orange-500 to-amber-500 shrink-0">
+          <h2 className="font-bold text-white">{fop ? '✏️ Редагувати ФОП' : '➕ Новий ФОП'}</h2>
+        </div>
+        <div className="p-5 space-y-3 overflow-y-auto flex-1">
+          <div>
+            <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Коротка назва (для вибору в заявці) *</label>
+            <input value={values.name} onChange={(e) => setValues(p => ({ ...p, name: e.target.value }))} autoFocus
+              placeholder="напр. ФОП Прокопович" className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
+          </div>
+          {FOP_FIELDS.map((f) => (
+            <div key={f.key}>
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">{f.label}{f.required ? ' *' : ''}</label>
+              <input value={values[f.key] || ''} onChange={(e) => setValues(p => ({ ...p, [f.key]: e.target.value }))}
+                placeholder={f.placeholder} className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
+            </div>
+          ))}
+
+          <label className="flex items-center gap-2 cursor-pointer select-none mt-1">
+            <div onClick={() => setIsDefault(!isDefault)}
+              className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 ${isDefault ? 'bg-orange-500 border-orange-500' : 'border-gray-300'}`}>
+              {isDefault && <span className="text-white text-xs font-bold">✓</span>}
+            </div>
+            <span className="text-sm text-gray-700">За замовчуванням (автоматично обирати в нових заявках)</span>
+          </label>
+          {error && <div className="text-red-500 text-sm bg-red-50 border border-red-100 px-3 py-2 rounded-xl">⚠️ {error}</div>}
+        </div>
+        <div className="px-5 pb-5 pt-3 flex gap-2 border-t shrink-0">
+          <button onClick={onClose} className="flex-1 border border-gray-200 text-gray-600 text-sm px-4 py-2.5 rounded-xl hover:bg-gray-50">Скасувати</button>
+          <button onClick={handleSave} disabled={loading} className="flex-1 bg-orange-500 text-white text-sm px-4 py-2.5 rounded-xl hover:bg-orange-600 disabled:opacity-50 font-semibold">
+            {loading ? 'Збереження...' : 'Зберегти'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FopsSettings() {
+  const queryClient = useQueryClient();
+  const [showCreate, setShowCreate] = useState(false);
+  const [editFop, setEditFop] = useState<FopRecord | undefined>();
+
+  const { data: fops = [] } = useQuery<FopRecord[]>({
+    queryKey: ['fops'],
+    queryFn: () => api.get('/fops').then((r) => r.data),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/fops/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['fops'] }),
+  });
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="px-5 py-4 bg-gradient-to-r from-gray-50 to-white border-b border-gray-100 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-orange-400 to-amber-500 flex items-center justify-center text-lg shadow-md shadow-orange-100 shrink-0">🧾</div>
+          <div>
+            <h2 className="font-bold text-gray-800">ФОПи / Реквізити для накладних</h2>
+            <p className="text-xs text-gray-400 mt-0.5">Обирається при створенні заявки — підставляється в шапку видаткової накладної</p>
+          </div>
+        </div>
+        <button onClick={() => setShowCreate(true)} className="text-sm bg-orange-500 text-white px-3.5 py-2 rounded-xl hover:bg-orange-600 font-semibold shrink-0">+ Додати</button>
+      </div>
+      <div className="p-5 space-y-3">
+        {(fops as FopRecord[]).length === 0 && (
+          <p className="text-sm text-gray-400 text-center py-4">Ще немає жодного ФОПа. Натисніть "+ Додати".</p>
+        )}
+        {(fops as FopRecord[]).map((fop) => (
+          <div key={fop.id} className="border border-gray-200 rounded-xl p-4 flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-semibold text-gray-800 text-sm">{fop.name}</span>
+                {fop.isDefault && <span className="text-[10px] bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-bold">за замовч.</span>}
+              </div>
+              <div className="text-xs text-gray-500 mt-1">{fop.companyName}</div>
+              {fop.edrpou && <div className="text-xs text-gray-400">ЄДРПОУ: {fop.edrpou}{fop.ipn ? ` · ІПН: ${fop.ipn}` : ''}</div>}
+              {fop.address && <div className="text-xs text-gray-400 truncate">{fop.address}</div>}
+            </div>
+            <div className="flex gap-1.5 shrink-0">
+              <button onClick={() => setEditFop(fop)} className="text-xs border border-gray-200 text-gray-500 px-2.5 py-1.5 rounded-lg hover:bg-gray-50">✏️</button>
+              <button onClick={() => { if (window.confirm(`Видалити ФОП "${fop.name}"?`)) deleteMutation.mutate(fop.id); }}
+                className="text-xs border border-red-100 text-red-400 px-2.5 py-1.5 rounded-lg hover:bg-red-50">🗑</button>
+            </div>
+          </div>
+        ))}
+      </div>
+      {(showCreate || editFop) && <FopModal fop={editFop} onClose={() => { setShowCreate(false); setEditFop(undefined); }} />}
+    </div>
+  );
+}
+
+// ============================================================
 // Користувачі
 // ============================================================
 function UsersSettings() {
@@ -602,7 +743,7 @@ function BackupSettings() {
 // Головна сторінка налаштувань
 // ============================================================
 export default function SettingsPage() {
-  const [activeTab, setActiveTab] = useState<'company' | 'users' | 'drivers' | 'cars' | 'carrier' | 'backup'>('company');
+  const [activeTab, setActiveTab] = useState<'company' | 'users' | 'drivers' | 'cars' | 'carrier' | 'backup' | 'fops'>('company');
 
   const { data: users = [] } = useQuery({
     queryKey: ['users'],
@@ -615,6 +756,7 @@ export default function SettingsPage() {
     { value: 'drivers',   label: 'Водії', icon: '🚗' },
     { value: 'cars',      label: 'Авто', icon: '🚛' },
     { value: 'carrier',   label: 'Перевізник', icon: '🚚' },
+    { value: 'fops',      label: 'ФОПи', icon: '🧾' },
     { value: 'backup',    label: 'Резервна копія', icon: '💾' },
   ];
 
@@ -713,6 +855,7 @@ export default function SettingsPage() {
       )}
 
       {activeTab === 'carrier' && <CarrierSettings />}
+      {activeTab === 'fops' && <FopsSettings />}
       {activeTab === 'backup' && <BackupSettings />}
     </div>
   );

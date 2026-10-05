@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/api/axios';
 import { useAuthStore } from '@/store/auth';
@@ -796,6 +796,7 @@ function CreateOrderModal({ onClose, onCreated, defaultBazaar }: { onClose: () =
   const [customDate, setCustomDate] = useState(new Date().toISOString().slice(0, 10));
   const [resolvedReturnIds, setResolvedReturnIds] = useState<Set<string>>(new Set());
   const [invoiceDate, setInvoiceDate] = useState('');
+  const [fopId, setFopId] = useState<string | null>(null);
   const [imageLoading, setImageLoading] = useState(false);
   const [imageError, setImageError] = useState('');
   const [imageWarnings, setImageWarnings] = useState<string[]>([]);
@@ -810,6 +811,13 @@ function CreateOrderModal({ onClose, onCreated, defaultBazaar }: { onClose: () =
   const { data: products } = useQuery({ queryKey: ['products-active'], queryFn: () => api.get('/products/active').then((r) => r.data) });
   const { data: drivers = [] } = useQuery({ queryKey: ['drivers'], queryFn: () => api.get('/drivers').then((r) => r.data) });
   const { data: cars = [] } = useQuery({ queryKey: ['cars'], queryFn: () => api.get('/cars').then((r) => r.data) });
+  const { data: fops = [] } = useQuery<{ id: string; name: string; isDefault: boolean }[]>({ queryKey: ['fops'], queryFn: () => api.get('/fops').then((r) => r.data) });
+
+  useEffect(() => {
+    const defaultFop = (fops as { id: string; name: string; isDefault: boolean }[]).find((f) => f.isDefault);
+    if (defaultFop) setFopId((prev) => prev ?? defaultFop.id);
+  }, [fops]);
+
   const { data: clientPrices = [] } = useQuery({
     queryKey: ['client-prices', clientId, form],
     queryFn: () => clientId ? api.get(`/clients/${clientId}/prices`, { params: { form } }).then((r) => r.data) : Promise.resolve([]),
@@ -1007,6 +1015,7 @@ function CreateOrderModal({ onClose, onCreated, defaultBazaar }: { onClose: () =
         numberSuffix: parseOrderNum(orderNumRaw).suffix || undefined,
         plannedDate: customDate || undefined,
         invoiceDate: invoiceDate || undefined,
+        fopId: fopId || undefined,
         items: isDraft
           ? items.filter((i) => i.productId && i.plannedWeight).map((i) => ({ productId: i.productId, plannedWeight: Number(i.plannedWeight), displayUnit: i.displayUnit }))
           : items.map((i) => ({ productId: i.productId, plannedWeight: Number(i.plannedWeight), displayUnit: i.displayUnit })),
@@ -1279,6 +1288,18 @@ function CreateOrderModal({ onClose, onCreated, defaultBazaar }: { onClose: () =
               </div>
             </div>
           </div>
+          {(fops as any[]).length > 0 && (
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">ФОП для видаткової накладної</label>
+              <select value={fopId || ''} onChange={(e) => setFopId(e.target.value || null)}
+                className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white">
+                <option value="">— реквізити компанії (за замовч.) —</option>
+                {(fops as any[]).map((f: any) => (
+                  <option key={f.id} value={f.id}>{f.name}{f.isDefault ? ' ✓' : ''}</option>
+                ))}
+              </select>
+            </div>
+          )}
           <div onClick={() => { setIsBazaar(!isBazaar); if (!isBazaar) setIsDraft(false); }}
             className={`flex items-center gap-3 p-3.5 rounded-xl border-2 cursor-pointer select-none ${isBazaar ? 'border-orange-400 bg-orange-50' : 'border-gray-200 bg-gray-50 hover:border-gray-300'}`}>
             <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 ${isBazaar ? 'bg-orange-500 border-orange-500' : 'border-gray-300 bg-white'}`}>
@@ -1365,11 +1386,13 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [fopId, setFopId] = useState<string | null>((order as any).fopId || null);
 
   const { data: clients } = useQuery({ queryKey: ['clients'], queryFn: () => api.get('/clients').then((r) => r.data) });
   const { data: products } = useQuery({ queryKey: ['products-active'], queryFn: () => api.get('/products/active').then((r) => r.data) });
   const { data: drivers = [] } = useQuery({ queryKey: ['drivers'], queryFn: () => api.get('/drivers').then((r) => r.data) });
   const { data: cars = [] } = useQuery({ queryKey: ['cars'], queryFn: () => api.get('/cars').then((r) => r.data) });
+  const { data: fops = [] } = useQuery<{ id: string; name: string; isDefault: boolean }[]>({ queryKey: ['fops'], queryFn: () => api.get('/fops').then((r) => r.data) });
   const { data: clientPrices = [] } = useQuery({
     queryKey: ['client-prices', clientId, order.form],
     queryFn: () => api.get(`/clients/${clientId}/prices`, { params: { form: order.form } }).then((r) => r.data),
@@ -1414,6 +1437,7 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
         note: note || undefined,
         plannedDate: plannedDate || undefined,
         invoiceDate: invoiceDate || undefined,
+        fopId: fopId || null,
         ...(!itemsLocked && {
           items: items
             .filter((i) => !i.isExcluded && i.productId && i.plannedWeight)
@@ -1524,6 +1548,18 @@ function EditOrderModal({ order, onClose, onSaved }: { order: Order; onClose: ()
             <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2}
               className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
           </div>
+          {(fops as any[]).length > 0 && (
+            <div>
+              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">ФОП для видаткової накладної</label>
+              <select value={fopId || ''} onChange={(e) => setFopId(e.target.value || null)}
+                className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="">— реквізити компанії (за замовч.) —</option>
+                {(fops as any[]).map((f: any) => (
+                  <option key={f.id} value={f.id}>{f.name}{f.isDefault ? ' ✓' : ''}</option>
+                ))}
+              </select>
+            </div>
+          )}
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Позиції</label>
@@ -2262,11 +2298,18 @@ export default function OrdersPage() {
   const statusMutation = useMutation({
     mutationFn: ({ id, status }: { id: string; status: OrderStatus }) =>
       api.patch(`/orders/${id}/status`, { status }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
-      queryClient.invalidateQueries({ queryKey: ['stock'] });
+    onMutate: async ({ id, status }) => {
+      await queryClient.cancelQueries({ queryKey: ['orders', formFilter] });
+      const previous = queryClient.getQueryData<Order[]>(['orders', formFilter]);
+      queryClient.setQueryData<Order[]>(['orders', formFilter], (old) =>
+        old?.map((o) => o.id === id ? { ...o, status } : o) ?? [],
+      );
+      return { previous, formFilter };
     },
-    onError: (error: any, variables) => {
+    onError: (error: any, variables, context: any) => {
+      if (context?.previous) {
+        queryClient.setQueryData(['orders', context.formFilter], context.previous);
+      }
       try {
         const parsed = JSON.parse(error.response?.data?.message);
         if (parsed.type === 'STOCK_SHORTAGE') {
@@ -2275,6 +2318,10 @@ export default function OrdersPage() {
         }
       } catch {}
       alert(error.response?.data?.message || 'Помилка зміни статусу');
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ['stock'] });
     },
   });
 

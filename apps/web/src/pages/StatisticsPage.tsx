@@ -521,84 +521,135 @@ export default function StatisticsPage() {
           {/* ── ПРОДУКЦІЯ ── */}
           {activeTab === 'products' && (
             <div className="space-y-6">
+              {/* Графік: обсяг по формах */}
               <div className="bg-white rounded-xl border border-gray-200 p-4">
-                <h3 className="text-sm font-semibold text-gray-700 mb-4">Обсяг продажів по продуктах (кг)</h3>
+                <h3 className="text-sm font-semibold text-gray-700 mb-4">Обсяг продажів по продуктах</h3>
                 {products?.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={250}>
-                    <BarChart data={products}>
+                  <ResponsiveContainer width="100%" height={260}>
+                    <BarChart data={products} margin={{ bottom: 40 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                      <XAxis dataKey="productName" tick={{ fontSize: 10 }} />
+                      <XAxis dataKey="productName" tick={{ fontSize: 9 }} angle={-35} textAnchor="end" interval={0} />
                       <YAxis tick={{ fontSize: 10 }} />
-                      <Tooltip /><Legend />
-                      <Bar dataKey="totalPlannedWeight" name="План" fill="#93c5fd" radius={[4, 4, 0, 0]} />
-                      <Bar dataKey="totalActualWeight" name="Факт" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                      <Tooltip formatter={(v: any, name: string) => [`${Number(v).toFixed(2)} ${name.includes('₴') ? '₴' : (products?.[0]?.productUnit || 'кг')}`, name]} />
+                      <Legend verticalAlign="top" />
+                      {!isInspector && <Bar dataKey="form1Weight" name="Ф1 (кг)" fill="#3b82f6" radius={[4, 4, 0, 0]} stackId="w" />}
+                      {!isInspector && <Bar dataKey="form2Weight" name="Ф2 (кг)" fill="#f97316" radius={[4, 4, 0, 0]} stackId="w" />}
+                      {isInspector && <Bar dataKey="form1Weight" name="Ф1 (кг)" fill="#3b82f6" radius={[4, 4, 0, 0]} />}
                     </BarChart>
                   </ResponsiveContainer>
                 ) : <div className="text-center text-gray-400 py-8 text-sm">Немає даних</div>}
               </div>
 
+              {/* Таблиця з розбивкою по формах */}
               <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                <div className="p-4 border-b border-gray-200"><h3 className="text-sm font-semibold text-gray-700">Відхилення факт від плану</h3></div>
-                {/* Мобільний вид */}
-                <div className="sm:hidden divide-y divide-gray-100">
-                  {products?.map((p: any) => {
-                    const diff = Number(p.weightAccuracy || 0);
-                    return (
-                      <div key={p.productId} className="p-4">
-                        <div className="flex items-center justify-between mb-1.5">
-                          <span className="font-semibold text-gray-800 text-sm">{p.productName}</span>
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${Math.abs(diff) < 2 ? 'bg-green-100 text-green-700' : Math.abs(diff) < 5 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>
-                            {diff > 0 ? '+' : ''}{diff.toFixed(1)}%
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-4 text-xs text-gray-500">
-                          <span>План: <b>{Number(p.totalPlannedWeight).toFixed(1)}</b> {p.productUnit}</span>
-                          <span>Факт: <b className="text-gray-700">{Number(p.totalActualWeight).toFixed(1)}</b> {p.productUnit}</span>
-                          <span className="ml-auto font-semibold text-green-600">{(Number(p.revenue || 0) * 1.2).toFixed(0)} ₴</span>
-                        </div>
-                      </div>
-                    );
-                  })}
+                <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-gray-700">Продажі по формах</h3>
+                  {!isInspector && (
+                    <div className="flex gap-3 text-xs text-gray-400">
+                      <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-blue-500 inline-block" />Ф1 безнал</span>
+                      <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-orange-400 inline-block" />Ф2 готівка</span>
+                    </div>
+                  )}
                 </div>
-                {/* Десктопний вид */}
+                {/* Мобільний */}
+                <div className="sm:hidden divide-y divide-gray-100">
+                  {products?.map((p: any, idx: number) => (
+                    <div key={p.productId} className="p-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0" style={{ background: COLORS[idx % COLORS.length] }}>{idx + 1}</div>
+                        <span className="font-semibold text-gray-800 text-sm">{p.productName}</span>
+                        {p.isGroup && <span className="text-[10px] bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded-full font-medium shrink-0">група</span>}
+                        <span className="ml-auto font-bold text-green-600 text-sm">{(Number(p.revenue || 0) * 1.2).toFixed(0)} ₴</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-xs pl-8">
+                        <div className="bg-blue-50 rounded-lg p-2">
+                          <div className="text-blue-500 font-medium mb-0.5">Ф1 безнал</div>
+                          <div className="font-bold text-gray-800">{Number(p.form1Weight || 0).toFixed(2)} {p.productUnit}</div>
+                          <div className="text-gray-500">{(Number(p.form1Revenue || 0) * 1.2).toFixed(0)} ₴</div>
+                        </div>
+                        {!isInspector && (
+                          <div className="bg-orange-50 rounded-lg p-2">
+                            <div className="text-orange-500 font-medium mb-0.5">Ф2 готівка</div>
+                            <div className="font-bold text-gray-800">{Number(p.form2Weight || 0).toFixed(2)} {p.productUnit}</div>
+                            <div className="text-gray-500">{(Number(p.form2Revenue || 0) * 1.2).toFixed(0)} ₴</div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {/* Десктоп */}
                 <div className="hidden sm:block overflow-x-auto">
                   <table className="w-full text-sm">
-                    <thead className="bg-gray-50">
+                    <thead className="bg-gray-50 border-b border-gray-200">
                       <tr className="text-left text-xs text-gray-500">
+                        <th className="px-4 py-3 font-medium">#</th>
                         <th className="px-4 py-3 font-medium">Продукт</th>
-                        <th className="px-4 py-3 font-medium text-right">План (кг)</th>
-                        <th className="px-4 py-3 font-medium text-right">Факт (кг)</th>
-                        <th className="px-4 py-3 font-medium text-right">Відхилення</th>
-                        <th className="px-4 py-3 font-medium text-right">Виручка</th>
+                        <th className="px-4 py-3 font-medium text-right bg-blue-50 text-blue-600">Ф1 обсяг</th>
+                        <th className="px-4 py-3 font-medium text-right bg-blue-50 text-blue-600">Ф1 сума (з ПДВ)</th>
+                        {!isInspector && <th className="px-4 py-3 font-medium text-right bg-orange-50 text-orange-500">Ф2 обсяг</th>}
+                        {!isInspector && <th className="px-4 py-3 font-medium text-right bg-orange-50 text-orange-500">Ф2 сума (з ПДВ)</th>}
+                        <th className="px-4 py-3 font-medium text-right">Всього</th>
+                        <th className="px-4 py-3 font-medium text-right">Виручка (з ПДВ)</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {products?.map((p: any) => {
-                        const diff = Number(p.weightAccuracy || 0);
+                      {products?.map((p: any, idx: number) => {
+                        const totalW = Number(p.totalActualWeight || 0);
+                        const f1W = Number(p.form1Weight || 0);
+                        const f2W = Number(p.form2Weight || 0);
+                        const f1Share = totalW > 0 ? f1W / totalW * 100 : 0;
                         return (
                           <tr key={p.productId} className="hover:bg-gray-50">
-                            <td className="px-4 py-3 font-medium text-gray-800">{p.productName}</td>
-                            <td className="px-4 py-3 text-right text-gray-500">{Number(p.totalPlannedWeight).toFixed(1)} {p.productUnit}</td>
-                            <td className="px-4 py-3 text-right text-gray-700 font-medium">{Number(p.totalActualWeight).toFixed(1)} {p.productUnit}</td>
-                            <td className="px-4 py-3 text-right">
-                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${Math.abs(diff) < 2 ? 'bg-green-100 text-green-700' : Math.abs(diff) < 5 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>
-                                {diff > 0 ? '+' : ''}{diff.toFixed(1)}%
-                              </span>
+                            <td className="px-4 py-3">
+                              <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold" style={{ background: COLORS[idx % COLORS.length] }}>{idx + 1}</div>
                             </td>
-                            <td className="px-4 py-3 text-right font-semibold text-green-600">{(Number(p.revenue || 0) * 1.2).toFixed(2)} ₴</td>
+                            <td className="px-4 py-3 font-medium text-gray-800">
+                              <span>{p.productName}</span>
+                              {p.isGroup && <span className="ml-1.5 text-[10px] bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded-full font-medium">група</span>}
+                            </td>
+                            <td className="px-4 py-3 text-right text-blue-700 font-medium bg-blue-50/30">{f1W.toFixed(2)} {p.productUnit}</td>
+                            <td className="px-4 py-3 text-right text-blue-600 bg-blue-50/30">{(Number(p.form1Revenue || 0) * 1.2).toFixed(2)} ₴</td>
+                            {!isInspector && <td className="px-4 py-3 text-right text-orange-600 font-medium bg-orange-50/30">{f2W.toFixed(2)} {p.productUnit}</td>}
+                            {!isInspector && <td className="px-4 py-3 text-right text-orange-500 bg-orange-50/30">{(Number(p.form2Revenue || 0) * 1.2).toFixed(2)} ₴</td>}
+                            <td className="px-4 py-3 text-right text-gray-700 font-medium">
+                              <div>{totalW.toFixed(2)} {p.productUnit}</div>
+                              {!isInspector && <div className="text-[10px] text-gray-400 mt-0.5">Ф1: {f1Share.toFixed(0)}% / Ф2: {(100 - f1Share).toFixed(0)}%</div>}
+                            </td>
+                            <td className="px-4 py-3 text-right font-bold text-green-600">{(Number(p.revenue || 0) * 1.2).toFixed(2)} ₴</td>
                           </tr>
                         );
                       })}
+                      {products?.length > 0 && (() => {
+                        const totF1W = products.reduce((s: number, p: any) => s + Number(p.form1Weight || 0), 0);
+                        const totF2W = products.reduce((s: number, p: any) => s + Number(p.form2Weight || 0), 0);
+                        const totF1R = products.reduce((s: number, p: any) => s + Number(p.form1Revenue || 0), 0);
+                        const totF2R = products.reduce((s: number, p: any) => s + Number(p.form2Revenue || 0), 0);
+                        const totW = products.reduce((s: number, p: any) => s + Number(p.totalActualWeight || 0), 0);
+                        const totR = products.reduce((s: number, p: any) => s + Number(p.revenue || 0), 0);
+                        return (
+                          <tr className="bg-gray-100 font-semibold text-sm border-t-2 border-gray-300">
+                            <td className="px-4 py-3" colSpan={2}>Всього</td>
+                            <td className="px-4 py-3 text-right text-blue-700 bg-blue-50/50">{totF1W.toFixed(2)}</td>
+                            <td className="px-4 py-3 text-right text-blue-600 bg-blue-50/50">{(totF1R * 1.2).toFixed(2)} ₴</td>
+                            {!isInspector && <td className="px-4 py-3 text-right text-orange-600 bg-orange-50/50">{totF2W.toFixed(2)}</td>}
+                            {!isInspector && <td className="px-4 py-3 text-right text-orange-500 bg-orange-50/50">{(totF2R * 1.2).toFixed(2)} ₴</td>}
+                            <td className="px-4 py-3 text-right text-gray-800">{totW.toFixed(2)}</td>
+                            <td className="px-4 py-3 text-right text-green-700">{(totR * 1.2).toFixed(2)} ₴</td>
+                          </tr>
+                        );
+                      })()}
                     </tbody>
                   </table>
                 </div>
               </div>
 
+              {/* Pie — частки у виручці */}
               {products?.length > 0 && (
                 <div className="bg-white rounded-xl border border-gray-200 p-4">
                   <h3 className="text-sm font-semibold text-gray-700 mb-3">Частки продуктів у виручці</h3>
                   <div className="flex flex-wrap items-center gap-4">
-                    <ResponsiveContainer width="60%" height={200}>
+                    <ResponsiveContainer width="55%" height={200}>
                       <PieChart>
                         <Pie data={products?.map((p: any) => ({ name: p.productName, value: Number(p.revenue || 0) }))} cx="50%" cy="50%" outerRadius={80} dataKey="value">
                           {products?.map((_: any, i: number) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
@@ -607,12 +658,17 @@ export default function StatisticsPage() {
                       </PieChart>
                     </ResponsiveContainer>
                     <div className="flex-1 space-y-1.5">
-                      {products?.map((p: any, i: number) => (
-                        <div key={p.productId} className="flex items-center gap-2 text-xs">
-                          <div className="w-3 h-3 rounded-full shrink-0" style={{ background: COLORS[i % COLORS.length] }} />
-                          <span className="text-gray-600 truncate">{p.productName}</span>
-                        </div>
-                      ))}
+                      {products?.map((p: any, i: number) => {
+                        const total = products.reduce((s: number, x: any) => s + Number(x.revenue || 0), 0);
+                        const pct = total > 0 ? (Number(p.revenue || 0) / total * 100).toFixed(1) : '0';
+                        return (
+                          <div key={p.productId} className="flex items-center gap-2 text-xs">
+                            <div className="w-3 h-3 rounded-full shrink-0" style={{ background: COLORS[i % COLORS.length] }} />
+                            <span className="text-gray-700 truncate flex-1">{p.productName}</span>
+                            <span className="text-gray-400 shrink-0">{pct}%</span>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>

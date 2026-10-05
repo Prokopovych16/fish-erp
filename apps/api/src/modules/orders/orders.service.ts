@@ -47,6 +47,7 @@ export class OrdersService {
         deliveryPoint: true,
         items: { include: { product: true }, orderBy: { sortOrder: 'asc' } },
         createdBy: { select: { id: true, name: true } },
+        fop: true,
         assignedTo: { select: { id: true, name: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -86,6 +87,7 @@ export class OrdersService {
         deliveryPoint: true,
         items: { include: { product: true }, orderBy: { sortOrder: 'asc' } },
         createdBy: { select: { id: true, name: true } },
+        fop: true,
       },
       orderBy: [
         { numberForm: 'desc' },
@@ -113,6 +115,7 @@ export class OrdersService {
         deliveryPoint: true,
         items: { include: { product: true }, orderBy: { sortOrder: 'asc' } },
         createdBy: { select: { id: true, name: true } },
+        fop: true,
         assignedTo: { select: { id: true, name: true } },
       },
     });
@@ -218,6 +221,7 @@ export class OrdersService {
         carNumber: dto.carNumber,
         deliveryAddress: dto.deliveryAddress,
         deliveryPointId: dto.deliveryPointId ?? null,
+        fopId: dto.fopId ?? null,
         note: dto.note,
         items: {
           create: (dto.items ?? []).map((item, idx) => ({
@@ -947,6 +951,7 @@ export class OrdersService {
         ...(dto.deliveryPointId !== undefined && {
           deliveryPointId: dto.deliveryPointId || null,
         }),
+        ...(dto.fopId !== undefined && { fopId: dto.fopId || null }),
         ...(dto.note !== undefined && { note: dto.note || null }),
         ...(dto.plannedDate !== undefined && {
           plannedDate: dto.plannedDate ? new Date(dto.plannedDate) : null,
@@ -960,6 +965,7 @@ export class OrdersService {
         deliveryPoint: true,
         items: { include: { product: true }, orderBy: { sortOrder: 'asc' } },
         createdBy: { select: { id: true, name: true } },
+        fop: true,
         assignedTo: { select: { id: true, name: true } },
       },
     });

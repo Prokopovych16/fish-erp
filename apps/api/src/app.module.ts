@@ -18,6 +18,7 @@ import { CashModule } from './modules/cash/cash.module';
 import { StoresModule } from './modules/stores/stores.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 import { SupplierInvoicesModule } from './modules/supplier-invoices/supplier-invoices.module';
+import { FopsModule } from './modules/fops/fops.module';
 import { RecipesModule } from './modules/recipes/recipes.module';
 import { BomModule } from './modules/bom/bom.module';
 import { ForecastModule } from './modules/forecast/forecast.module';
@@ -44,6 +45,7 @@ import { BazaarAssortmentModule } from './modules/bazaar-assortment/bazaar-assor
     StoresModule,
     TasksModule,
     SupplierInvoicesModule,
+    FopsModule,
     RecipesModule,
     BomModule,
     ForecastModule,

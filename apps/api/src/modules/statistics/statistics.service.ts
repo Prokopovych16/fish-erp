@@ -39,12 +39,20 @@ export class StatisticsService {
   }
 
   // Виручка по позиції — 0 якщо шт без фактичної ваги
+  // Для базару: продано = actualWeight - returnedWeight (returnedWeight != null означає базар)
   private calcItemRevenue(item: any): number {
     if (item.product?.unit === 'шт' && !item.actualWeight) return 0;
-    return (
-      Number(item.actualWeight ?? item.plannedWeight) *
-      Number(item.pricePerKg ?? 0)
-    );
+    const gross = Number(item.actualWeight ?? item.plannedWeight);
+    const returned = item.returnedWeight != null ? Number(item.returnedWeight) : 0;
+    const sold = item.returnedWeight != null ? Math.max(0, gross - returned) : gross;
+    return sold * Number(item.pricePerKg ?? 0);
+  }
+
+  // Ефективна кількість (вага/шт) по позиції — для базару = продано
+  private calcItemQty(item: any): number {
+    const gross = Number(item.actualWeight ?? item.plannedWeight);
+    const returned = item.returnedWeight != null ? Number(item.returnedWeight) : 0;
+    return item.returnedWeight != null ? Math.max(0, gross - returned) : gross;
   }
 
   // ============================================================
@@ -55,7 +63,7 @@ export class StatisticsService {
 
     const orders = await this.prisma.order.findMany({
       where,
-      include: { items: { include: { product: true } } },
+      include: { items: { where: { isExcluded: false }, include: { product: true } } },
     });
 
     const totalRevenue = orders.reduce((sum, order) => {
@@ -97,7 +105,7 @@ export class StatisticsService {
 
     const lastOrders = await this.prisma.order.findMany({
       where: { status: OrderStatus.DONE, deletedAt: null },
-      include: { client: true, items: { include: { product: true } } },
+      include: { client: true, items: { where: { isExcluded: false }, include: { product: true } } },
       orderBy: { completedAt: 'desc' },
       take: 5,
     });
@@ -125,7 +133,7 @@ export class StatisticsService {
       const where = this.buildWhereFilter(from, to, form);
       const orders = await this.prisma.order.findMany({
         where,
-        include: { items: { include: { product: true } } },
+        include: { items: { where: { isExcluded: false }, include: { product: true } } },
       });
 
       const revenue = orders.reduce((sum, order) => {
@@ -147,7 +155,7 @@ export class StatisticsService {
 
     const orders = await this.prisma.order.findMany({
       where,
-      include: { items: { include: { product: true } } },
+      include: { items: { where: { isExcluded: false }, include: { product: true } } },
       orderBy: { invoiceDate: 'asc' },
     });
 
@@ -185,7 +193,7 @@ export class StatisticsService {
 
     const orders = await this.prisma.order.findMany({
       where,
-      include: { client: { include: { group: true } }, items: { include: { product: true } } },
+      include: { client: { include: { group: true } }, items: { where: { isExcluded: false }, include: { product: true } } },
     });
 
     const clientMap: Record<
@@ -207,7 +215,7 @@ export class StatisticsService {
 
       for (const item of order.items) {
         const unit = item.product?.unit;
-        const qty = Number(item.actualWeight ?? item.plannedWeight);
+        const qty = this.calcItemQty(item);
         if (unit === 'шт') clientMap[key].totalPcs += qty;
         else clientMap[key].totalWeightKg += qty;
       }
@@ -226,54 +234,86 @@ export class StatisticsService {
 
     const orders = await this.prisma.order.findMany({
       where,
-      include: { items: { include: { product: true } } },
+      select: {
+        form: true,
+        items: {
+          where: { isExcluded: false },
+          include: { product: { include: { group: true } } },
+        },
+      },
     });
 
-    const productMap: Record<
-      string,
-      {
-        productId: string;
-        productName: string;
-        productUnit: string;
-        totalPlannedWeight: number;
-        totalActualWeight: number;
-        revenue: number;
-        ordersCount: number;
-        weightAccuracy: number;
-      }
-    > = {};
+    type ProductEntry = {
+      productId: string;
+      productName: string;
+      productUnit: string;
+      isGroup: boolean;
+      groupId: string | null;
+      totalPlannedWeight: number;
+      totalActualWeight: number;
+      revenue: number;
+      ordersCount: number;
+      weightAccuracy: number;
+      form1Weight: number;
+      form1Revenue: number;
+      form2Weight: number;
+      form2Revenue: number;
+    };
+
+    // key = groupId (for grouped products) or productId (for standalone)
+    const map: Record<string, ProductEntry> = {};
 
     for (const order of orders) {
       for (const item of order.items) {
-        const id = item.productId;
-        if (!productMap[id]) {
-          productMap[id] = {
-            productId: id,
-            productName: item.product.name,
-            productUnit: item.product.unit,
+        const prod = item.product as any;
+        const hasGroup = !!prod.groupId;
+        const key = hasGroup ? prod.groupId : item.productId;
+
+        if (!map[key]) {
+          map[key] = {
+            productId: key,
+            productName: hasGroup ? prod.group.name : prod.name,
+            productUnit: prod.unit,
+            isGroup: hasGroup,
+            groupId: prod.groupId ?? null,
             totalPlannedWeight: 0,
             totalActualWeight: 0,
             revenue: 0,
             ordersCount: 0,
             weightAccuracy: 0,
+            form1Weight: 0,
+            form1Revenue: 0,
+            form2Weight: 0,
+            form2Revenue: 0,
           };
         }
 
-        productMap[id].totalPlannedWeight += Number(item.plannedWeight);
-        productMap[id].totalActualWeight += Number(item.actualWeight ?? item.plannedWeight);
-        productMap[id].revenue += this.calcItemRevenue(item);
-        productMap[id].ordersCount++;
+        const qty = this.calcItemQty(item);
+        const rev = this.calcItemRevenue(item);
+
+        map[key].totalPlannedWeight += Number(item.plannedWeight);
+        map[key].totalActualWeight += qty;
+        map[key].revenue += rev;
+        map[key].ordersCount++;
+
+        if (order.form === Form.FORM_1) {
+          map[key].form1Weight += qty;
+          map[key].form1Revenue += rev;
+        } else {
+          map[key].form2Weight += qty;
+          map[key].form2Revenue += rev;
+        }
       }
     }
 
-    for (const p of Object.values(productMap)) {
+    for (const p of Object.values(map)) {
       if (p.totalPlannedWeight > 0) {
         p.weightAccuracy =
           ((p.totalActualWeight - p.totalPlannedWeight) / p.totalPlannedWeight) * 100;
       }
     }
 
-    return Object.values(productMap).sort((a, b) => b.revenue - a.revenue);
+    return Object.values(map).sort((a, b) => b.revenue - a.revenue);
   }
 
   // ============================================================
@@ -361,7 +401,7 @@ export class StatisticsService {
       where: { status: OrderStatus.DONE, deletedAt: null, ...dateFilter },
       include: {
         assignedTo: { select: { id: true, name: true } },
-        items: { include: { product: true } },
+        items: { where: { isExcluded: false }, include: { product: true } },
       },
     });
 
@@ -384,12 +424,12 @@ export class StatisticsService {
       let itemCount = 0;
 
       for (const item of order.items) {
-        const actual = Number(item.actualWeight ?? item.plannedWeight);
+        const qty = this.calcItemQty(item);
         const planned = Number(item.plannedWeight);
         const unit = item.product?.unit;
-        if (unit === 'шт') workerMap[id].totalPcs += actual;
-        else workerMap[id].totalWeightKg += actual;
-        totalDiff += Math.abs(actual - planned);
+        if (unit === 'шт') workerMap[id].totalPcs += qty;
+        else workerMap[id].totalWeightKg += qty;
+        totalDiff += Math.abs(qty - planned);
         itemCount++;
       }
 

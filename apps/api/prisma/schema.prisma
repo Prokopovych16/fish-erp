@@ -423,6 +423,8 @@ model Order {
   returns ClientReturn[]
   isBazaar        Boolean     @default(false) // видача товару на базар з подальшим розрахунком за різницею
 
+  fopId       String?
+  fop         Fop?            @relation(fields: [fopId], references: [id])
   client     Client          @relation(fields: [clientId], references: [id])
   createdBy  User            @relation("CreatedBy", fields: [createdById], references: [id])
   assignedTo User?           @relation("AssignedTo", fields: [assignedToId], references: [id])
@@ -689,6 +691,22 @@ model ProductBOM {
   @@unique([outputProductId, inputProductId])
   @@index([outputProductId])
   @@index([inputProductId])
+}
+
+// ─── ФОПи — різні реквізити для шапки накладних ──────────────────────────────
+model Fop {
+  id          String   @id @default(uuid())
+  name        String
+  companyName String
+  edrpou      String?
+  ipn         String?
+  iban        String?
+  address     String?
+  phone       String?
+  director    String?
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  orders      Order[]
 }
 
 // ─── Розрахунки з постачальниками ────────────────────────────────────────────

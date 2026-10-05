@@ -69,4 +69,8 @@ export class CreateOrderDto {
   @IsOptional()
   @IsBoolean()
   isBazaar?: boolean;
+
+  @IsOptional()
+  @IsString()
+  fopId?: string;
 }

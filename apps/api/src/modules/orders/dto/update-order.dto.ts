@@ -84,6 +84,10 @@ export class UpdateOrderDto {
   numberSuffix?: string;
 
   @IsOptional()
+  @IsOptional()
+  @IsString()
+  fopId?: string | null;
+
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => UpdateOrderItemDto)
