@@ -88,6 +88,7 @@ export class UpdateOrderDto {
   @IsString()
   fopId?: string | null;
 
+  @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => UpdateOrderItemDto)

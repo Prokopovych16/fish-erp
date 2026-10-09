@@ -140,10 +140,13 @@ export class OrdersService {
     let finalNumberForm: number;
 
     // Стало:
+    // Нумерація ведеться окремо для кожної комбінації (form, fopId)
+    const fopScope = dto.fopId ?? null;
     if (dto.numberForm) {
       const duplicate = await this.prisma.order.findFirst({
         where: {
           form: dto.form,
+          fopId: fopScope,
           numberForm: dto.numberForm,
           numberSuffix: dto.numberSuffix ?? null,
           deletedAt: null,
@@ -162,20 +165,22 @@ export class OrdersService {
       }
       finalNumberForm = dto.numberForm;
     } else {
-      // Беремо max тільки серед не-скасованих заявок
+      // Беремо max тільки серед не-скасованих заявок у тій самій (form, fopId) комбінації
       const lastOrder = await this.prisma.order.findFirst({
         where: {
           form: dto.form,
+          fopId: fopScope,
           deletedAt: null,
           status: { not: OrderStatus.CANCELLED },
         },
         orderBy: { numberForm: 'desc' },
       });
       finalNumberForm = (lastOrder?.numberForm ?? 0) + 1;
-      // Якщо цей номер вже зайнятий скасованою заявкою — пропускаємо далі
+      // Якщо цей номер вже зайнятий скасованою заявкою в тій самій комбінації — пропускаємо
       let conflict = await this.prisma.order.findFirst({
         where: {
           form: dto.form,
+          fopId: fopScope,
           numberForm: finalNumberForm,
           deletedAt: null,
         },
@@ -185,6 +190,7 @@ export class OrdersService {
         conflict = await this.prisma.order.findFirst({
           where: {
             form: dto.form,
+            fopId: fopScope,
             numberForm: finalNumberForm,
             deletedAt: null,
           },
@@ -1056,7 +1062,7 @@ export class OrdersService {
 
   async getRegistry(
     userRole: UserRole,
-    params: { from: string; to: string; form?: string },
+    params: { from: string; to: string; form?: string; fopId?: string },
   ) {
     const dateRange = {
       ...(params.from && { gte: new Date(params.from) }),
@@ -1065,11 +1071,15 @@ export class OrdersService {
 
     const where: any = {
       deletedAt: null,
-      // в реєстр йдуть усі окрім скасованих — і виконані, і ще в роботі/очікують
       status: { not: 'CANCELLED' },
       ...(params.form && { form: params.form as Form }),
       ...(userRole === UserRole.INSPECTOR && { form: Form.FORM_1 }),
-      // фільтр по даті накладної; якщо немає — по completedAt; якщо й того немає (ще не виконана) — по даті створення
+      // fopId: 'none' = показати тільки заявки без ФОПа; будь-який uuid = конкретний ФОП
+      ...(params.fopId === 'none'
+        ? { fopId: null }
+        : params.fopId
+          ? { fopId: params.fopId }
+          : {}),
       OR: [
         { invoiceDate: dateRange },
         { invoiceDate: null, completedAt: dateRange },
@@ -1083,6 +1093,7 @@ export class OrdersService {
         client: {
           select: { name: true, group: { select: { name: true } } },
         },
+        fop: { select: { name: true } },
         items: {
           where: { isExcluded: false },
           select: {
@@ -1101,16 +1112,10 @@ export class OrdersService {
     });
 
     const rows = orders.map((o) => {
-      // Та ж сама логіка що й у generateTtn/generateInvoice
       const totalNoVat = o.items.reduce((s, i) => {
-        const rowTotal = r2(
-          Number(i.actualWeight ?? i.plannedWeight) *
-            Number(i.pricePerKg ?? 0),
-        );
-        return s + rowTotal;
+        return s + r2(Number(i.actualWeight ?? i.plannedWeight) * Number(i.pricePerKg ?? 0));
       }, 0);
       const totalWithVat = Number((totalNoVat * 1.2).toFixed(2));
-      // vat рахуємо як різниця щоб noVat + vat = withVat до копійки
       const vat = Number((totalWithVat - totalNoVat).toFixed(2));
 
       const clientName = o.client.group
@@ -1118,10 +1123,13 @@ export class OrdersService {
         : o.client.name;
 
       return {
+        orderId: o.id,
         number: (o as any).numberForm ?? o.number,
         numberSuffix: (o as any).numberSuffix ?? null,
         client: clientName,
         form: o.form,
+        fopId: (o as any).fopId ?? null,
+        fopName: (o as any).fop?.name ?? null,
         totalNoVat,
         totalWithVat,
         vat,

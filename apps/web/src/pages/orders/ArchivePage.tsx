@@ -387,14 +387,27 @@ function RegistryTab() {
   const [from, setFrom] = useState(localDateStr(new Date(now.getFullYear(), now.getMonth(), 1)));
   const [to, setTo] = useState(localDateStr(new Date(now.getFullYear(), now.getMonth() + 1, 0)));
   const [formFilter, setFormFilter] = useState('');
+  const [fopFilter, setFopFilter] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [printLoading, setPrintLoading] = useState(false);
 
+  const { data: fopsData } = useQuery({
+    queryKey: ['fops'],
+    queryFn: () => api.get('/fops').then(r => r.data),
+    enabled: !isInspector,
+  });
+  const fops: any[] = fopsData ?? [];
+
   // Реєстр накладних = реєстр ЗАМОВЛЕНЬ (продажів), не накладних постачальника
   const { data, isLoading } = useQuery({
-    queryKey: ['orders-registry', from, to, formFilter, isInspector],
+    queryKey: ['orders-registry', from, to, formFilter, fopFilter, isInspector],
     queryFn: () => api.get('/orders/reports/registry', {
-      params: { from, to, ...(!isInspector && formFilter && { form: formFilter }) },
+      params: {
+        from,
+        to,
+        ...(!isInspector && formFilter && { form: formFilter }),
+        ...(!isInspector && fopFilter && { fopId: fopFilter }),
+      },
     }).then(r => r.data),
     enabled: !!(from && to),
   });
@@ -405,6 +418,7 @@ function RegistryTab() {
       const params = new URLSearchParams({ from, to });
       const effectiveForm = isInspector ? 'FORM_1' : formFilter;
       if (effectiveForm) params.append('form', effectiveForm);
+      if (!isInspector && fopFilter) params.append('fopId', fopFilter);
       const r = await api.get(`/documents/reports/registry?${params}`, { responseType: 'blob' });
       const url = window.URL.createObjectURL(new Blob([r.data], { type: 'application/pdf' }));
       window.open(url, '_blank');
@@ -439,12 +453,22 @@ function RegistryTab() {
         </div>
         {showFilters && !isInspector && (
           <div className="grid grid-cols-2 gap-2">
-            <div className="bg-white rounded-xl border border-blue-200 px-3 py-2 col-span-2 sm:col-span-1">
+            <div className="bg-white rounded-xl border border-blue-200 px-3 py-2">
               <div className="text-[10px] text-blue-600 font-semibold uppercase tracking-wide mb-1">Форма</div>
               <select value={formFilter} onChange={e => setFormFilter(e.target.value)} className="w-full text-sm text-gray-800 focus:outline-none bg-transparent">
                 <option value="">Всі форми</option>
                 <option value="FORM_1">Ф1 (безнал)</option>
                 <option value="FORM_2">Ф2 (готівка)</option>
+              </select>
+            </div>
+            <div className="bg-white rounded-xl border border-blue-200 px-3 py-2">
+              <div className="text-[10px] text-blue-600 font-semibold uppercase tracking-wide mb-1">ФОП</div>
+              <select value={fopFilter} onChange={e => setFopFilter(e.target.value)} className="w-full text-sm text-gray-800 focus:outline-none bg-transparent">
+                <option value="">Всі ФОПи</option>
+                <option value="none">Без ФОПа</option>
+                {fops.map((f: any) => (
+                  <option key={f.id} value={f.id}>{f.name}</option>
+                ))}
               </select>
             </div>
           </div>
@@ -478,6 +502,7 @@ function RegistryTab() {
                   <th className="px-4 py-3 font-semibold">№ накл.</th>
                   <th className="px-4 py-3 font-semibold">Клієнт</th>
                   <th className="px-4 py-3 font-semibold">Форма</th>
+                  {!fopFilter && <th className="px-4 py-3 font-semibold">ФОП</th>}
                   <th className="px-4 py-3 font-semibold text-right">Без ПДВ</th>
                   <th className="px-4 py-3 font-semibold text-right">ПДВ</th>
                   <th className="px-4 py-3 font-semibold text-right">З ПДВ</th>
@@ -485,20 +510,12 @@ function RegistryTab() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {rows.map((row: any, idx: number) => (
-                  <tr key={idx} className="hover:bg-blue-50/30 transition-colors">
-                    <td className="px-4 py-3 text-gray-600 text-xs">{new Date(row.invoiceDate).toLocaleDateString('uk-UA')}</td>
-                    <td className="px-4 py-3 font-medium text-gray-800">№{row.number}{row.numberSuffix ?? ''}</td>
-                    <td className="px-4 py-3 text-gray-700">{row.client}</td>
-                    <td className="px-4 py-3"><FormBadge form={row.form} /></td>
-                    <td className="px-4 py-3 text-right text-gray-500 text-xs">{Number(row.totalNoVat).toFixed(2)}</td>
-                    <td className="px-4 py-3 text-right text-orange-500 text-xs">{Number(row.vat).toFixed(2)}</td>
-                    <td className="px-4 py-3 text-right font-bold text-blue-600">{Number(row.totalWithVat).toFixed(2)} ₴</td>
-                  </tr>
+                  <RegistryRow key={idx} row={row} showFopColumn={!fopFilter} />
                 ))}
               </tbody>
               <tfoot className="bg-gray-50 border-t-2 border-gray-200 font-bold text-sm">
                 <tr>
-                  <td className="px-4 py-3 text-gray-700" colSpan={4}>Всього</td>
+                  <td className="px-4 py-3 text-gray-700" colSpan={!fopFilter ? 4 : 3}>Всього</td>
                   <td className="px-4 py-3 text-right text-gray-600">{Number(data.grandNoVat).toFixed(2)}</td>
                   <td className="px-4 py-3 text-right text-orange-600">{Number(data.grandVat).toFixed(2)}</td>
                   <td className="px-4 py-3 text-right text-blue-700">{Number(data.grandWithVat).toFixed(2)} ₴</td>
@@ -509,6 +526,26 @@ function RegistryTab() {
         </div>
       )}
     </div>
+  );
+}
+
+function RegistryRow({ row, showFopColumn }: {
+  row: any;
+  showFopColumn: boolean;
+}) {
+  return (
+    <tr className="hover:bg-blue-50/30 transition-colors">
+      <td className="px-4 py-3 text-gray-600 text-xs">{new Date(row.invoiceDate).toLocaleDateString('uk-UA')}</td>
+      <td className="px-4 py-3 font-medium text-gray-800">№{row.number}{row.numberSuffix ?? ''}</td>
+      <td className="px-4 py-3 text-gray-700">{row.client}</td>
+      <td className="px-4 py-3"><FormBadge form={row.form} /></td>
+      {showFopColumn && (
+        <td className="px-4 py-3 text-gray-500 text-xs">{row.fopName ?? '—'}</td>
+      )}
+      <td className="px-4 py-3 text-right text-gray-500 text-xs">{Number(row.totalNoVat).toFixed(2)}</td>
+      <td className="px-4 py-3 text-right text-orange-500 text-xs">{Number(row.vat).toFixed(2)}</td>
+      <td className="px-4 py-3 text-right font-bold text-blue-600">{Number(row.totalWithVat).toFixed(2)} ₴</td>
+    </tr>
   );
 }
 
@@ -1869,7 +1906,7 @@ function BudgetTab() {
 // ─── EditArchiveOrderModal ────────────────────────────────────────────────────
 function EditArchiveOrderModal({ order, onClose, onSaved }: { order: Order; onClose: () => void; onSaved: () => void }) {
   const queryClient = useQueryClient();
-  const extEdit = order as Order & { numberForm?: number; numberSuffix?: string; deliveryPointId?: string; invoiceDate?: string; plannedDate?: string };
+  const extEdit = order as Order & { numberForm?: number; numberSuffix?: string; deliveryPointId?: string; invoiceDate?: string; plannedDate?: string; fopId?: string };
   const displayNumber = String(extEdit.numberForm ?? order.number) + (extEdit.numberSuffix ?? '');
 
   const [clientId, setClientId] = useState(order.clientId);
@@ -1880,6 +1917,7 @@ function EditArchiveOrderModal({ order, onClose, onSaved }: { order: Order; onCl
   const [carNumber, setCarNumber] = useState(order.carNumber || '');
   const [deliveryPointId, setDeliveryPointId] = useState(extEdit.deliveryPointId || '');
   const [note, setNote] = useState(order.note || '');
+  const [fopId, setFopId] = useState(extEdit.fopId || '');
   const [invoiceDate, setInvoiceDate] = useState(
     extEdit.invoiceDate ? new Date(extEdit.invoiceDate).toISOString().slice(0, 10) : '',
   );
@@ -1909,6 +1947,8 @@ function EditArchiveOrderModal({ order, onClose, onSaved }: { order: Order; onCl
     queryFn: () => api.get(`/clients/${clientId}/delivery-points`).then((r) => r.data),
     enabled: !!clientId,
   });
+  const { data: fopsData } = useQuery({ queryKey: ['fops'], queryFn: () => api.get('/fops').then((r) => r.data) });
+  const fops: any[] = fopsData ?? [];
 
   const handleSave = async () => {
     if (!clientId) return setError('Оберіть клієнта');
@@ -1917,13 +1957,15 @@ function EditArchiveOrderModal({ order, onClose, onSaved }: { order: Order; onCl
       await api.patch(`/orders/${order.id}`, {
         clientId,
         numberForm: parseOrderNum(orderNumRaw).num,
-        numberSuffix: parseOrderNum(orderNumRaw).suffix || undefined,
+        // надсилаємо '' (порожній рядок) — бекенд перетворить на null, щоб очистити суфікс
+        numberSuffix: parseOrderNum(orderNumRaw).suffix,
         driverName: driverName || undefined,
         carNumber: carNumber || undefined,
         deliveryPointId: deliveryPointId || undefined,
         note: note || undefined,
         plannedDate: plannedDate || undefined,
         invoiceDate: invoiceDate || undefined,
+        fopId: fopId || null,
       });
       // Зберігаємо фактичні ваги окремо
       const weightItems = items
@@ -2033,6 +2075,15 @@ function EditArchiveOrderModal({ order, onClose, onSaved }: { order: Order; onCl
               <input type="date" value={plannedDate} onChange={(e) => setPlannedDate(e.target.value)}
                 className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">ФОП</label>
+            <select value={fopId} onChange={(e) => setFopId(e.target.value)}
+              className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="">Без ФОПа</option>
+              {fops.map((f: any) => <option key={f.id} value={f.id}>{f.name}</option>)}
+            </select>
           </div>
 
           <div>

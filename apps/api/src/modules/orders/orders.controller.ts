@@ -43,8 +43,9 @@ export class OrdersController {
     @Query('from') from: string,
     @Query('to') to: string,
     @Query('form') form?: string,
+    @Query('fopId') fopId?: string,
   ) {
-    return this.ordersService.getRegistry(req.user.role, { from, to, form });
+    return this.ordersService.getRegistry(req.user.role, { from, to, form, fopId });
   }
 
   @Get('reports/suppliers')
