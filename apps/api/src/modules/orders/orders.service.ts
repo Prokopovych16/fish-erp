@@ -830,10 +830,13 @@ export class OrdersService {
     const incomingSuffix = dto.numberSuffix !== undefined ? (dto.numberSuffix || null) : (order.numberSuffix ?? null);
     const numberChanged = dto.numberForm !== undefined && dto.numberForm !== order.numberForm;
     const suffixChanged = dto.numberSuffix !== undefined && (dto.numberSuffix || null) !== (order.numberSuffix ?? null);
+    // fopId на момент перевірки — або вже оновлений (якщо dto.fopId передано), або поточний у заявці
+    const incomingFopId = dto.fopId !== undefined ? (dto.fopId || null) : ((order as any).fopId ?? null);
     if (dto.numberForm !== undefined && (numberChanged || suffixChanged)) {
       const duplicate = await this.prisma.order.findFirst({
         where: {
           form: order.form,
+          fopId: incomingFopId,
           numberForm: dto.numberForm,
           numberSuffix: incomingSuffix,
           deletedAt: null,

@@ -657,6 +657,18 @@ export class DocumentsService {
   async generateTTN(orderId: string): Promise<Buffer> {
     const order = await this.getOrderData(orderId);
     const company = await this.settings.getAll();
+    const fop = (order as any).fop as {
+      companyName?: string; edrpou?: string; ipn?: string;
+      address?: string; phone?: string; director?: string;
+    } | null;
+
+    // Якщо є ФОП — вантажовідправник і підпис беруться з ФОПа
+    const senderName    = fop?.companyName  ?? company.companyName ?? '';
+    const senderEdrpou  = fop?.edrpou       ?? company.edrpou      ?? '';
+    const senderIpn     = fop?.ipn          ?? company.ipn         ?? '';
+    const senderAddress = fop?.address      ?? company.address     ?? '';
+    const senderPhone   = fop?.phone        ?? company.phone       ?? '';
+    const senderDirector = fop?.director    ?? company.director    ?? '';
 
     const orderExt = order as unknown as {
       numberForm?: number;
@@ -803,8 +815,8 @@ export class DocumentsService {
           <tr>
             <td>
               <span class="sub">Вантажовідправник (повне найменування, форма власності та організаційно-правова форма юридичної особи; прізвище, ім'я, по батькові фізичної особи — суб'єкта підприємницької діяльності; для нерезидентів — назва держави де зареєстровано суб'єкта господарювання):</span>
-              <div class="val">${company.companyName ?? ''}</div>
-              <span class="sub">ЄДРПОУ/ДРФО: ${company.edrpou ?? ''}&nbsp;&nbsp; ІПН: ${company.ipn ?? ''}&nbsp;&nbsp; Адреса: ${company.address ?? ''}&nbsp;&nbsp; Тел.: ${company.phone ?? ''}</span>
+              <div class="val">${senderName}</div>
+              <span class="sub">ЄДРПОУ/ДРФО: ${senderEdrpou}&nbsp;&nbsp; ІПН: ${senderIpn}&nbsp;&nbsp; Адреса: ${senderAddress}&nbsp;&nbsp; Тел.: ${senderPhone}</span>
             </td>
           </tr>
         </table>
@@ -825,7 +837,7 @@ export class DocumentsService {
           <tr>
             <td style="width:50%">
               <span class="sub">Пункт навантаження:</span>
-              <span class="val">${company.address ?? ''}</span>
+              <span class="val">${senderAddress}</span>
             </td>
             <td>
               <span class="sub">Пункт розвантаження:</span>
@@ -931,7 +943,7 @@ export class DocumentsService {
             <div>Здав (відправник)</div>
             <div class="sig-line"></div>
             <div class="sig-hint">підпис, П.І.Б., печатка</div>
-            <div style="margin-top:2px; font-size:7.5px;">директор ${company.director ?? ''}</div>
+            <div style="margin-top:2px; font-size:7.5px;">директор ${senderDirector}</div>
           </div>
           <div class="sig">
             <div>Прийняв (відповідальна особа вантажоодержувача)</div>
@@ -984,6 +996,14 @@ export class DocumentsService {
   async generateQuality(orderId: string): Promise<Buffer> {
     const order = await this.getOrderData(orderId);
     const company = await this.settings.getAll();
+    const fop = (order as any).fop as {
+      companyName?: string; address?: string; phone?: string; director?: string;
+    } | null;
+
+    const senderName     = fop?.companyName ?? company.companyName ?? '';
+    const senderAddress  = fop?.address     ?? company.address     ?? '';
+    const senderPhone    = fop?.phone       ?? company.phone       ?? '';
+    const senderDirector = fop?.director    ?? company.director    ?? '';
 
     const orderExt = order as unknown as {
       numberForm?: number;
@@ -1066,8 +1086,8 @@ export class DocumentsService {
           <div class="doc-header-left">
             <div class="doc-title">ДЕКЛАРАЦІЯ ВИРОБНИКА № ${displayNumber}</div>
             <div class="doc-subtitle">на готову рибну продукцію</div>
-            <div class="fr"><span class="fl">Найменування підприємства - виробника: </span><span class="fv">${company.address ?? ''}</span></div>
-            <div class="fr"><span class="fl">Відправник ${company.companyName ?? ''}</span><span class="fv">№ тел. ${company.phone ?? ''}</span></div>
+            <div class="fr"><span class="fl">Найменування підприємства - виробника: </span><span class="fv">${senderAddress}</span></div>
+            <div class="fr"><span class="fl">Відправник ${senderName}</span><span class="fv">№ тел. ${senderPhone}</span></div>
             <div class="fr"><span class="fl">Товароотримувач</span><span class="fv">${order.client.name}${deliveryPoint ? ' — ' + (deliveryPoint as any).name : ''}</span></div>
             <div class="fr"><span class="fl">Дата відвантаження</span><span class="fv">${this.formatDate(invoiceDate)}. Вид і номер транспортного засобу: ${order.carNumber ?? ''}</span></div>
             <div class="fr"><span class="fl">Накладна(специфікація) №</span><span class="fv">${displayNumber} від ${this.formatDate(invoiceDate)}. Для реалізації</span></div>
@@ -1117,7 +1137,7 @@ export class DocumentsService {
 
         <div class="sigs">
           <div class="sig">
-            <div><b>${company.director ?? ''}</b></div>
+            <div><b>${senderDirector}</b></div>
             <div class="sig-line"></div>
             <div class="sig-hint">підпис / печатка</div>
           </div>
