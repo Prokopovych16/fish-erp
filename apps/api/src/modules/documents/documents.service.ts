@@ -531,8 +531,6 @@ export class DocumentsService {
           ПДВ 20%: ${vat.toFixed(2)} грн.
         </div>
 
-        ${order.note ? `<div style="margin-top:6px; font-size:10px; color:#555;">Примітка: ${order.note}</div>` : ''}
-
         <div class="signatures">
           <div class="sig-block">
             <div>Від постачальника*</div>
@@ -996,14 +994,6 @@ export class DocumentsService {
   async generateQuality(orderId: string): Promise<Buffer> {
     const order = await this.getOrderData(orderId);
     const company = await this.settings.getAll();
-    const fop = (order as any).fop as {
-      companyName?: string; address?: string; phone?: string; director?: string;
-    } | null;
-
-    const senderName     = fop?.companyName ?? company.companyName ?? '';
-    const senderAddress  = fop?.address     ?? company.address     ?? '';
-    const senderPhone    = fop?.phone       ?? company.phone       ?? '';
-    const senderDirector = fop?.director    ?? company.director    ?? '';
 
     const orderExt = order as unknown as {
       numberForm?: number;
@@ -1086,8 +1076,8 @@ export class DocumentsService {
           <div class="doc-header-left">
             <div class="doc-title">ДЕКЛАРАЦІЯ ВИРОБНИКА № ${displayNumber}</div>
             <div class="doc-subtitle">на готову рибну продукцію</div>
-            <div class="fr"><span class="fl">Найменування підприємства - виробника: </span><span class="fv">${senderAddress}</span></div>
-            <div class="fr"><span class="fl">Відправник ${senderName}</span><span class="fv">№ тел. ${senderPhone}</span></div>
+            <div class="fr"><span class="fl">Найменування підприємства - виробника: </span><span class="fv">${company.address ?? ''}</span></div>
+            <div class="fr"><span class="fl">Відправник ${company.companyName ?? ''}</span><span class="fv">№ тел. ${company.phone ?? ''}</span></div>
             <div class="fr"><span class="fl">Товароотримувач</span><span class="fv">${order.client.name}${deliveryPoint ? ' — ' + (deliveryPoint as any).name : ''}</span></div>
             <div class="fr"><span class="fl">Дата відвантаження</span><span class="fv">${this.formatDate(invoiceDate)}. Вид і номер транспортного засобу: ${order.carNumber ?? ''}</span></div>
             <div class="fr"><span class="fl">Накладна(специфікація) №</span><span class="fv">${displayNumber} від ${this.formatDate(invoiceDate)}. Для реалізації</span></div>
@@ -1137,7 +1127,7 @@ export class DocumentsService {
 
         <div class="sigs">
           <div class="sig">
-            <div><b>${senderDirector}</b></div>
+            <div><b>${company.director ?? ''}</b></div>
             <div class="sig-line"></div>
             <div class="sig-hint">підпис / печатка</div>
           </div>
